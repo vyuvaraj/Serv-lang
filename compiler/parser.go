@@ -170,6 +170,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseTestStatement()
 	case TOKEN_ENUM:
 		return p.parseEnumStatement()
+	case TOKEN_MIGRATION:
+		return p.parseMigrationStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -324,6 +326,22 @@ func (p *Parser) parseToolStatement() Statement {
 	if !p.expectPeek(TOKEN_RPAREN) {
 		return nil
 	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+
+func (p *Parser) parseMigrationStatement() Statement {
+	stmt := &MigrationStmt{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_STRING) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
 
 	if !p.expectPeek(TOKEN_LBRACE) {
 		return nil

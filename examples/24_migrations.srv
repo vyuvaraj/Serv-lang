@@ -1,0 +1,22 @@
+// Verification test for database schema migrations in Serv
+
+database "sqlite://migrations_test.db"
+
+extern fn runMigrations() from "go:serv/runtime:RunMigrations"
+
+migration "20260531_init" {
+    db.query("CREATE TABLE IF NOT EXISTS test_users (id INTEGER PRIMARY KEY, name TEXT)")
+}
+
+test "database migrations execution" {
+    runMigrations()
+    
+    // Test table created by migration
+    db.query("INSERT INTO test_users (id, name) VALUES (1, 'Alice')")
+    let users = db.query("SELECT name FROM test_users WHERE id = 1")
+    assert users[0].name == "Alice"
+    
+    // Verify migration record
+    let records = db.query("SELECT version FROM schema_migrations WHERE version = '20260531_init'")
+    assert records[0].version == "20260531_init"
+}

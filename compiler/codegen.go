@@ -261,6 +261,13 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		}
 		return fmt.Sprintf("func init() {\n\truntime.AddMCPTool(%q, %q, func(%s interface{}) interface{} %s)\n}\n\n", s.Name, s.Description, s.Param, bodyStr), nil
 
+	case *MigrationStmt:
+		bodyStr, err := c.genBlockStatement(s.Body)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("func init() {\n\truntime.RegisterMigration(%q, func() %s)\n}\n\n", s.Name, bodyStr), nil
+
 	case *EveryStmt:
 		interval, err := c.genExpression(s.Interval)
 		if err != nil {

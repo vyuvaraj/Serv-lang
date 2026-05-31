@@ -38,6 +38,7 @@ const (
 	TOKEN_ENUM       TokenType = "ENUM"
 	TOKEN_TOOL       TokenType = "TOOL"
 	TOKEN_LIMIT      TokenType = "LIMIT"
+	TOKEN_MIGRATION  TokenType = "MIGRATION"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -391,6 +392,7 @@ var keywords = map[string]TokenType{
 	"enum":      TOKEN_ENUM,
 	"tool":      TOKEN_TOOL,
 	"limit":     TOKEN_LIMIT,
+	"migration": TOKEN_MIGRATION,
 }
 
 func lookupIdent(ident string) TokenType {

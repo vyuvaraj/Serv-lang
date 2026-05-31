@@ -855,6 +855,65 @@ func Sleep(ms interface{}) interface{} {
 	return nil
 }
 
+type Migration struct {
+	Name string
+	Func func()
+}
+
+var (
+	migrations   []Migration
+	migrationsMu sync.Mutex
+)
+
+func RegisterMigration(name string, f func()) {
+	migrationsMu.Lock()
+	defer migrationsMu.Unlock()
+	migrations = append(migrations, Migration{Name: name, Func: f})
+}
+
+func RunMigrations() interface{} {
+	if dbInstance == nil {
+		return nil
+	}
+
+	_, err := dbInstance.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)")
+	if err != nil {
+		LogWarn("Failed to create schema_migrations table: ", err.Error())
+		return nil
+	}
+
+	rows, err := dbInstance.Query("SELECT version FROM schema_migrations")
+	if err != nil {
+		LogWarn("Failed to query schema_migrations: ", err.Error())
+		return nil
+	}
+	defer rows.Close()
+
+	executed := make(map[string]bool)
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err == nil {
+			executed[version] = true
+		}
+	}
+
+	migrationsMu.Lock()
+	defer migrationsMu.Unlock()
+
+	for _, m := range migrations {
+		if !executed[m.Name] {
+			LogInfo("Running database migration: ", m.Name)
+			m.Func()
+			_, err := dbInstance.Exec("INSERT INTO schema_migrations (version) VALUES (?)", m.Name)
+			if err != nil {
+				panic(fmt.Sprintf("Failed to record execution of migration %s: %s", m.Name, err.Error()))
+			}
+			LogInfo("Migration successful: ", m.Name)
+		}
+	}
+	return nil
+}
+
 func StartServer() interface{} {
 	for _, arg := range os.Args {
 		if arg == "--mcp" {
@@ -862,6 +921,8 @@ func StartServer() interface{} {
 			return nil
 		}
 	}
+
+	RunMigrations()
 
 	if serverPort == "" {
 		serverPort = "2112"
