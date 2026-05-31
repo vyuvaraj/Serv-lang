@@ -8,21 +8,22 @@ import (
 )
 
 type Codegen struct {
-	program      *Program
-	imports      map[string]bool
-	declaredVars map[string]bool
-	varTypes     map[string]string // varName -> type
-	inFunction   bool
-	goExterns    map[string]string // fnName -> pkgPath
-	testFuncs    []string          // collected test functions
-	regexDecls   []string          // collected compiled regex variables
+	program             *Program
+	imports             map[string]bool
+	declaredVars        map[string]bool
+	varTypes            map[string]string // varName -> type
+	inFunction          bool
+	inConcurrentContext bool
+	goExterns           map[string]string // fnName -> pkgPath
+	testFuncs           []string          // collected test functions
+	regexDecls          []string          // collected compiled regex variables
 }
 
 func NewCodegen(program *Program) *Codegen {
 	return &Codegen{
-		program:      program,
-		imports:      make(map[string]bool),
-		declaredVars: make(map[string]bool),
+		program:             program,
+		imports:             make(map[string]bool),
+		declaredVars:        make(map[string]bool),
 		varTypes:     make(map[string]string),
 		goExterns:    make(map[string]string),
 		regexDecls:   []string{},
@@ -306,12 +307,18 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		return fmt.Sprintf("go func() {\n\t\t%s\n\t}()\n", call), nil
 
 	case *TestStmt:
+		c.inFunction = true
+		oldConcurrent := c.inConcurrentContext
+		c.inConcurrentContext = hasConcurrency(s.Body)
+
 		// Collect test function bodies — emitted separately via GenerateTests()
 		funcName := "Test_" + sanitizeTestName(s.Name)
 		bodyStr, err := c.genBlockStatement(s.Body)
 		if err != nil {
 			return "", err
 		}
+		c.inFunction = false
+		c.inConcurrentContext = oldConcurrent
 		c.testFuncs = append(c.testFuncs, fmt.Sprintf("func %s(t *testing.T) %s\n", funcName, bodyStr))
 		return "", nil
 
@@ -346,6 +353,9 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 
 	case *FnDecl:
 		c.inFunction = true
+		oldConcurrent := c.inConcurrentContext
+		c.inConcurrentContext = hasConcurrency(s.Body)
+
 		// Clear local variables for this function scope
 		oldDeclared := c.declaredVars
 		oldVarTypes := c.varTypes
@@ -374,6 +384,7 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		c.declaredVars = oldDeclared
 		c.varTypes = oldVarTypes
 		c.inFunction = false
+		c.inConcurrentContext = oldConcurrent
 
 		retType := "interface{}"
 		if s.ReturnType != "" {
@@ -644,6 +655,9 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 			pairs = append(pairs, fmt.Sprintf("%q: %s", k, vStr))
 		}
+		if c.inFunction && !c.inConcurrentContext {
+			return fmt.Sprintf("map[string]interface{}{\n\t\t%s,\n\t}", strings.Join(pairs, ",\n\t\t")), nil
+		}
 		return fmt.Sprintf("runtime.NewSafeMapFromMap(map[string]interface{}{\n\t\t%s,\n\t})", strings.Join(pairs, ",\n\t\t")), nil
 
 	case *IndexExpr:
@@ -900,5 +914,36 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 	default:
 		return "interface{}"
 	}
+}
+
+func hasConcurrency(node Node) bool {
+	if node == nil {
+		return false
+	}
+	switch s := node.(type) {
+	case *SpawnStmt, *PublishStmt:
+		return true
+	case *BlockStmt:
+		for _, sub := range s.Statements {
+			if hasConcurrency(sub) {
+				return true
+			}
+		}
+	case *TryCatchStmt:
+		return hasConcurrency(s.TryBody) || hasConcurrency(s.CatchBody)
+	case *MatchStmt:
+		for _, cs := range s.Cases {
+			if hasConcurrency(cs.Body) {
+				return true
+			}
+		}
+	case *LetStmt:
+		return hasConcurrency(s.Value)
+	case *ExprStmt:
+		return hasConcurrency(s.Value)
+	case *ReturnStmt:
+		return hasConcurrency(s.Value)
+	}
+	return false
 }
 

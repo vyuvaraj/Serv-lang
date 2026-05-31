@@ -51,11 +51,16 @@ var (
 	serverPort   string
 	routes       = make(map[string]map[string]func(Request) interface{}) // method -> path -> handler
 	routesMu     sync.RWMutex
+
+	routeTrie    = make(map[string]*trieNode) // method -> root trie node
+	routeTrieMu  sync.RWMutex
 	cronInstance *cron.Cron
 	cronOnce     sync.Once
 
 	// DB Instance
-	dbInstance *sql.DB
+	dbInstance  *sql.DB
+	stmtCache   = make(map[string]*sql.Stmt)
+	stmtCacheMu sync.RWMutex
 
 	// MongoDB Instances
 	mongoClient *mongo.Client
@@ -579,12 +584,13 @@ func InitServer(port string) {
 
 func AddRoute(method, path string, handler func(Request) interface{}) {
 	routesMu.Lock()
-	defer routesMu.Unlock()
-
 	if _, ok := routes[method]; !ok {
 		routes[method] = make(map[string]func(Request) interface{})
 	}
 	routes[method][path] = handler
+	routesMu.Unlock()
+
+	insertRoute(method, path, handler)
 	LogInfo("Registered route: ", method, " ", path)
 }
 
@@ -598,13 +604,7 @@ func StartServer() {
 	mux.HandleFunc("/metrics", handleMetrics)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		routesMu.RLock()
-		methodRoutes, exists := routes[r.Method]
-		var handler func(Request) interface{}
-		if exists {
-			handler = methodRoutes[r.URL.Path]
-		}
-		routesMu.RUnlock()
+		handler, params := matchRoute(r.Method, r.URL.Path)
 
 		if handler == nil {
 			http.NotFound(w, r)
@@ -616,7 +616,7 @@ func StartServer() {
 			Method: r.Method,
 			Path:   r.URL.Path,
 			Body:   string(bodyBytes),
-			Params: make(map[string]string),
+			Params: params,
 		}
 
 		start := time.Now()
@@ -831,6 +831,28 @@ func InitDB(connStr string) {
 	}
 }
 
+func getCachedStmt(query string) (*sql.Stmt, error) {
+	stmtCacheMu.RLock()
+	stmt, exists := stmtCache[query]
+	stmtCacheMu.RUnlock()
+	if exists {
+		return stmt, nil
+	}
+
+	stmtCacheMu.Lock()
+	defer stmtCacheMu.Unlock()
+	if stmt, exists = stmtCache[query]; exists {
+		return stmt, nil
+	}
+
+	stmt, err := dbInstance.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	stmtCache[query] = stmt
+	return stmt, nil
+}
+
 func DBQuery(query string, args ...interface{}) interface{} {
 	isMongoAction := false
 	if mongoDB != nil {
@@ -848,11 +870,16 @@ func DBQuery(query string, args ...interface{}) interface{} {
 		panic("Database is not initialized. Declare database 'sqlite://...', 'postgres://...', or 'oracle://...' first.")
 	}
 
+	stmt, err := getCachedStmt(query)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to prepare database statement: %s", err.Error()))
+	}
+
 	queryLower := strings.ToLower(strings.TrimSpace(query))
 	if strings.HasPrefix(queryLower, "insert") || strings.HasPrefix(queryLower, "update") ||
 		strings.HasPrefix(queryLower, "delete") || strings.HasPrefix(queryLower, "create") ||
 		strings.HasPrefix(queryLower, "replace") {
-		res, err := dbInstance.Exec(query, args...)
+		res, err := stmt.ExecContext(ctx, args...)
 		if err != nil {
 			panic(fmt.Sprintf("Database exec error: %s", err.Error()))
 		}
@@ -864,7 +891,7 @@ func DBQuery(query string, args ...interface{}) interface{} {
 		}
 	}
 
-	rows, err := dbInstance.Query(query, args...)
+	rows, err := stmt.QueryContext(ctx, args...)
 	if err != nil {
 		panic(fmt.Sprintf("Database query error: %s", err.Error()))
 	}
@@ -1157,4 +1184,79 @@ func executeCallbackSafe(callback func(string), payload string) {
 	}()
 	MetricInc("broker_messages_received_total")
 	callback(payload)
+}
+
+type trieNode struct {
+	children  map[string]*trieNode
+	handler   func(Request) interface{}
+	isParam   bool
+	paramName string
+}
+
+func newTrieNode() *trieNode {
+	return &trieNode{children: make(map[string]*trieNode)}
+}
+
+func insertRoute(method, path string, handler func(Request) interface{}) {
+	routeTrieMu.Lock()
+	defer routeTrieMu.Unlock()
+
+	root, ok := routeTrie[method]
+	if !ok {
+		root = newTrieNode()
+		routeTrie[method] = root
+	}
+
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	curr := root
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		isParam := strings.HasPrefix(part, ":")
+		paramName := ""
+		childKey := part
+		if isParam {
+			paramName = strings.TrimPrefix(part, ":")
+			childKey = ":"
+		}
+
+		child, ok := curr.children[childKey]
+		if !ok {
+			child = newTrieNode()
+			child.isParam = isParam
+			child.paramName = paramName
+			curr.children[childKey] = child
+		}
+		curr = child
+	}
+	curr.handler = handler
+}
+
+func matchRoute(method, path string) (func(Request) interface{}, map[string]string) {
+	routeTrieMu.RLock()
+	root, ok := routeTrie[method]
+	routeTrieMu.RUnlock()
+	if !ok {
+		return nil, nil
+	}
+
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	params := make(map[string]string)
+	curr := root
+
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if child, ok := curr.children[part]; ok {
+			curr = child
+		} else if child, ok := curr.children[":"]; ok {
+			params[child.paramName] = part
+			curr = child
+		} else {
+			return nil, nil
+		}
+	}
+	return curr.handler, params
 }

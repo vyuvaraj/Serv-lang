@@ -29,3 +29,12 @@ test "regexp pre-compilation verification" {
     let match2 = regexp.check("^hello.*", "bye world")
     assert match2 == false
 }
+
+test "zero-lock map literal verification" {
+    let details = {
+        "title": "Zero-Lock",
+        "speed": "Fast"
+    }
+    assert details.title == "Zero-Lock"
+    assert details.speed == "Fast"
+}
