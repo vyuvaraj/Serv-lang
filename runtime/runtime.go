@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -80,7 +81,9 @@ var (
 	subscribers   = make(map[string][]func(string))
 	subscribersMu sync.RWMutex
 
-	pubSubQueue      = make(chan pubSubEvent, 10000)
+	pubSubQueueSize  = 10000
+	pubSubWorkers    = 20
+	pubSubQueue      chan pubSubEvent
 	pubSubWorkerOnce sync.Once
 
 	// Concurrency Semaphores
@@ -113,6 +116,19 @@ type MapStringFloat struct {
 func init() {
 	metricsGauges.m = make(map[string]float64)
 	loadYAMLConfig()
+
+	// Parse customizable Pub/Sub options
+	if sizeStr := Config("pubsub.queue_size"); sizeStr != "" {
+		if val, err := strconv.Atoi(sizeStr); err == nil && val > 0 {
+			pubSubQueueSize = val
+		}
+	}
+	if workersStr := Config("pubsub.workers"); workersStr != "" {
+		if val, err := strconv.Atoi(workersStr); err == nil && val > 0 {
+			pubSubWorkers = val
+		}
+	}
+	pubSubQueue = make(chan pubSubEvent, pubSubQueueSize)
 }
 
 func loadYAMLConfig() {
@@ -734,6 +750,33 @@ func ReleaseSemaphore(id string) {
 	}
 }
 
+// Helper to configure connection pool from YAML config or Env
+func configureDBPool(db *sql.DB) {
+	maxOpen := 25
+	maxIdle := 25
+	lifetime := 5 * time.Minute
+
+	if valStr := Config("database.max_open_conns"); valStr != "" {
+		if val, err := strconv.Atoi(valStr); err == nil && val > 0 {
+			maxOpen = val
+		}
+	}
+	if valStr := Config("database.max_idle_conns"); valStr != "" {
+		if val, err := strconv.Atoi(valStr); err == nil && val > 0 {
+			maxIdle = val
+		}
+	}
+	if valStr := Config("database.conn_max_lifetime"); valStr != "" {
+		if dur, err := time.ParseDuration(valStr); err == nil && dur > 0 {
+			lifetime = dur
+		}
+	}
+
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(lifetime)
+}
+
 // SQLite, PostgreSQL, Oracle, and MongoDB Database Integrations
 func InitDB(connStr string) {
 	if strings.HasPrefix(connStr, "sqlite://") {
@@ -743,9 +786,7 @@ func InitDB(connStr string) {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to open SQLite database %s: %s", dbPath, err.Error()))
 		}
-		dbInstance.SetMaxOpenConns(25)
-		dbInstance.SetMaxIdleConns(25)
-		dbInstance.SetConnMaxLifetime(5 * time.Minute)
+		configureDBPool(dbInstance)
 		LogInfo("Connected to SQLite database: ", dbPath)
 	} else if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
 		var err error
@@ -753,9 +794,7 @@ func InitDB(connStr string) {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to open PostgreSQL database: %s", err.Error()))
 		}
-		dbInstance.SetMaxOpenConns(25)
-		dbInstance.SetMaxIdleConns(25)
-		dbInstance.SetConnMaxLifetime(5 * time.Minute)
+		configureDBPool(dbInstance)
 		LogInfo("Connected to PostgreSQL database successfully")
 	} else if strings.HasPrefix(connStr, "oracle://") {
 		var err error
@@ -763,9 +802,7 @@ func InitDB(connStr string) {
 		if err != nil {
 			panic(fmt.Sprintf("Failed to open Oracle database: %s", err.Error()))
 		}
-		dbInstance.SetMaxOpenConns(25)
-		dbInstance.SetMaxIdleConns(25)
-		dbInstance.SetConnMaxLifetime(5 * time.Minute)
+		configureDBPool(dbInstance)
 		LogInfo("Connected to Oracle database successfully")
 	} else if strings.HasPrefix(connStr, "mongodb://") {
 		clientOptions := options.Client().ApplyURI(connStr)
@@ -1102,7 +1139,7 @@ type pubSubEvent struct {
 
 func startPubSubWorkers() {
 	pubSubWorkerOnce.Do(func() {
-		for i := 0; i < 20; i++ {
+		for i := 0; i < pubSubWorkers; i++ {
 			go func() {
 				for event := range pubSubQueue {
 					executeCallbackSafe(event.callback, event.payload)

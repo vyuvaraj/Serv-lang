@@ -3,5 +3,11 @@ app:
   name: "ServYAMLService"
 database:
   url: "sqlite://yaml_test_db.db"
+  max_open_conns: 50
+  max_idle_conns: 25
+  conn_max_lifetime: "10m"
 broker:
   url: "in-memory"
+pubsub:
+  queue_size: 5000
+  workers: 10
