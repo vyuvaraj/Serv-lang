@@ -270,6 +270,27 @@ func (p *Parser) parseRouteStatement() Statement {
 		return nil
 	}
 
+	if p.peekToken.Type == TOKEN_LIMIT {
+		p.nextToken() // move to limit
+		if !p.expectPeek(TOKEN_INT) {
+			return nil
+		}
+		val, err := strconv.Atoi(p.curToken.Literal)
+		if err != nil {
+			return nil
+		}
+		stmt.LimitRate = val
+
+		if !p.expectPeek(TOKEN_SLASH) {
+			return nil
+		}
+
+		if !p.expectPeek(TOKEN_IDENT) {
+			return nil
+		}
+		stmt.LimitPeriod = p.curToken.Literal
+	}
+
 	if !p.expectPeek(TOKEN_LBRACE) {
 		return nil
 	}

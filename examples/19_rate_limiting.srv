@@ -1,0 +1,27 @@
+// Verification test for route rate limiting in Serv
+
+extern fn startServer() from "go:serv/runtime:StartServer"
+extern fn sleep(ms) from "go:serv/runtime:Sleep"
+
+server "3106"
+
+route "GET" "/limited" (req) limit 2/s {
+    return "ok"
+}
+
+test "route rate limiting" {
+    spawn startServer()
+    sleep(200)
+
+    // First request
+    let r1 = http.get("http://localhost:3106/limited")
+    assert r1.status == 200
+
+    // Second request
+    let r2 = http.get("http://localhost:3106/limited")
+    assert r2.status == 200
+
+    // Third request (should be throttled)
+    let r3 = http.get("http://localhost:3106/limited")
+    assert r3.status == 429
+}

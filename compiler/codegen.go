@@ -252,7 +252,7 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 			return "", err
 		}
 		// Wrap returning map or response correctly
-		return fmt.Sprintf("func init() {\n\truntime.AddRoute(%q, %q, func(%s runtime.Request) interface{} %s)\n}\n\n", s.Method, s.Path, s.Param, bodyStr), nil
+		return fmt.Sprintf("func init() {\n\truntime.AddRoute(%q, %q, %d, %q, func(%s runtime.Request) interface{} %s)\n}\n\n", s.Method, s.Path, s.LimitRate, s.LimitPeriod, s.Param, bodyStr), nil
 
 	case *ToolStmt:
 		bodyStr, err := c.genBlockStatement(s.Body)
@@ -570,6 +570,8 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "db" {
 			if e.Field == "query" {
 				return "runtime.DBQuery", nil
+			} else if e.Field == "beforeQuery" {
+				return "runtime.AddBeforeQueryHook", nil
 			}
 		}
 		if objStr == "cache" {

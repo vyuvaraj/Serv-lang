@@ -106,11 +106,13 @@ func (c *CacheStmt) String() string       { return "cache " + c.Value.String() +
 
 // Route Statement
 type RouteStmt struct {
-	Token  Token
-	Method string
-	Path   string
-	Param  string // req object name, e.g. "req"
-	Body   *BlockStmt
+	Token       Token
+	Method      string
+	Path        string
+	Param       string // req object name, e.g. "req"
+	Body        *BlockStmt
+	LimitRate   int
+	LimitPeriod string
 }
 
 func (r *RouteStmt) statementNode()       {}

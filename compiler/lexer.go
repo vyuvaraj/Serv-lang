@@ -37,6 +37,7 @@ const (
 	TOKEN_OR         TokenType = "OR"
 	TOKEN_ENUM       TokenType = "ENUM"
 	TOKEN_TOOL       TokenType = "TOOL"
+	TOKEN_LIMIT      TokenType = "LIMIT"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -192,6 +193,10 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = l.readIdentifier()
 		tok.Type = lookupIdent(tok.Literal)
 		return tok
+	case '`':
+		tok.Type = TOKEN_STRING
+		tok.Literal = l.readRawString()
+		return tok
 	case '"':
 		tok.Type = TOKEN_STRING
 		tok.Literal = l.readString()
@@ -336,6 +341,23 @@ func (l *Lexer) readString() string {
 	return string(buf)
 }
 
+func (l *Lexer) readRawString() string {
+	l.readChar() // skip leading backtick
+	var buf []byte
+	for l.ch != '`' && l.ch != 0 {
+		if l.ch == '\n' {
+			l.line++
+			l.col = 0
+		}
+		buf = append(buf, l.ch)
+		l.readChar()
+	}
+	if l.ch == '`' {
+		l.readChar() // skip trailing backtick
+	}
+	return string(buf)
+}
+
 func isLetter(ch byte) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
 }
@@ -368,6 +390,7 @@ var keywords = map[string]TokenType{
 	"assert":    TOKEN_ASSERT,
 	"enum":      TOKEN_ENUM,
 	"tool":      TOKEN_TOOL,
+	"limit":     TOKEN_LIMIT,
 }
 
 func lookupIdent(ident string) TokenType {

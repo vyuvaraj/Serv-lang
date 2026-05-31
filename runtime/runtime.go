@@ -46,6 +46,13 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+type pythonWorker struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+	mutex  sync.Mutex
+}
+
 // Global State
 var (
 	brokerURL    string
@@ -73,12 +80,9 @@ var (
 	localCache   = make(map[string]localCacheEntry)
 	localCacheMu sync.RWMutex
 
-	// Python interop daemon state
-	pythonCmd      *exec.Cmd
-	pythonStdin    io.WriteCloser
-	pythonStdout   *bufio.Reader
-	pythonMutex    sync.Mutex
-	pythonInitOnce sync.Once
+	// Python interop daemon pool state
+	pythonPoolQueue   chan *pythonWorker
+	pythonWorkersOnce sync.Once
 
 	// Broker Connection Instances
 	natsClient      *nats.Conn
@@ -111,6 +115,10 @@ var (
 	// Config Map
 	configMap   = make(map[string]string)
 	configMapMu sync.RWMutex
+
+	// Database query hooks
+	beforeQueryHooks   []func(interface{}, interface{}) interface{}
+	beforeQueryHooksMu sync.RWMutex
 )
 
 // Noop is a no-op sentinel used by generated test files to satisfy the runtime import.
@@ -590,7 +598,56 @@ func InitServer(port string) {
 	serverPort = port
 }
 
-func AddRoute(method, path string, handler func(Request) interface{}) {
+type routeRateLimiter struct {
+	limitRate   int
+	limitPeriod time.Duration
+	tokensMutex sync.Mutex
+	tokens      float64
+	lastRefill  time.Time
+}
+
+func newRouteRateLimiter(rate int, period string) *routeRateLimiter {
+	var dur time.Duration
+	switch period {
+	case "s":
+		dur = time.Second
+	case "m":
+		dur = time.Minute
+	case "h":
+		dur = time.Hour
+	default:
+		dur = time.Second
+	}
+	return &routeRateLimiter{
+		limitRate:   rate,
+		limitPeriod: dur,
+		tokens:      float64(rate),
+		lastRefill:  time.Now(),
+	}
+}
+
+func (rl *routeRateLimiter) allow() bool {
+	rl.tokensMutex.Lock()
+	defer rl.tokensMutex.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(rl.lastRefill)
+	rl.lastRefill = now
+
+	refillRate := float64(rl.limitRate) / float64(rl.limitPeriod)
+	rl.tokens += float64(elapsed) * refillRate
+	if rl.tokens > float64(rl.limitRate) {
+		rl.tokens = float64(rl.limitRate)
+	}
+
+	if rl.tokens >= 1.0 {
+		rl.tokens -= 1.0
+		return true
+	}
+	return false
+}
+
+func AddRoute(method, path string, limitRate int, limitPeriod string, handler func(Request) interface{}) {
 	routesMu.Lock()
 	if _, ok := routes[method]; !ok {
 		routes[method] = make(map[string]func(Request) interface{})
@@ -598,7 +655,12 @@ func AddRoute(method, path string, handler func(Request) interface{}) {
 	routes[method][path] = handler
 	routesMu.Unlock()
 
-	insertRoute(method, path, handler)
+	var limiter *routeRateLimiter
+	if limitRate > 0 {
+		limiter = newRouteRateLimiter(limitRate, limitPeriod)
+	}
+
+	insertRoute(method, path, limiter, handler)
 	LogInfo("Registered route: ", method, " ", path)
 }
 
@@ -775,11 +837,29 @@ func handleMCPRequest(req jsonRPCRequest) {
 	}
 }
 
-func StartServer() {
+func Sleep(ms interface{}) interface{} {
+	var val int
+	switch v := ms.(type) {
+	case int:
+		val = v
+	case int64:
+		val = int(v)
+	case float64:
+		val = int(v)
+	case string:
+		val, _ = strconv.Atoi(v)
+	default:
+		val, _ = strconv.Atoi(fmt.Sprint(v))
+	}
+	time.Sleep(time.Duration(val) * time.Millisecond)
+	return nil
+}
+
+func StartServer() interface{} {
 	for _, arg := range os.Args {
 		if arg == "--mcp" {
 			startMCPServer()
-			return
+			return nil
 		}
 	}
 
@@ -792,10 +872,20 @@ func StartServer() {
 	mux.HandleFunc("/metrics", handleMetrics)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		handler, params := matchRoute(r.Method, r.URL.Path)
+		handler, params, limiter := matchRoute(r.Method, r.URL.Path)
 
 		if handler == nil {
 			http.NotFound(w, r)
+			return
+		}
+
+		if limiter != nil && !limiter.allow() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": 429,
+				"error":  "Too Many Requests",
+			})
 			return
 		}
 
@@ -834,6 +924,7 @@ func StartServer() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		LogError("Web server error: ", err)
 	}
+	return nil
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -852,8 +943,17 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	metricsGauges.RUnlock()
 }
 
-func initPythonDaemon() {
-	pythonInitOnce.Do(func() {
+func initPythonDaemonPool() {
+	pythonWorkersOnce.Do(func() {
+		workersCount := 4
+		if valStr := Config("python.workers"); valStr != "" {
+			if val, err := strconv.Atoi(valStr); err == nil && val > 0 {
+				workersCount = val
+			}
+		}
+
+		pythonPoolQueue = make(chan *pythonWorker, workersCount)
+
 		daemonCode := `
 import sys
 import json
@@ -887,30 +987,44 @@ while True:
         print(json.dumps({"error": str(e)}))
         sys.stdout.flush()
 `
-		pythonCmd = exec.Command("python", "-u", "-c", daemonCode)
-		var err error
-		pythonStdin, err = pythonCmd.StdinPipe()
-		if err != nil {
-			panic("Failed to create stdin pipe for Python daemon: " + err.Error())
-		}
-		stdoutPipe, err := pythonCmd.StdoutPipe()
-		if err != nil {
-			panic("Failed to create stdout pipe for Python daemon: " + err.Error())
-		}
-		pythonStdout = bufio.NewReader(stdoutPipe)
 
-		if err := pythonCmd.Start(); err != nil {
-			panic("Failed to start Python interop daemon: " + err.Error())
+		for i := 0; i < workersCount; i++ {
+			cmd := exec.Command("python", "-u", "-c", daemonCode)
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				panic("Failed to create stdin pipe for Python worker: " + err.Error())
+			}
+			stdoutPipe, err := cmd.StdoutPipe()
+			if err != nil {
+				panic("Failed to create stdout pipe for Python worker: " + err.Error())
+			}
+			stdout := bufio.NewReader(stdoutPipe)
+
+			if err := cmd.Start(); err != nil {
+				panic("Failed to start Python worker: " + err.Error())
+			}
+
+			worker := &pythonWorker{
+				cmd:    cmd,
+				stdin:  stdin,
+				stdout: stdout,
+			}
+			pythonPoolQueue <- worker
 		}
 	})
 }
 
-// Call Python Script for extern mappings using the persistent daemon
+// Call Python Script for extern mappings using the persistent daemon pool
 func CallPython(scriptPath string, funcName string, args ...interface{}) interface{} {
-	initPythonDaemon()
+	initPythonDaemonPool()
 
-	pythonMutex.Lock()
-	defer pythonMutex.Unlock()
+	worker := <-pythonPoolQueue
+	defer func() {
+		pythonPoolQueue <- worker
+	}()
+
+	worker.mutex.Lock()
+	defer worker.mutex.Unlock()
 
 	reqPayload := map[string]interface{}{
 		"script_path": scriptPath,
@@ -924,13 +1038,13 @@ func CallPython(scriptPath string, funcName string, args ...interface{}) interfa
 		return nil
 	}
 
-	_, err = pythonStdin.Write(append(payloadBytes, '\n'))
+	_, err = worker.stdin.Write(append(payloadBytes, '\n'))
 	if err != nil {
 		LogError("Failed to write request to Python daemon: ", err)
 		return nil
 	}
 
-	line, err := pythonStdout.ReadBytes('\n')
+	line, err := worker.stdout.ReadBytes('\n')
 	if err != nil {
 		LogError("Failed to read response from Python daemon: ", err)
 		return nil
@@ -1098,7 +1212,19 @@ func getCachedStmt(query string) (*sql.Stmt, error) {
 	return stmt, nil
 }
 
+func AddBeforeQueryHook(hook func(interface{}, interface{}) interface{}) {
+	beforeQueryHooksMu.Lock()
+	defer beforeQueryHooksMu.Unlock()
+	beforeQueryHooks = append(beforeQueryHooks, hook)
+}
+
 func DBQuery(query string, args ...interface{}) interface{} {
+	// Trigger beforeQuery hooks
+	beforeQueryHooksMu.RLock()
+	for _, hook := range beforeQueryHooks {
+		hook(query, args)
+	}
+	beforeQueryHooksMu.RUnlock()
 	isMongoAction := false
 	if mongoDB != nil {
 		q := strings.ToLower(strings.TrimSpace(query))
@@ -1436,13 +1562,14 @@ type trieNode struct {
 	handler   func(Request) interface{}
 	isParam   bool
 	paramName string
+	limiter   *routeRateLimiter
 }
 
 func newTrieNode() *trieNode {
 	return &trieNode{children: make(map[string]*trieNode)}
 }
 
-func insertRoute(method, path string, handler func(Request) interface{}) {
+func insertRoute(method, path string, limiter *routeRateLimiter, handler func(Request) interface{}) {
 	routeTrieMu.Lock()
 	defer routeTrieMu.Unlock()
 
@@ -1476,14 +1603,15 @@ func insertRoute(method, path string, handler func(Request) interface{}) {
 		curr = child
 	}
 	curr.handler = handler
+	curr.limiter = limiter
 }
 
-func matchRoute(method, path string) (func(Request) interface{}, map[string]string) {
+func matchRoute(method, path string) (func(Request) interface{}, map[string]string, *routeRateLimiter) {
 	routeTrieMu.RLock()
 	root, ok := routeTrie[method]
 	routeTrieMu.RUnlock()
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -1500,8 +1628,8 @@ func matchRoute(method, path string) (func(Request) interface{}, map[string]stri
 			params[child.paramName] = part
 			curr = child
 		} else {
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
-	return curr.handler, params
+	return curr.handler, params, curr.limiter
 }

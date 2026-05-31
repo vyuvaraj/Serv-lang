@@ -1,0 +1,17 @@
+// Verification test for database query hooks in Serv
+
+database "sqlite://query_hooks_test.db"
+
+let lastQuery = ""
+
+fn myQueryLog(query, args) {
+    lastQuery = f"{query}"
+}
+
+test "database query hooks" {
+    db.beforeQuery(myQueryLog)
+    
+    db.query("SELECT 1")
+    
+    assert lastQuery == "SELECT 1"
+}

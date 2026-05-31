@@ -1,0 +1,10 @@
+// Verification test for multi-line raw strings in Serv
+
+test "raw backtick strings" {
+    let query = `SELECT * 
+FROM users 
+WHERE id = 1`
+    assert regexp.check("SELECT \\*", query) == true
+    assert regexp.check("FROM users", query) == true
+    assert regexp.check("WHERE id = 1", query) == true
+}
