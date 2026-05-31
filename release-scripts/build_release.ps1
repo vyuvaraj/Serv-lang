@@ -12,9 +12,13 @@ $linuxPkgDir = Join-Path $distDir "serv-linux-amd64"
 # 1. Clean and create dist directories
 Write-Host "Cleaning old build files..." -ForegroundColor Cyan
 if (Test-Path $distDir) {
-    Remove-Item -Recurse -Force $distDir
+    try {
+        Remove-Item -Recurse -Force $winPkgDir -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $linuxPkgDir -ErrorAction SilentlyContinue
+    } catch {}
+} else {
+    New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 }
-New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $winPkgDir | Out-Null
 New-Item -ItemType Directory -Force -Path $linuxPkgDir | Out-Null
 
@@ -32,16 +36,13 @@ $env:GOARCH = ""
 
 # 3. Define common files/folders to copy
 $commonPaths = @(
-    "compiler",
     "runtime",
     "scripts",
     "examples",
     "vscode-support",
     "go.mod",
     "go.sum",
-    "README.md",
-    "main.srv",
-    "test_sample.srv"
+    "README.md"
 )
 
 # 4. Copy common files/folders to both target packages
@@ -55,16 +56,18 @@ foreach ($path in $commonPaths) {
 }
 
 # 5. Compress packages
-Write-Host "Creating zip package for Windows (serv-windows-amd64.zip)..." -ForegroundColor Yellow
-$winZipPath = Join-Path $distDir "serv-windows-amd64.zip"
+Write-Host "Creating zip package for Windows (serv-sdk-windows-amd64.zip)..." -ForegroundColor Yellow
+$winZipPath = Join-Path $distDir "serv-sdk-windows-amd64.zip"
+if (Test-Path $winZipPath) { Remove-Item -Force $winZipPath -ErrorAction SilentlyContinue }
 Compress-Archive -Path "$winPkgDir\*" -DestinationPath $winZipPath -Force
 
-Write-Host "Creating tar.gz package for Linux (serv-linux-amd64.tar.gz)..." -ForegroundColor Yellow
+Write-Host "Creating tar.gz package for Linux (serv-sdk-linux-amd64.tar.gz)..." -ForegroundColor Yellow
 # Run native tar command available in Windows 10/11
-$tarGzPath = Join-Path $distDir "serv-linux-amd64.tar.gz"
+$tarGzPath = Join-Path $distDir "serv-sdk-linux-amd64.tar.gz"
+if (Test-Path $tarGzPath) { Remove-Item -Force $tarGzPath -ErrorAction SilentlyContinue }
 $oldLocation = Get-Location
 Set-Location $distDir
-& tar -czf "serv-linux-amd64.tar.gz" "serv-linux-amd64"
+& tar -czf "serv-sdk-linux-amd64.tar.gz" "serv-linux-amd64"
 Set-Location $oldLocation
 
 # 6. Clean intermediate directories
@@ -73,5 +76,5 @@ Remove-Item -Recurse -Force $winPkgDir
 Remove-Item -Recurse -Force $linuxPkgDir
 
 Write-Host "Done! Packages successfully generated in the dist/ folder:" -ForegroundColor Green
-Write-Host "  - Windows: dist/serv-windows-amd64.zip" -ForegroundColor White
-Write-Host "  - Linux:   dist/serv-linux-amd64.tar.gz" -ForegroundColor White
+Write-Host "  - Windows: dist/serv-sdk-windows-amd64.zip" -ForegroundColor White
+Write-Host "  - Linux:   dist/serv-sdk-linux-amd64.tar.gz" -ForegroundColor White
