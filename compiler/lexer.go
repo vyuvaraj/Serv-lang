@@ -56,6 +56,7 @@ const (
 	TOKEN_DECLARE    TokenType = "DECLARE"
 	TOKEN_MODULE     TokenType = "MODULE"
 	TOKEN_AS         TokenType = "AS"
+	TOKEN_WS         TokenType = "WS"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -427,6 +428,7 @@ var keywords = map[string]TokenType{
 	"declare":   TOKEN_DECLARE,
 	"module":    TOKEN_MODULE,
 	"as":        TOKEN_AS,
+	"ws":        TOKEN_WS,
 }
 
 func lookupIdent(ident string) TokenType {

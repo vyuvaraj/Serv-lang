@@ -42,6 +42,7 @@ import (
 	// Broker drivers
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-stomp/stomp/v3"
+	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/robfig/cron/v3"
@@ -479,16 +480,98 @@ func Config(key string) string {
 }
 
 // Logging
+
+var (
+	logJSON    bool
+	logLevel   = "info" // "debug", "info", "warn", "error"
+	logLevelMu sync.RWMutex
+)
+
+func init() {
+	// Check for JSON log mode
+	if Config("log.format") == "json" || os.Getenv("LOG_FORMAT") == "json" {
+		logJSON = true
+	}
+	if lvl := Config("log.level"); lvl != "" {
+		logLevel = lvl
+	} else if lvl := os.Getenv("LOG_LEVEL"); lvl != "" {
+		logLevel = lvl
+	}
+}
+
+func shouldLog(level string) bool {
+	levels := map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
+	logLevelMu.RLock()
+	defer logLevelMu.RUnlock()
+	return levels[level] >= levels[logLevel]
+}
+
+func logStructured(level string, args ...interface{}) {
+	if !shouldLog(level) {
+		return
+	}
+	msg := fmt.Sprint(args...)
+	if logJSON {
+		entry := map[string]interface{}{
+			"level":     level,
+			"message":   msg,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		b, _ := json.Marshal(entry)
+		fmt.Println(string(b))
+	} else {
+		log.Printf("[%s] %s", strings.ToUpper(level), msg)
+	}
+}
+
 func LogInfo(args ...interface{}) {
-	log.Printf("[INFO] %s", fmt.Sprint(args...))
+	logStructured("info", args...)
 }
 
 func LogWarn(args ...interface{}) {
-	log.Printf("[WARN] %s", fmt.Sprint(args...))
+	logStructured("warn", args...)
 }
 
 func LogError(args ...interface{}) {
-	log.Printf("[ERROR] %s", fmt.Sprint(args...))
+	logStructured("error", args...)
+}
+
+func LogDebug(args ...interface{}) {
+	logStructured("debug", args...)
+}
+
+// LogWith logs a message with structured context fields (key-value pairs).
+// Usage from Serv: log.with("user_id", 123, "action", "login")
+func LogWith(args ...interface{}) interface{} {
+	if len(args) < 2 {
+		return nil
+	}
+	// Last arg is the message, preceding pairs are key-value context
+	msg := fmt.Sprint(args[len(args)-1])
+	fields := make(map[string]interface{})
+	for i := 0; i+1 < len(args)-1; i += 2 {
+		fields[fmt.Sprint(args[i])] = args[i+1]
+	}
+
+	if logJSON {
+		entry := map[string]interface{}{
+			"level":     "info",
+			"message":   msg,
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		for k, v := range fields {
+			entry[k] = v
+		}
+		b, _ := json.Marshal(entry)
+		fmt.Println(string(b))
+	} else {
+		var pairs []string
+		for k, v := range fields {
+			pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+		}
+		log.Printf("[INFO] %s %s", msg, strings.Join(pairs, " "))
+	}
+	return nil
 }
 
 // Metrics
@@ -961,6 +1044,52 @@ func AddRouteWithMiddleware(method, path string, limitRate int, limitPeriod stri
 	AddRoute(method, path, limitRate, limitPeriod, wrappedHandler)
 }
 
+// WebSocket support
+
+type WSConn struct {
+	conn   *websocket.Conn
+	mu     sync.Mutex
+}
+
+func (w *WSConn) Send(msg interface{}) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var data []byte
+	if str, ok := msg.(string); ok {
+		data = []byte(str)
+	} else {
+		data, _ = json.Marshal(msg)
+	}
+	w.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (w *WSConn) Receive() interface{} {
+	_, message, err := w.conn.ReadMessage()
+	if err != nil {
+		return nil
+	}
+	return string(message)
+}
+
+func (w *WSConn) Close() {
+	w.conn.Close()
+}
+
+var (
+	wsHandlers   = make(map[string]func(*WSConn))
+	wsHandlersMu sync.RWMutex
+	upgrader     = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+)
+
+func AddWebSocket(path string, handler func(*WSConn)) {
+	wsHandlersMu.Lock()
+	wsHandlers[path] = handler
+	wsHandlersMu.Unlock()
+	LogInfo("Registered WebSocket endpoint: ", path)
+}
+
 type MCPTool struct {
 	Name        string
 	Description string
@@ -1230,6 +1359,22 @@ func StartServer() interface{} {
 	mux.HandleFunc("/metrics", handleMetrics)
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/ready", handleReady)
+
+	// WebSocket endpoints
+	wsHandlersMu.RLock()
+	for wsPath, wsHandler := range wsHandlers {
+		handler := wsHandler // capture for closure
+		mux.HandleFunc(wsPath, func(w http.ResponseWriter, r *http.Request) {
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				LogError("WebSocket upgrade failed: ", err)
+				return
+			}
+			wsConn := &WSConn{conn: conn}
+			go handler(wsConn)
+		})
+	}
+	wsHandlersMu.RUnlock()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handler, params, limiter := matchRoute(r.Method, r.URL.Path)

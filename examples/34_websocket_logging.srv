@@ -1,0 +1,38 @@
+// Serv Example 34: WebSocket & Structured Logging
+// Lint: serv lint examples/34_websocket_logging.srv
+// Build: serv build examples/34_websocket_logging.srv -o test_ws.exe
+//
+// To enable JSON logging, set: LOG_FORMAT=json
+// To set log level: LOG_LEVEL=debug
+
+server "8080"
+
+// Structured logging with context
+log.info("Server starting on port 8080")
+log.debug("Debug mode enabled")
+
+// WebSocket endpoint — real-time chat
+ws "/chat" (conn) {
+    log.info("New WebSocket connection")
+    
+    for true {
+        let msg = conn.receive()
+        if msg == nil {
+            log.info("Client disconnected")
+        } else {
+            log.info("Received: ", msg)
+            conn.send(f"Echo: {msg}")
+        }
+    }
+}
+
+// WebSocket endpoint — live notifications
+ws "/notifications" (conn) {
+    conn.send("Connected to notifications stream")
+}
+
+// Regular HTTP route with structured logging
+route "GET" "/api/users" (req) {
+    log.with("endpoint", "/api/users", "method", "GET", "Request received")
+    return { "users": ["Alice", "Bob"] }
+}

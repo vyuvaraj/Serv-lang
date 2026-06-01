@@ -776,3 +776,17 @@ func (g *GoPackageImport) TokenLiteral() string { return g.Token.Literal }
 func (g *GoPackageImport) String() string {
 	return "import " + g.Alias + " from \"" + g.Path + "\"\n"
 }
+
+// WebSocket Statement: ws "/path" (conn) { body }
+type WsStmt struct {
+	Token Token
+	Path  string
+	Param string // connection parameter name
+	Body  *BlockStmt
+}
+
+func (w *WsStmt) statementNode()       {}
+func (w *WsStmt) TokenLiteral() string { return w.Token.Literal }
+func (w *WsStmt) String() string {
+	return "ws \"" + w.Path + "\" (" + w.Param + ") " + w.Body.String() + "\n"
+}

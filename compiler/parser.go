@@ -192,6 +192,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseMiddlewareDeclaration()
 	case TOKEN_DECLARE:
 		return p.parseDeclareStatement()
+	case TOKEN_WS:
+		return p.parseWsStatement()
 	case TOKEN_EXPORT:
 		return p.parseExportStatement()
 	default:
@@ -1461,6 +1463,34 @@ func (p *Parser) parseStructDeclaration() Statement {
 		return nil
 	}
 
+	return stmt
+}
+
+// parseWsStatement parses: ws "/path" (conn) { body }
+func (p *Parser) parseWsStatement() Statement {
+	stmt := &WsStmt{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_STRING) {
+		return nil
+	}
+	stmt.Path = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_LPAREN) {
+		return nil
+	}
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Param = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_RPAREN) {
+		return nil
+	}
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
 	return stmt
 }
 

@@ -470,6 +470,30 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		// Generate middleware as a named function and register it
 		return fmt.Sprintf("func init() {\n\truntime.RegisterMiddleware(%q, func(%s runtime.Request) interface{} %s)\n}\n\n", s.Name, s.Param, bodyStr), nil
 
+	case *WsStmt:
+		// Register the conn param as WSConn type for member expression resolution
+		oldDeclared := c.declaredVars
+		oldVarTypes := c.varTypes
+		c.declaredVars = make(map[string]bool)
+		c.varTypes = make(map[string]string)
+		for k, v := range oldVarTypes {
+			c.varTypes[k] = v
+		}
+		c.declaredVars[s.Param] = true
+		c.varTypes[s.Param] = "*runtime.WSConn"
+		c.inFunction = true
+
+		bodyStr, err := c.genBlockStatement(s.Body)
+		if err != nil {
+			return "", err
+		}
+
+		c.declaredVars = oldDeclared
+		c.varTypes = oldVarTypes
+		c.inFunction = false
+
+		return fmt.Sprintf("func init() {\n\truntime.AddWebSocket(%q, func(%s *runtime.WSConn) %s)\n}\n\n", s.Path, s.Param, bodyStr), nil
+
 	case *ToolStmt:
 		bodyStr, err := c.genBlockStatement(s.Body)
 		if err != nil {
@@ -839,6 +863,10 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.LogWarn", nil
 			} else if e.Field == "error" {
 				return "runtime.LogError", nil
+			} else if e.Field == "debug" {
+				return "runtime.LogDebug", nil
+			} else if e.Field == "with" {
+				return "runtime.LogWith", nil
 			}
 		}
 		if objStr == "metric" {
@@ -879,6 +907,18 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "mcp" {
 			if e.Field == "call" {
 				return "runtime.InvokeMCPToolForTesting", nil
+			}
+		}
+
+		// WebSocket connection methods
+		if varType, ok := c.varTypes[objStr]; ok && varType == "*runtime.WSConn" {
+			switch e.Field {
+			case "send":
+				return fmt.Sprintf("%s.Send", objStr), nil
+			case "receive":
+				return fmt.Sprintf("%s.Receive", objStr), nil
+			case "close":
+				return fmt.Sprintf("%s.Close", objStr), nil
 			}
 		}
 
@@ -1782,6 +1822,8 @@ func stmtToken(stmt Statement) Token {
 	case *DeclareModuleStmt:
 		return s.Token
 	case *GoPackageImport:
+		return s.Token
+	case *WsStmt:
 		return s.Token
 	case *ExportStmt:
 		return stmtToken(s.Inner)
