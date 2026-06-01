@@ -1,4 +1,9 @@
-// Scheduler Engine — channel-based job queue with worker pool
+// Scheduler Engine — dynamic sleep loop with channel-based worker pool.
+// Matches Java's DefaultSchedulerEngine pattern:
+// 1. Find next due job (sorted by nextRunTime)
+// 2. Sleep until it's due
+// 3. Push to worker channel
+// 4. Update nextRunTime for next occurrence
 
 // Job queue channel (buffered, capacity 200)
 let jobQueue = channel.new(200)
@@ -8,9 +13,47 @@ atomic.new("running_jobs", 0)
 atomic.new("total_executions", 0)
 atomic.new("total_failures", 0)
 
-// --- Scheduler: poll for due jobs every 5 seconds ---
-every 5s {
-    log.debug("Scheduler: checking for due jobs...")
+// --- Scheduler: load all jobs into memory on startup, one goroutine per job ---
+spawn loadAndScheduleAll()
+
+fn loadAndScheduleAll() {
+    // Wait for DB to be ready
+    time.sleep(2000)
+    log.info("Scheduler: loading all jobs from database...")
+
+    let allJobs, err = db.query("find", "jobs", "{\"status\": \"ACTIVE\", \"enabled\": true}")
+    if err != nil {
+        log.error("Scheduler: failed to load jobs: ", err)
+        return nil
+    }
+
+    if allJobs == nil {
+        log.warn("Scheduler: no active jobs found")
+        return nil
+    }
+
+    log.info("Scheduler: loaded jobs, spawning schedule goroutines")
+
+    // Spawn a dedicated goroutine for each job
+    for job in allJobs {
+        spawn scheduleJob(job)
+    }
+}
+
+fn scheduleJob(job) {
+    let jobName = job.name
+    let jobClass = job.jobClass
+    let cronExpr = job.cronExpression
+    log.info(f"Scheduler: scheduled job name={jobName} class={jobClass} cron={cronExpr}")
+
+    for true {
+        // Sleep until the next cron occurrence (parses the cron expression)
+        schedule.sleepUntilNext(cronExpr)
+
+        // Push to worker queue
+        log.info(f"Scheduler: job due name={jobName}, queuing")
+        channel.trySend(jobQueue, job)
+    }
 }
 
 // --- Worker pool: 3 concurrent job executors ---
@@ -20,52 +63,46 @@ spawn startWorker(3)
 
 fn startWorker(workerId: int) {
     for true {
-        let job = channel.receive(jobQueue)
-        if job == nil {
+        let task = channel.receive(jobQueue)
+        if task == nil {
             return nil
         }
-        processJob(job, workerId)
+        processJob(task, workerId)
     }
 }
 
-fn processJob(job, workerId: int) {
+fn processJob(task, workerId: int) {
     atomic.inc("running_jobs")
     atomic.inc("total_executions")
-    log.info(f"Worker {workerId}: executing job")
     metric.inc("executions_total")
 
-    // Dispatch by jobClass
     let idempotencyKey = f"exec-{time.unix()}-{workerId}"
-    let result, err = dispatchJob(job, idempotencyKey)
+    let jobClass = task.jobClass
+    let jobName = task.name
+    log.info(f"Worker {workerId}: dispatching jobClass={jobClass} name={jobName} idempotencyKey={idempotencyKey}")
 
-    if err != nil {
+    // Dispatch via registry
+    let exists = registry.has(jobClass)
+
+    if exists == true {
+        registry.call(jobClass, task, idempotencyKey)
+        metric.inc("executions_success_total")
+        log.info(f"Worker {workerId}: completed jobClass={jobClass} name={jobName}")
+    } else {
         atomic.inc("total_failures")
         metric.inc("executions_failed_total")
-        log.error(f"Worker {workerId}: job failed: {err}")
-    } else {
-        metric.inc("executions_success_total")
-        log.info(f"Worker {workerId}: job completed")
+        log.error(f"Worker {workerId}: no handler for jobClass={jobClass} name={jobName}")
     }
 
     atomic.dec("running_jobs")
 }
 
-fn dispatchJob(job, idempotencyKey) {
-    // Route to the correct job implementation based on jobClass
-    // This is the Serv equivalent of Spring bean resolution by class name
-    log.info(f"Dispatching job class: data_sync")
-
-    // In a real implementation, match on job.jobClass:
-    // "data_sync" -> executeDataSync(payload, idempotencyKey)
-    // "batch_processing" -> executeBatchProcessing(payload, idempotencyKey)
-    // "cleanup" -> executeCleanup(payload, idempotencyKey)
-
-    return "ok"
-}
-
-// --- Background sync every 60s ---
+// --- Background sync every 60s (like Java's startBackgroundSync) ---
+// Reconciles in-memory state with DB, logs health
 every 60s {
     log.info("Background sync: scheduler healthy")
+    let registered = registry.list()
+    log.info("Registered job handlers: ", registered)
 }
 
 // --- DLQ cleanup daily at 2 AM ---

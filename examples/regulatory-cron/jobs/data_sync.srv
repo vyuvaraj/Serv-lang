@@ -1,39 +1,25 @@
 // Example Data Sync Job
-// Pattern: Fetch data from external regulatory API with circuit breaker protection.
-// Equivalent of ExampleDataSyncJob.java
-//
-// Register via API:
-// POST /api/v1/jobs
-// { "name": "aams-data-sync", "cronExpression": "0 */15 * * *", "jobClass": "data_sync",
-//   "payload": { "jurisdiction": "IT", "endpoint": "https://api.aams.gov.it/records" } }
+// Pattern: Fetch data from external regulatory API.
+// Registers itself in the global registry at startup.
 
-export fn executeDataSync(payload, idempotencyKey: string) {
+registry.set("data_sync", executeDataSync)
+
+export fn executeDataSync(payload, idempotencyKey) {
     let jurisdiction = "IT"
-    if payload != nil {
-        log.info(f"Data sync starting idempotencyKey={idempotencyKey}")
-    }
+    log.info(f"Data sync starting idempotencyKey={idempotencyKey} jurisdiction={jurisdiction}")
 
-    log.info(f"Syncing data for jurisdiction={jurisdiction} idempotencyKey={idempotencyKey}")
-
-    // Call external regulatory API
     let response, err = http.get(f"https://api.regulatory.example.com/records?jurisdiction={jurisdiction}")
 
     if err != nil {
-        // Check if transient (retriable) or permanent
         if err.includes("timeout") {
             log.warn(f"Transient failure, will retry: {err}")
-            // In production: throw RetriableJobException equivalent
-            return nil
+            return "RETRIABLE"
         }
-        if err.includes("503") {
-            log.warn(f"Service unavailable, will retry: {err}")
-            return nil
-        }
-        // Permanent failure
         log.error(f"Permanent API failure: {err}")
-        return nil
+        return "FAILED"
     }
 
     log.info(f"Data sync complete idempotencyKey={idempotencyKey}")
     metric.inc("data_sync_records_total")
+    return "ok"
 }

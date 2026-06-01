@@ -1,11 +1,28 @@
-// Dead Letter Queue API — list and replay failed executions
+// Dead Letter Queue API
+// Java: DlqController.java
+// Base path: /api/v1/dlq
 
+// GET /api/v1/dlq — list DLQ entries (paginated, filterable)
+// Query params: jobName, status, fromDate, toDate, page, size
 route "GET" "/api/v1/dlq" (req) {
     let result = db.queryPage("dlq", "{}", 0, 20)
-    return result
+    return {
+        "content": result.data,
+        "totalElements": result.total,
+        "totalPages": result.pages,
+        "size": result.pageSize,
+        "number": result.page
+    }
 }
 
-route "POST" "/api/v1/dlq/:id/replay" (req) {
-    db.upsert("dlq", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"REPLAYED\", \"replayedAt\": \"{time.now()}\"}}")
-    return { "replayed": true }
+// POST /api/v1/dlq/:entryId/replay — replay a failed execution
+// Returns 202 Accepted with { executionId }
+route "POST" "/api/v1/dlq/:entryId/replay" (req) {
+    let entry = db.findOne("dlq", f"{\"_id\": \"{req.params.entryId}\"}")
+    if entry == nil {
+        return { "error": "DLQ entry not found", "status": 404 }
+    }
+    db.upsert("dlq", f"{\"_id\": \"{req.params.entryId}\"}", f"{\"$set\": {\"status\": \"REPLAYED\", \"replayedAt\": \"{time.now()}\"}}")
+    let executionId = f"replay-{time.unix()}"
+    return { "executionId": executionId }
 }

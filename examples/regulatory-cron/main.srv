@@ -1,10 +1,21 @@
 // Regulatory Cron Service — Entry Point
 // Build: serv build examples/regulatory-cron/main.srv -o cron-service.exe
-// Run: set MONGODB_URI=mongodb://localhost:27017/cron_service & set PORT=8086 & .\cron-service.exe
+// Run from regulatory-cron/ directory: .\cron-service.exe
 
+// Infrastructure
 import "./config.srv"
+
+// Job implementations (self-register via registry.set)
+import "./jobs/batch_processing.srv"
+import "./jobs/data_sync.srv"
+import "./jobs/cleanup.srv"
+
+// Scheduler engine (uses registry.call to dispatch)
 import "./scheduler/seeder.srv"
 import "./scheduler/engine.srv"
+
+// API layer
+import "./api/middleware.srv"
 import "./api/jobs.srv"
 import "./api/dlq.srv"
 import "./api/bulk.srv"

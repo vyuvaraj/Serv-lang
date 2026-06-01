@@ -3,9 +3,9 @@
 // Runs once at startup.
 
 export fn seedIfEmpty() {
-    let count = db.count("jobs", "{}")
-    if count > 0 {
-        log.info(f"Database already has {count} jobs, skipping seed")
+    let existing = db.findOne("jobs", "{}")
+    if existing != nil {
+        log.info("Database already has jobs, skipping seed")
         return nil
     }
 
