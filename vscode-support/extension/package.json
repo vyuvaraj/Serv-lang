@@ -18,11 +18,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vyuvaraj/Serv-lang.git"
+    "url": "git+https://github.com/vyuvaraj/Serv-lang.git"
   },
-  "author": {
-    "name": "Serv Language Team"
-  },
+  "author": "Serv Language Team",
   "keywords": [
     "serv",
     "background services",
@@ -66,11 +64,71 @@
           "type": "string",
           "default": "",
           "description": "Path to the serv-lsp binary. If empty, looks for 'serv-lsp' in PATH or workspace root."
+        },
+        "serv.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the serv compiler binary. If empty, looks for 'serv' or 'serv.exe' in workspace root or PATH."
         }
       }
+    },
+    "commands": [
+      {
+        "command": "serv.run",
+        "title": "Serv: Run Current File",
+        "icon": "$(play)"
+      },
+      {
+        "command": "serv.build",
+        "title": "Serv: Build Current File",
+        "icon": "$(package)"
+      },
+      {
+        "command": "serv.test",
+        "title": "Serv: Test Current File",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "serv.watch",
+        "title": "Serv: Run in Watch Mode",
+        "icon": "$(eye)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "serv.run",
+        "key": "ctrl+shift+r",
+        "when": "editorLangId == serv"
+      },
+      {
+        "command": "serv.build",
+        "key": "ctrl+shift+b",
+        "when": "editorLangId == serv"
+      },
+      {
+        "command": "serv.test",
+        "key": "ctrl+shift+t",
+        "when": "editorLangId == serv"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "serv.run",
+          "when": "editorLangId == serv",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/vyuvaraj/Serv-lang/issues"
   }
 }

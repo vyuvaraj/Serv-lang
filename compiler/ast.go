@@ -610,6 +610,25 @@ func (a *AwaitExpr) expressionNode()      {}
 func (a *AwaitExpr) TokenLiteral() string { return a.Token.Literal }
 func (a *AwaitExpr) String() string       { return "await " + a.Value.String() }
 
+// Function Literal Expression: fn(x, y) { body } or x => expr
+type FnLiteral struct {
+	Token      Token
+	Params     []string
+	ParamTypes []string
+	Body       *BlockStmt
+	IsArrow    bool       // true for x => expr shorthand
+	ArrowExpr  Expression // the expression for arrow functions (body is nil)
+}
+
+func (f *FnLiteral) expressionNode()      {}
+func (f *FnLiteral) TokenLiteral() string { return f.Token.Literal }
+func (f *FnLiteral) String() string {
+	if f.IsArrow {
+		return strings.Join(f.Params, ", ") + " => " + f.ArrowExpr.String()
+	}
+	return "fn(" + strings.Join(f.Params, ", ") + ") " + f.Body.String()
+}
+
 // Struct Declaration: struct Name { field: type, ... }
 type StructField struct {
 	Name string

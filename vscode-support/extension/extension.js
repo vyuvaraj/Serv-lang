@@ -32,16 +32,14 @@ function activate(context) {
                     let range = new vscode.Range(i, 0, i, line.length);
                     lenses.push(new vscode.CodeLens(range, {
                         title: "▶ Run Test Block",
-                        command: "workbench.action.tasks.runTask",
-                        arguments: ["Serv: Test Current File"]
+                        command: "serv.test"
                     }));
                 }
                 if (line.startsWith('route ')) {
                     let range = new vscode.Range(i, 0, i, line.length);
                     lenses.push(new vscode.CodeLens(range, {
                         title: "⚡ Start Web Service",
-                        command: "workbench.action.tasks.runTask",
-                        arguments: ["Serv: Run Current File"]
+                        command: "serv.run"
                     }));
                 }
             }
@@ -49,6 +47,61 @@ function activate(context) {
         }
     });
     context.subscriptions.push(codeLensProvider);
+
+    // Register commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('serv.run', () => runServCommand('run')),
+        vscode.commands.registerCommand('serv.build', () => runServCommand('build')),
+        vscode.commands.registerCommand('serv.test', () => runServCommand('test')),
+        vscode.commands.registerCommand('serv.watch', () => runServCommand('run', ['--watch']))
+    );
+}
+
+function runServCommand(command, extraArgs = []) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'serv') {
+        vscode.window.showWarningMessage('Open a .srv file first');
+        return;
+    }
+
+    const filePath = editor.document.fileName;
+    const servPath = findServBinary();
+
+    if (!servPath) {
+        vscode.window.showErrorMessage('Serv compiler not found. Place serv.exe in workspace root or PATH.');
+        return;
+    }
+
+    // Build command args
+    let args = [command, filePath, ...extraArgs];
+    if (command === 'build') {
+        const outputName = path.basename(filePath, '.srv') + '.exe';
+        args = [command, filePath, '-o', outputName];
+    }
+
+    // Run in integrated terminal
+    const terminal = vscode.window.createTerminal({ name: `Serv: ${command}` });
+    terminal.show();
+    terminal.sendText(`"${servPath}" ${args.join(' ')}`);
+}
+
+function findServBinary() {
+    // Check config
+    const configPath = vscode.workspace.getConfiguration('serv').get('compilerPath');
+    if (configPath && fs.existsSync(configPath)) return configPath;
+
+    // Check workspace root
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders) {
+        const root = workspaceFolders[0].uri.fsPath;
+        for (const name of ['serv.exe', 'serv']) {
+            const p = path.join(root, name);
+            if (fs.existsSync(p)) return p;
+        }
+    }
+
+    // Assume it's in PATH
+    return 'serv';
 }
 
 function findLspBinary() {

@@ -250,6 +250,94 @@ func isTruthyVal(v interface{}) bool {
 	}
 }
 
+// String methods
+
+func StringSplit(s interface{}, sep interface{}) interface{} {
+	str := fmt.Sprint(s)
+	separator := fmt.Sprint(sep)
+	parts := strings.Split(str, separator)
+	result := make([]interface{}, len(parts))
+	for i, p := range parts {
+		result[i] = p
+	}
+	return result
+}
+
+func StringTrim(s interface{}) interface{} {
+	return strings.TrimSpace(fmt.Sprint(s))
+}
+
+func StringReplace(s interface{}, old interface{}, new interface{}) interface{} {
+	return strings.ReplaceAll(fmt.Sprint(s), fmt.Sprint(old), fmt.Sprint(new))
+}
+
+func StringStartsWith(s interface{}, prefix interface{}) interface{} {
+	return strings.HasPrefix(fmt.Sprint(s), fmt.Sprint(prefix))
+}
+
+func StringEndsWith(s interface{}, suffix interface{}) interface{} {
+	return strings.HasSuffix(fmt.Sprint(s), fmt.Sprint(suffix))
+}
+
+func StringIncludes(s interface{}, substr interface{}) interface{} {
+	return strings.Contains(fmt.Sprint(s), fmt.Sprint(substr))
+}
+
+func StringToUpper(s interface{}) interface{} {
+	return strings.ToUpper(fmt.Sprint(s))
+}
+
+func StringToLower(s interface{}) interface{} {
+	return strings.ToLower(fmt.Sprint(s))
+}
+
+func StringSubstring(s interface{}, start interface{}, args ...interface{}) interface{} {
+	str := fmt.Sprint(s)
+	startIdx := toInt(start)
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if startIdx >= len(str) {
+		return ""
+	}
+	if len(args) > 0 {
+		endIdx := toInt(args[0])
+		if endIdx > len(str) {
+			endIdx = len(str)
+		}
+		if endIdx < startIdx {
+			return ""
+		}
+		return str[startIdx:endIdx]
+	}
+	return str[startIdx:]
+}
+
+func StringIndexOf(s interface{}, substr interface{}) interface{} {
+	return strings.Index(fmt.Sprint(s), fmt.Sprint(substr))
+}
+
+func StringRepeat(s interface{}, count interface{}) interface{} {
+	return strings.Repeat(fmt.Sprint(s), toInt(count))
+}
+
+func toInt(v interface{}) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case int64:
+		return int(val)
+	case float64:
+		return int(val)
+	case string:
+		n, _ := strconv.Atoi(val)
+		return n
+	default:
+		n, _ := strconv.Atoi(fmt.Sprint(v))
+		return n
+	}
+}
+
 type localCacheEntry struct {
 	value      interface{}
 	expiration time.Time
@@ -1140,6 +1228,8 @@ func StartServer() interface{} {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/metrics", handleMetrics)
+	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/ready", handleReady)
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handler, params, limiter := matchRoute(r.Method, r.URL.Path)
@@ -1278,6 +1368,52 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	metricsGauges.RUnlock()
 }
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	status := map[string]interface{}{
+		"status": "healthy",
+		"uptime": time.Since(startTime).String(),
+	}
+	json.NewEncoder(w).Encode(status)
+}
+
+func handleReady(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Check database connectivity
+	dbReady := true
+	if dbInstance != nil {
+		if err := dbInstance.Ping(); err != nil {
+			dbReady = false
+		}
+	}
+
+	// Check MongoDB connectivity
+	mongoReady := true
+	if mongoClient != nil {
+		if err := mongoClient.Ping(context.Background(), nil); err != nil {
+			mongoReady = false
+		}
+	}
+
+	ready := dbReady && mongoReady
+	status := map[string]interface{}{
+		"ready":    ready,
+		"database": dbReady,
+		"mongodb":  mongoReady,
+	}
+
+	if ready {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	json.NewEncoder(w).Encode(status)
+}
+
+var startTime = time.Now()
 
 func initPythonDaemonPool() {
 	pythonWorkersOnce.Do(func() {

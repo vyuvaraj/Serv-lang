@@ -19,6 +19,7 @@ const (
 )
 
 var precedences = map[TokenType]int{
+	TOKEN_ARROW:    ASSIGN, // => has same precedence as assignment (low)
 	TOKEN_ASSIGN:   ASSIGN,
 	TOKEN_EQ:       COMPARE,
 	TOKEN_NEQ:      COMPARE,
@@ -70,6 +71,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_NIL, p.parseNilLiteral)
 	p.registerPrefix(TOKEN_SELF, p.parseSelfExpression)
 	p.registerPrefix(TOKEN_AWAIT, p.parseAwaitExpression)
+	p.registerPrefix(TOKEN_FN, p.parseFnLiteral)
 
 	p.infixParseFns = make(map[TokenType]infixParseFn)
 	p.registerInfix(TOKEN_PLUS, p.parseInfixExpression)
@@ -86,6 +88,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_DOT, p.parseMemberExpression)
 	p.registerInfix(TOKEN_LBRACKET, p.parseIndexExpression)
 	p.registerInfix(TOKEN_ASSIGN, p.parseAssignmentExpression)
+	p.registerInfix(TOKEN_ARROW, p.parseArrowFunction)
 
 	// Read two tokens so curToken and peekToken are both set
 	p.nextToken()
@@ -1351,6 +1354,71 @@ func (p *Parser) parseAwaitExpression() Expression {
 	p.nextToken()
 	expr.Value = p.parseExpression(LOWEST)
 	return expr
+}
+
+// parseFnLiteral parses: fn(x, y) { body }
+func (p *Parser) parseFnLiteral() Expression {
+	lit := &FnLiteral{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_LPAREN) {
+		return nil
+	}
+
+	lit.Params = []string{}
+	lit.ParamTypes = []string{}
+	if p.peekToken.Type != TOKEN_RPAREN {
+		p.nextToken()
+		lit.Params = append(lit.Params, p.curToken.Literal)
+		if p.peekToken.Type == TOKEN_COLON {
+			p.nextToken()
+			p.nextToken()
+			lit.ParamTypes = append(lit.ParamTypes, p.parseTypeAnnotation())
+		} else {
+			lit.ParamTypes = append(lit.ParamTypes, "")
+		}
+		for p.peekToken.Type == TOKEN_COMMA {
+			p.nextToken()
+			p.nextToken()
+			lit.Params = append(lit.Params, p.curToken.Literal)
+			if p.peekToken.Type == TOKEN_COLON {
+				p.nextToken()
+				p.nextToken()
+				lit.ParamTypes = append(lit.ParamTypes, p.parseTypeAnnotation())
+			} else {
+				lit.ParamTypes = append(lit.ParamTypes, "")
+			}
+		}
+	}
+
+	if !p.expectPeek(TOKEN_RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	lit.Body = p.parseBlockStatement()
+	return lit
+}
+
+// parseArrowFunction parses: x => expr (left side is the parameter identifier)
+func (p *Parser) parseArrowFunction(left Expression) Expression {
+	lit := &FnLiteral{Token: p.curToken, IsArrow: true}
+
+	// Left side is the parameter(s)
+	if ident, ok := left.(*Identifier); ok {
+		lit.Params = []string{ident.Value}
+	} else {
+		lit.Params = []string{}
+	}
+	lit.ParamTypes = make([]string, len(lit.Params))
+
+	// Parse the expression after =>
+	p.nextToken()
+	lit.ArrowExpr = p.parseExpression(LOWEST)
+
+	return lit
 }
 
 // parseStructDeclaration parses: struct Name { field: type, ... }
