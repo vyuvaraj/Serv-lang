@@ -1,0 +1,59 @@
+// Serv Example 33: String Methods & Closures
+// Lint: serv lint examples/33_string_methods.srv
+// Build: serv build examples/33_string_methods.srv -o test_strings.exe
+
+server "8080"
+
+// String methods
+let greeting = "  Hello, World!  "
+let trimmed = greeting.trim()
+let upper = trimmed.toUpper()
+let lower = trimmed.toLower()
+let replaced = trimmed.replace("World", "Serv")
+
+log.info("Trimmed: ", trimmed)
+log.info("Upper: ", upper)
+log.info("Lower: ", lower)
+log.info("Replaced: ", replaced)
+
+// Split and includes
+let csv = "alice,bob,charlie"
+let names = csv.split(",")
+log.info("Names: ", names)
+log.info("Has bob: ", csv.includes("bob"))
+log.info("Starts with alice: ", csv.startsWith("alice"))
+log.info("Ends with charlie: ", csv.endsWith("charlie"))
+
+// Substring and indexOf
+let path = "/api/v1/users"
+let version = path.substring(5, 7)
+log.info("Version: ", version)
+log.info("Index of users: ", path.indexOf("users"))
+
+// Closures: fn(x) { body }
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens = numbers.filter(fn(x) {
+    return x > 5
+})
+log.info("Greater than 5: ", evens)
+
+// Arrow functions: x => expr
+let doubled = numbers.map(x => x * 2)
+log.info("Doubled: ", doubled)
+
+let found = numbers.find(x => x > 7)
+log.info("First > 7: ", found)
+
+// Health endpoints are auto-generated:
+// GET /health -> { "status": "healthy", "uptime": "..." }
+// GET /ready  -> { "ready": true, "database": true, "mongodb": true }
+
+route "GET" "/demo" (req) {
+    let input = "hello world"
+    return {
+        "upper": input.toUpper(),
+        "words": input.split(" "),
+        "has_world": input.includes("world")
+    }
+}

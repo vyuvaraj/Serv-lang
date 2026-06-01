@@ -20,3 +20,4 @@ test "database migrations execution" {
     let records = db.query("SELECT version FROM schema_migrations WHERE version = '20260531_init'")
     assert records[0].version == "20260531_init"
 }
+

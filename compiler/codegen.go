@@ -1003,6 +1003,70 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 						collectionResult = fmt.Sprintf("runtime.Contains(%s, %s)", objStr, elemStr)
 						isCollectionMethod = true
 					}
+				// String methods
+				case "split":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringSplit(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "trim":
+					collectionResult = fmt.Sprintf("runtime.StringTrim(%s)", objStr)
+					isCollectionMethod = true
+				case "replace":
+					if len(e.Arguments) == 2 {
+						oldStr, _ := c.genExpression(e.Arguments[0])
+						newStr, _ := c.genExpression(e.Arguments[1])
+						collectionResult = fmt.Sprintf("runtime.StringReplace(%s, %s, %s)", objStr, oldStr, newStr)
+						isCollectionMethod = true
+					}
+				case "startsWith":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringStartsWith(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "endsWith":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringEndsWith(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "includes":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringIncludes(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "toUpper":
+					collectionResult = fmt.Sprintf("runtime.StringToUpper(%s)", objStr)
+					isCollectionMethod = true
+				case "toLower":
+					collectionResult = fmt.Sprintf("runtime.StringToLower(%s)", objStr)
+					isCollectionMethod = true
+				case "substring":
+					if len(e.Arguments) >= 1 {
+						startStr, _ := c.genExpression(e.Arguments[0])
+						if len(e.Arguments) >= 2 {
+							endStr, _ := c.genExpression(e.Arguments[1])
+							collectionResult = fmt.Sprintf("runtime.StringSubstring(%s, %s, %s)", objStr, startStr, endStr)
+						} else {
+							collectionResult = fmt.Sprintf("runtime.StringSubstring(%s, %s)", objStr, startStr)
+						}
+						isCollectionMethod = true
+					}
+				case "indexOf":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringIndexOf(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "repeat":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.StringRepeat(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
 				}
 			}
 		}
@@ -1161,7 +1225,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return fmt.Sprintf("(func() bool {\n\t\t\tl, r := interface{}(%s), interface{}(%s)\n\t\t\tswitch lv := l.(type) {\n\t\t\tcase int:\n\t\t\t\tif rv, ok := r.(int); ok { return lv %s rv }\n\t\t\tcase int64:\n\t\t\t\tif rv, ok := r.(int64); ok { return lv %s rv }\n\t\t\tcase float64:\n\t\t\t\tif rv, ok := r.(float64); ok { return lv %s rv }\n\t\t\t}\n\t\t\treturn false\n\t\t}())", leftStr, rightStr, e.Operator, e.Operator, e.Operator), nil
 		default:
 			// Arithmetic operators
-			return fmt.Sprintf("(func() interface{} {\n\t\t\tswitch l := interface{}(%s).(type) {\n\t\t\tcase int:\n\t\t\t\tif r, ok := interface{}(%s).(int); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase int64:\n\t\t\t\tif r, ok := interface{}(%s).(int64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase float64:\n\t\t\t\tif r, ok := interface{}(%s).(float64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase string:\n\t\t\t\tif r, ok := interface{}(%s).(string); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\t}\n\t\t\treturn nil\n\t\t}())", leftStr, rightStr, e.Operator, rightStr, e.Operator, rightStr, e.Operator, rightStr, e.Operator), nil
+			stringCase := ""
+			if e.Operator == "+" {
+				stringCase = fmt.Sprintf("\n\t\t\tcase string:\n\t\t\t\tif r, ok := interface{}(%s).(string); ok {\n\t\t\t\t\treturn l + r\n\t\t\t\t}", rightStr)
+			}
+			return fmt.Sprintf("(func() interface{} {\n\t\t\tswitch l := interface{}(%s).(type) {\n\t\t\tcase int:\n\t\t\t\tif r, ok := interface{}(%s).(int); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase int64:\n\t\t\t\tif r, ok := interface{}(%s).(int64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase float64:\n\t\t\t\tif r, ok := interface{}(%s).(float64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}%s\n\t\t\t}\n\t\t\treturn nil\n\t\t}())", leftStr, rightStr, e.Operator, rightStr, e.Operator, rightStr, e.Operator, stringCase), nil
 		}
 
 
@@ -1211,6 +1279,34 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 	case *SelfExpr:
 		return "self", nil
+
+	case *FnLiteral:
+		if e.IsArrow {
+			// Arrow function: x => expr -> func(x interface{}) interface{} { return expr }
+			var params []string
+			for _, p := range e.Params {
+				params = append(params, p+" interface{}")
+			}
+			bodyStr, err := c.genExpression(e.ArrowExpr)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("func(%s) interface{} { return %s }", strings.Join(params, ", "), bodyStr), nil
+		}
+		// Full function literal: fn(x, y) { body }
+		var params []string
+		for i, p := range e.Params {
+			pt := "interface{}"
+			if i < len(e.ParamTypes) && e.ParamTypes[i] != "" {
+				pt = toGoType(e.ParamTypes[i])
+			}
+			params = append(params, p+" "+pt)
+		}
+		bodyStr, err := c.genBlockStatement(e.Body)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("func(%s) interface{} %s", strings.Join(params, ", "), bodyStr), nil
 
 	case *StructLiteral:
 		var fields []string
@@ -1391,14 +1487,37 @@ func sanitizeTestName(name string) string {
 
 
 // genCollectionCallback generates a Go function literal for collection method callbacks.
-// Handles identifiers (function references) and inline fn expressions.
+// Handles identifiers (function references), fn literals, and arrow functions.
 func (c *Codegen) genCollectionCallback(expr Expression) (string, error) {
+	// If it's a FnLiteral (fn(x) { ... } or x => expr), generate directly
+	if fnLit, ok := expr.(*FnLiteral); ok {
+		if fnLit.IsArrow {
+			bodyStr, err := c.genExpression(fnLit.ArrowExpr)
+			if err != nil {
+				return "", err
+			}
+			param := "item"
+			if len(fnLit.Params) > 0 {
+				param = fnLit.Params[0]
+			}
+			return fmt.Sprintf("func(%s interface{}) interface{} { return %s }", param, bodyStr), nil
+		}
+		// Full fn literal
+		param := "item"
+		if len(fnLit.Params) > 0 {
+			param = fnLit.Params[0]
+		}
+		bodyStr, err := c.genBlockStatement(fnLit.Body)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("func(%s interface{}) interface{} %s", param, bodyStr), nil
+	}
 	// If it's a simple identifier (function name), wrap it
 	if ident, ok := expr.(*Identifier); ok {
 		return fmt.Sprintf("func(item interface{}) interface{} { return %s(item) }", ident.Value), nil
 	}
-	// If it's a call expression that looks like fn(x) { body }, it would have been parsed differently.
-	// For now, generate the expression and wrap it as a callable
+	// Fallback: generate the expression and wrap it as a callable
 	exprStr, err := c.genExpression(expr)
 	if err != nil {
 		return "", err
