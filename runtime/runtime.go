@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	// SQLite Driver (CGO-free)
@@ -67,7 +69,9 @@ var (
 
 	// DB Instance
 	dbInstance  *sql.DB
-	stmtCache   = make(map[string]*sql.Stmt)
+	stmtCache      = make(map[string]*sql.Stmt)
+	stmtCacheKeys  []string // ordered keys for LRU eviction
+	stmtCacheMax   = 256    // max cached prepared statements
 	stmtCacheMu sync.RWMutex
 
 	// MongoDB Instances
@@ -124,6 +128,128 @@ var (
 // Noop is a no-op sentinel used by generated test files to satisfy the runtime import.
 func Noop() {}
 
+// Collection methods — operate on []interface{} slices
+
+// Filter returns elements where the callback returns true.
+func Filter(slice interface{}, callback func(interface{}) interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	var result []interface{}
+	for _, item := range items {
+		val := callback(item)
+		if isTruthyVal(val) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+// Map transforms each element using the callback.
+func Map(slice interface{}, callback func(interface{}) interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	result := make([]interface{}, len(items))
+	for i, item := range items {
+		result[i] = callback(item)
+	}
+	return result
+}
+
+// Find returns the first element where callback returns true, or nil.
+func Find(slice interface{}, callback func(interface{}) interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	for _, item := range items {
+		val := callback(item)
+		if isTruthyVal(val) {
+			return item
+		}
+	}
+	return nil
+}
+
+// Reduce accumulates a value by applying callback(accumulator, item) for each element.
+func Reduce(slice interface{}, callback func(interface{}, interface{}) interface{}, initial interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	acc := initial
+	for _, item := range items {
+		acc = callback(acc, item)
+	}
+	return acc
+}
+
+// ForEach calls the callback for each element (no return value).
+func ForEach(slice interface{}, callback func(interface{}) interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	for _, item := range items {
+		callback(item)
+	}
+	return nil
+}
+
+// Length returns the length of a slice or string.
+func Length(val interface{}) interface{} {
+	switch v := val.(type) {
+	case []interface{}:
+		return len(v)
+	case string:
+		return len(v)
+	case *SafeMap:
+		v.mu.RLock()
+		defer v.mu.RUnlock()
+		return len(v.m)
+	case map[string]interface{}:
+		return len(v)
+	default:
+		return 0
+	}
+}
+
+// Push appends an element to a slice and returns the new slice.
+func Push(slice interface{}, elem interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	return append(items, elem)
+}
+
+// Contains checks if a slice contains an element.
+func Contains(slice interface{}, target interface{}) interface{} {
+	items := toInterfaceSlice(slice)
+	targetStr := fmt.Sprint(target)
+	for _, item := range items {
+		if fmt.Sprint(item) == targetStr {
+			return true
+		}
+	}
+	return false
+}
+
+func toInterfaceSlice(val interface{}) []interface{} {
+	if val == nil {
+		return nil
+	}
+	if s, ok := val.([]interface{}); ok {
+		return s
+	}
+	return nil
+}
+
+func isTruthyVal(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	switch val := v.(type) {
+	case bool:
+		return val
+	case int:
+		return val != 0
+	case int64:
+		return val != 0
+	case float64:
+		return val != 0
+	case string:
+		return val != ""
+	default:
+		return true
+	}
+}
+
 type localCacheEntry struct {
 	value      interface{}
 	expiration time.Time
@@ -150,6 +276,13 @@ func init() {
 		}
 	}
 	pubSubQueue = make(chan pubSubEvent, pubSubQueueSize)
+
+	// Parse customizable statement cache size
+	if valStr := Config("database.stmt_cache_max"); valStr != "" {
+		if val, err := strconv.Atoi(valStr); err == nil && val > 0 {
+			stmtCacheMax = val
+		}
+	}
 }
 
 func loadYAMLConfig() {
@@ -981,6 +1114,72 @@ func StartServer() interface{} {
 		Handler: mux,
 	}
 
+	// Graceful shutdown on SIGINT/SIGTERM
+	shutdownCh := make(chan os.Signal, 1)
+	signal.Notify(shutdownCh, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-shutdownCh
+		LogInfo("Shutdown signal received, draining connections...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			LogError("HTTP server shutdown error: ", err)
+		}
+
+		// Stop cron scheduler
+		if cronInstance != nil {
+			cronInstance.Stop()
+		}
+
+		// Close database connections
+		stmtCacheMu.Lock()
+		for _, stmt := range stmtCache {
+			stmt.Close()
+		}
+		stmtCacheMu.Unlock()
+		if dbInstance != nil {
+			dbInstance.Close()
+		}
+		if mongoClient != nil {
+			mongoClient.Disconnect(context.Background())
+		}
+
+		// Close broker connections
+		if natsClient != nil {
+			natsClient.Close()
+		}
+		if mqttConn != nil {
+			mqttConn.Disconnect(250)
+		}
+		if amqpChan != nil {
+			amqpChan.Close()
+		}
+		if amqpConn != nil {
+			amqpConn.Close()
+		}
+		kafkaWriterMu.Lock()
+		for _, w := range kafkaWriterMap {
+			w.Close()
+		}
+		kafkaWriterMu.Unlock()
+		if stompConn != nil {
+			stompConn.Disconnect()
+		}
+
+		// Close Redis
+		if redisClient != nil {
+			redisClient.Close()
+		}
+
+		// Kill Python workers
+		shutdownPythonWorkers()
+
+		LogInfo("Shutdown complete")
+	}()
+
 	LogInfo("Serv service listening on port ", serverPort)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		LogError("Web server error: ", err)
@@ -1015,7 +1214,115 @@ func initPythonDaemonPool() {
 
 		pythonPoolQueue = make(chan *pythonWorker, workersCount)
 
-		daemonCode := `
+		for i := 0; i < workersCount; i++ {
+			worker := spawnPythonWorker()
+			if worker == nil {
+				panic("Failed to start Python worker during pool initialization")
+			}
+			pythonPoolQueue <- worker
+		}
+	})
+}
+
+// Call Python Script for extern mappings using the persistent daemon pool
+func CallPython(scriptPath string, funcName string, args ...interface{}) interface{} {
+	initPythonDaemonPool()
+
+	worker := <-pythonPoolQueue
+	defer func() {
+		pythonPoolQueue <- worker
+	}()
+
+	worker.mutex.Lock()
+	defer worker.mutex.Unlock()
+
+	// Health check: if the process has exited, respawn it
+	if worker.cmd.ProcessState != nil || !isProcessAlive(worker.cmd) {
+		LogWarn("Python worker died, respawning...")
+		newWorker := spawnPythonWorker()
+		if newWorker != nil {
+			worker.cmd = newWorker.cmd
+			worker.stdin = newWorker.stdin
+			worker.stdout = newWorker.stdout
+		} else {
+			LogError("Failed to respawn Python worker")
+			return nil
+		}
+	}
+
+	reqPayload := map[string]interface{}{
+		"script_path": scriptPath,
+		"func_name":   funcName,
+		"args":        args,
+	}
+
+	payloadBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		LogError("Failed to marshal Python daemon request: ", err)
+		return nil
+	}
+
+	_, err = worker.stdin.Write(append(payloadBytes, '\n'))
+	if err != nil {
+		// Write failed — worker is likely dead, try respawn once
+		LogWarn("Python worker write failed, respawning: ", err)
+		newWorker := spawnPythonWorker()
+		if newWorker == nil {
+			LogError("Failed to respawn Python worker after write error")
+			return nil
+		}
+		worker.cmd = newWorker.cmd
+		worker.stdin = newWorker.stdin
+		worker.stdout = newWorker.stdout
+
+		// Retry the write
+		_, err = worker.stdin.Write(append(payloadBytes, '\n'))
+		if err != nil {
+			LogError("Failed to write to respawned Python worker: ", err)
+			return nil
+		}
+	}
+
+	line, err := worker.stdout.ReadBytes('\n')
+	if err != nil {
+		LogError("Failed to read response from Python daemon: ", err)
+		return nil
+	}
+
+	var res struct {
+		Result interface{} `json:"result"`
+		Error  string      `json:"error"`
+	}
+
+	if err := json.Unmarshal(line, &res); err != nil {
+		LogError("Failed to unmarshal Python daemon response: ", err)
+		return string(line)
+	}
+
+	if res.Error != "" {
+		LogError("Python daemon execution error: ", res.Error)
+		return nil
+	}
+
+	return res.Result
+}
+
+// isProcessAlive checks if the underlying process is still running.
+func isProcessAlive(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	// On Unix, sending signal 0 checks if process exists.
+	// On Windows, Process.Signal is not fully supported, so we check ProcessState.
+	if cmd.ProcessState != nil {
+		return false
+	}
+	return true
+}
+
+// spawnPythonWorker creates a single new Python daemon worker.
+func spawnPythonWorker() *pythonWorker {
+	daemonCode := `
 import sys
 import json
 import importlib.util
@@ -1048,85 +1355,51 @@ while True:
         print(json.dumps({"error": str(e)}))
         sys.stdout.flush()
 `
+	cmd := exec.Command("python", "-u", "-c", daemonCode)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		LogError("Failed to create stdin pipe for Python worker: ", err)
+		return nil
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		LogError("Failed to create stdout pipe for Python worker: ", err)
+		return nil
+	}
+	stdout := bufio.NewReader(stdoutPipe)
 
-		for i := 0; i < workersCount; i++ {
-			cmd := exec.Command("python", "-u", "-c", daemonCode)
-			stdin, err := cmd.StdinPipe()
-			if err != nil {
-				panic("Failed to create stdin pipe for Python worker: " + err.Error())
-			}
-			stdoutPipe, err := cmd.StdoutPipe()
-			if err != nil {
-				panic("Failed to create stdout pipe for Python worker: " + err.Error())
-			}
-			stdout := bufio.NewReader(stdoutPipe)
+	if err := cmd.Start(); err != nil {
+		LogError("Failed to start Python worker: ", err)
+		return nil
+	}
 
-			if err := cmd.Start(); err != nil {
-				panic("Failed to start Python worker: " + err.Error())
-			}
-
-			worker := &pythonWorker{
-				cmd:    cmd,
-				stdin:  stdin,
-				stdout: stdout,
-			}
-			pythonPoolQueue <- worker
-		}
-	})
+	return &pythonWorker{
+		cmd:    cmd,
+		stdin:  stdin,
+		stdout: stdout,
+	}
 }
 
-// Call Python Script for extern mappings using the persistent daemon pool
-func CallPython(scriptPath string, funcName string, args ...interface{}) interface{} {
-	initPythonDaemonPool()
-
-	worker := <-pythonPoolQueue
-	defer func() {
-		pythonPoolQueue <- worker
-	}()
-
-	worker.mutex.Lock()
-	defer worker.mutex.Unlock()
-
-	reqPayload := map[string]interface{}{
-		"script_path": scriptPath,
-		"func_name":   funcName,
-		"args":        args,
+// shutdownPythonWorkers terminates all Python daemon workers.
+func shutdownPythonWorkers() {
+	if pythonPoolQueue == nil {
+		return
 	}
-
-	payloadBytes, err := json.Marshal(reqPayload)
-	if err != nil {
-		LogError("Failed to marshal Python daemon request: ", err)
-		return nil
+	// Drain the pool and kill each worker
+	for {
+		select {
+		case worker := <-pythonPoolQueue:
+			if worker.stdin != nil {
+				worker.stdin.Close()
+			}
+			if worker.cmd != nil && worker.cmd.Process != nil {
+				worker.cmd.Process.Kill()
+				worker.cmd.Wait()
+			}
+		default:
+			return
+		}
 	}
-
-	_, err = worker.stdin.Write(append(payloadBytes, '\n'))
-	if err != nil {
-		LogError("Failed to write request to Python daemon: ", err)
-		return nil
-	}
-
-	line, err := worker.stdout.ReadBytes('\n')
-	if err != nil {
-		LogError("Failed to read response from Python daemon: ", err)
-		return nil
-	}
-
-	var res struct {
-		Result interface{} `json:"result"`
-		Error  string      `json:"error"`
-	}
-
-	if err := json.Unmarshal(line, &res); err != nil {
-		LogError("Failed to unmarshal Python daemon response: ", err)
-		return string(line)
-	}
-
-	if res.Error != "" {
-		LogError("Python daemon execution error: ", res.Error)
-		return nil
-	}
-
-	return res.Result
 }
 
 // JSON native support
@@ -1269,7 +1542,19 @@ func getCachedStmt(query string) (*sql.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// LRU eviction: if cache is full, close and remove the oldest entry
+	if len(stmtCacheKeys) >= stmtCacheMax {
+		oldest := stmtCacheKeys[0]
+		stmtCacheKeys = stmtCacheKeys[1:]
+		if oldStmt, ok := stmtCache[oldest]; ok {
+			oldStmt.Close()
+			delete(stmtCache, oldest)
+		}
+	}
+
 	stmtCache[query] = stmt
+	stmtCacheKeys = append(stmtCacheKeys, query)
 	return stmt, nil
 }
 
@@ -1462,6 +1747,65 @@ func runMongoQuery(action string, args ...interface{}) interface{} {
 	default:
 		panic(fmt.Sprintf("Unsupported MongoDB action: %s. Supported actions: find, insert, update, delete, count", action))
 	}
+}
+
+// Safe variants that return [2]interface{}{value, error} tuples for multi-return support.
+// These are used when Serv code uses: let result, err = db.querySafe(...)
+
+func DBQuerySafe(query string, args ...interface{}) interface{} {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				errVal = fmt.Sprint(rec)
+			}
+		}()
+		result = DBQuery(query, args...)
+	}()
+	return [2]interface{}{result, errVal}
+}
+
+func HTTPGetSafe(url string) interface{} {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				errVal = fmt.Sprint(rec)
+			}
+		}()
+		result = HTTPGet(url)
+	}()
+	return [2]interface{}{result, errVal}
+}
+
+func HTTPPostSafe(url string, body interface{}) interface{} {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				errVal = fmt.Sprint(rec)
+			}
+		}()
+		result = HTTPPost(url, body)
+	}()
+	return [2]interface{}{result, errVal}
+}
+
+func JSONParseSafe(dataVal interface{}) interface{} {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				errVal = fmt.Sprint(rec)
+			}
+		}()
+		result = JSONParse(dataVal)
+	}()
+	return [2]interface{}{result, errVal}
 }
 
 // Redis & In-Memory Cache

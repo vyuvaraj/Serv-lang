@@ -65,6 +65,10 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_FSTRING, p.parseFStringLiteral)
 	p.registerPrefix(TOKEN_CACHE, p.parseCacheIdentifier)
 	p.registerPrefix(TOKEN_ASSERT, p.parseAssertExpression)
+	p.registerPrefix(TOKEN_TRUE, p.parseBooleanLiteral)
+	p.registerPrefix(TOKEN_FALSE, p.parseBooleanLiteral)
+	p.registerPrefix(TOKEN_NIL, p.parseNilLiteral)
+	p.registerPrefix(TOKEN_SELF, p.parseSelfExpression)
 
 	p.infixParseFns = make(map[TokenType]infixParseFn)
 	p.registerInfix(TOKEN_PLUS, p.parseInfixExpression)
@@ -172,6 +176,16 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseEnumStatement()
 	case TOKEN_MIGRATION:
 		return p.parseMigrationStatement()
+	case TOKEN_IF:
+		return p.parseIfStatement()
+	case TOKEN_FOR:
+		return p.parseForStatement()
+	case TOKEN_STRUCT:
+		return p.parseStructDeclaration()
+	case TOKEN_INTERFACE:
+		return p.parseInterfaceDeclaration()
+	case TOKEN_EXPORT:
+		return p.parseExportStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -180,10 +194,36 @@ func (p *Parser) parseStatement() Statement {
 func (p *Parser) parseImportStatement() Statement {
 	stmt := &ImportStmt{Token: p.curToken.Type}
 
-	if !p.expectPeek(TOKEN_STRING) {
-		return nil
+	// Check for named import: import { Name1, Name2 } from "path"
+	if p.peekToken.Type == TOKEN_LBRACE {
+		p.nextToken() // consume '{'
+		stmt.Names = []string{}
+		for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+			p.nextToken()
+			if p.curToken.Type == TOKEN_IDENT {
+				stmt.Names = append(stmt.Names, p.curToken.Literal)
+			}
+			if p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+			}
+		}
+		if !p.expectPeek(TOKEN_RBRACE) {
+			return nil
+		}
+		if !p.expectPeek(TOKEN_FROM) {
+			return nil
+		}
+		if !p.expectPeek(TOKEN_STRING) {
+			return nil
+		}
+		stmt.Path = p.curToken.Literal
+	} else {
+		// Simple import: import "path"
+		if !p.expectPeek(TOKEN_STRING) {
+			return nil
+		}
+		stmt.Path = p.curToken.Literal
 	}
-	stmt.Path = p.curToken.Literal
 
 	return stmt
 }
@@ -434,9 +474,20 @@ func (p *Parser) parseLetStatement() Statement {
 		return nil
 	}
 	stmt.Name = p.curToken.Literal
+	stmt.Names = []string{stmt.Name}
+
+	// Check for multi-return: let val, err = expr
+	for p.peekToken.Type == TOKEN_COMMA {
+		p.nextToken() // consume ','
+		if !p.expectPeek(TOKEN_IDENT) {
+			return nil
+		}
+		stmt.Names = append(stmt.Names, p.curToken.Literal)
+	}
 
 	// Optional type annotation after name: let x : int = 5
-	if p.peekToken.Type == TOKEN_COLON {
+	// (only for single-name lets)
+	if p.peekToken.Type == TOKEN_COLON && len(stmt.Names) == 1 {
 		p.nextToken() // skip ':'
 		p.nextToken() // type identifier
 		stmt.Type = p.curToken.Literal
@@ -459,12 +510,26 @@ func (p *Parser) parseReturnStatement() Statement {
 }
 
 func (p *Parser) parseFnDeclaration() Statement {
-	stmt := &FnDecl{Token: p.curToken}
+	fnToken := p.curToken
 
 	if !p.expectPeek(TOKEN_IDENT) {
 		return nil
 	}
-	stmt.Name = p.curToken.Literal
+	firstName := p.curToken.Literal
+
+	// Check if this is a method declaration: fn TypeName.methodName(...)
+	if p.peekToken.Type == TOKEN_DOT {
+		p.nextToken() // consume '.'
+		if !p.expectPeek(TOKEN_IDENT) {
+			return nil
+		}
+		methodName := p.curToken.Literal
+		return p.parseMethodDeclaration(fnToken, firstName, methodName)
+	}
+
+	// Regular function declaration
+	stmt := &FnDecl{Token: fnToken}
+	stmt.Name = firstName
 
 	if !p.expectPeek(TOKEN_LPAREN) {
 		return nil
@@ -503,6 +568,58 @@ func (p *Parser) parseFnDeclaration() Statement {
 	}
 
 	// Optional return type: fn foo() -> int { ... }
+	if p.peekToken.Type == TOKEN_RET_ARROW {
+		p.nextToken() // skip '->'
+		p.nextToken() // type identifier
+		stmt.ReturnType = p.curToken.Literal
+	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+
+func (p *Parser) parseMethodDeclaration(fnToken Token, typeName, methodName string) Statement {
+	stmt := &MethodDecl{Token: fnToken, TypeName: typeName, Name: methodName}
+
+	if !p.expectPeek(TOKEN_LPAREN) {
+		return nil
+	}
+
+	stmt.Params = []string{}
+	stmt.ParamTypes = []string{}
+	if p.peekToken.Type != TOKEN_RPAREN {
+		p.nextToken()
+		stmt.Params = append(stmt.Params, p.curToken.Literal)
+		if p.peekToken.Type == TOKEN_COLON {
+			p.nextToken() // skip ':'
+			p.nextToken() // type identifier
+			stmt.ParamTypes = append(stmt.ParamTypes, p.curToken.Literal)
+		} else {
+			stmt.ParamTypes = append(stmt.ParamTypes, "")
+		}
+
+		for p.peekToken.Type == TOKEN_COMMA {
+			p.nextToken()
+			p.nextToken()
+			stmt.Params = append(stmt.Params, p.curToken.Literal)
+			if p.peekToken.Type == TOKEN_COLON {
+				p.nextToken()
+				p.nextToken()
+				stmt.ParamTypes = append(stmt.ParamTypes, p.curToken.Literal)
+			} else {
+				stmt.ParamTypes = append(stmt.ParamTypes, "")
+			}
+		}
+	}
+
+	if !p.expectPeek(TOKEN_RPAREN) {
+		return nil
+	}
+
 	if p.peekToken.Type == TOKEN_RET_ARROW {
 		p.nextToken() // skip '->'
 		p.nextToken() // type identifier
@@ -659,7 +776,77 @@ func (p *Parser) parseExpression(precedence int) Expression {
 }
 
 func (p *Parser) parseIdentifier() Expression {
-	return &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	ident := &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Check if this is a struct literal: TypeName { field: value, ... }
+	// We detect this when an identifier is followed by '{' and the content starts with IDENT ':'
+	if p.peekToken.Type == TOKEN_LBRACE {
+		// Look ahead to see if it's a struct literal (IDENT : expr pattern)
+		if p.isStructLiteralAhead() {
+			p.nextToken() // consume '{'
+			return p.parseStructLiteral(ident.Value)
+		}
+	}
+
+	return ident
+}
+
+func (p *Parser) isStructLiteralAhead() bool {
+	// Clone lexer state to peek further
+	lCopy := NewLexer(p.l.input)
+	lCopy.position = p.l.position
+	lCopy.readPosition = p.l.readPosition
+	lCopy.ch = p.l.ch
+	lCopy.line = p.l.line
+	lCopy.col = p.l.col
+
+	// peekToken is '{'. After that we expect IDENT COLON (struct literal) or something else
+	t1 := lCopy.NextToken() // first token after '{'
+	if t1.Type == TOKEN_RBRACE {
+		return true // empty struct literal: Type {}
+	}
+	if t1.Type != TOKEN_IDENT {
+		return false
+	}
+	t2 := lCopy.NextToken()
+	return t2.Type == TOKEN_COLON
+}
+
+func (p *Parser) parseStructLiteral(typeName string) Expression {
+	lit := &StructLiteral{
+		Token:    p.curToken,
+		TypeName: typeName,
+		Fields:   make(map[string]Expression),
+		KeyOrder: []string{},
+	}
+
+	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+		p.nextToken() // field name
+		if p.curToken.Type != TOKEN_IDENT {
+			p.addError(fmt.Sprintf("expected field name in struct literal, got %s", p.curToken.Type))
+			return nil
+		}
+		fieldName := p.curToken.Literal
+
+		if !p.expectPeek(TOKEN_COLON) {
+			return nil
+		}
+
+		p.nextToken() // value expression
+		val := p.parseExpression(LOWEST)
+		lit.Fields[fieldName] = val
+		lit.KeyOrder = append(lit.KeyOrder, fieldName)
+
+		if p.peekToken.Type == TOKEN_COMMA {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+
+	return lit
 }
 
 func (p *Parser) parseIntegerLiteral() Expression {
@@ -714,7 +901,7 @@ func (p *Parser) parseArrayLiteral() Expression {
 }
 
 func (p *Parser) parseMapLiteral() Expression {
-	m := &MapLiteral{Token: p.curToken, Pairs: make(map[string]Expression)}
+	m := &MapLiteral{Token: p.curToken, Pairs: make(map[string]Expression), KeyOrder: []string{}}
 
 	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
 		p.nextToken() // move to key
@@ -734,6 +921,7 @@ func (p *Parser) parseMapLiteral() Expression {
 		p.nextToken() // skip ':'
 		val := p.parseExpression(LOWEST)
 		m.Pairs[key] = val
+		m.KeyOrder = append(m.KeyOrder, key)
 
 		if p.peekToken.Type == TOKEN_COMMA {
 			p.nextToken()
@@ -949,5 +1137,216 @@ func (p *Parser) parseEnumStatement() Statement {
 	if !p.expectPeek(TOKEN_RBRACE) {
 		return nil
 	}
+	return stmt
+}
+
+// parseIfStatement parses: if <condition> { ... } else { ... }
+func (p *Parser) parseIfStatement() Statement {
+	stmt := &IfStmt{Token: p.curToken}
+
+	p.nextToken()
+	stmt.Condition = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
+
+	// Check for else
+	if p.peekToken.Type == TOKEN_ELSE {
+		p.nextToken() // consume 'else'
+
+		// else if ...
+		if p.peekToken.Type == TOKEN_IF {
+			p.nextToken() // consume 'if'
+			elseIfStmt := p.parseIfStatement()
+			if elseIfStmt != nil {
+				stmt.ElseBody = &BlockStmt{
+					Token:      p.curToken,
+					Statements: []Statement{elseIfStmt},
+				}
+			}
+		} else {
+			if !p.expectPeek(TOKEN_LBRACE) {
+				return nil
+			}
+			stmt.ElseBody = p.parseBlockStatement()
+		}
+	}
+
+	return stmt
+}
+
+// parseForStatement parses: for <var> in <expr> { ... } or for <condition> { ... }
+func (p *Parser) parseForStatement() Statement {
+	stmt := &ForStmt{Token: p.curToken}
+
+	p.nextToken()
+
+	// Check if this is "for x in collection" pattern
+	if p.curToken.Type == TOKEN_IDENT && p.peekToken.Type == TOKEN_IN {
+		stmt.Variable = p.curToken.Literal
+		stmt.IsRange = true
+		p.nextToken() // skip 'in'
+		p.nextToken() // move to iterable expression
+		stmt.Iterable = p.parseExpression(LOWEST)
+	} else {
+		// Condition-based loop: for <condition> { ... }
+		stmt.IsRange = false
+		stmt.Iterable = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
+
+	return stmt
+}
+
+func (p *Parser) parseBooleanLiteral() Expression {
+	return &BooleanLiteral{Token: p.curToken, Value: p.curToken.Type == TOKEN_TRUE}
+}
+
+func (p *Parser) parseNilLiteral() Expression {
+	return &NilLiteral{Token: p.curToken}
+}
+
+func (p *Parser) parseSelfExpression() Expression {
+	return &SelfExpr{Token: p.curToken}
+}
+
+// parseStructDeclaration parses: struct Name { field: type, ... }
+func (p *Parser) parseStructDeclaration() Statement {
+	stmt := &StructDecl{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Fields = []StructField{}
+	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+		p.nextToken()
+		if p.curToken.Type != TOKEN_IDENT {
+			p.addError(fmt.Sprintf("expected field name in struct, got %s", p.curToken.Type))
+			return nil
+		}
+		fieldName := p.curToken.Literal
+
+		if !p.expectPeek(TOKEN_COLON) {
+			return nil
+		}
+		p.nextToken() // type identifier
+		fieldType := p.curToken.Literal
+
+		stmt.Fields = append(stmt.Fields, StructField{Name: fieldName, Type: fieldType})
+
+		// Optional comma between fields
+		if p.peekToken.Type == TOKEN_COMMA {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+
+	return stmt
+}
+
+// parseExportStatement parses: export <statement>
+// Wraps the inner statement in an ExportStmt node.
+func (p *Parser) parseExportStatement() Statement {
+	exportToken := p.curToken
+	p.nextToken() // move past 'export' to the actual statement
+
+	inner := p.parseStatement()
+	if inner == nil {
+		return nil
+	}
+
+	return &ExportStmt{Token: exportToken, Inner: inner}
+}
+
+// parseInterfaceDeclaration parses: interface Name { fn method(params) -> returnType; ... }
+func (p *Parser) parseInterfaceDeclaration() Statement {
+	stmt := &InterfaceDecl{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Methods = []InterfaceMethod{}
+	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+		p.nextToken() // should be 'fn'
+		if p.curToken.Type != TOKEN_FN {
+			p.addError(fmt.Sprintf("expected 'fn' in interface body, got %s", p.curToken.Type))
+			return nil
+		}
+
+		if !p.expectPeek(TOKEN_IDENT) {
+			return nil
+		}
+		method := InterfaceMethod{Name: p.curToken.Literal}
+
+		if !p.expectPeek(TOKEN_LPAREN) {
+			return nil
+		}
+
+		// Parse parameter list
+		method.Params = []string{}
+		method.ParamTypes = []string{}
+		if p.peekToken.Type != TOKEN_RPAREN {
+			p.nextToken()
+			method.Params = append(method.Params, p.curToken.Literal)
+			if p.peekToken.Type == TOKEN_COLON {
+				p.nextToken()
+				p.nextToken()
+				method.ParamTypes = append(method.ParamTypes, p.curToken.Literal)
+			} else {
+				method.ParamTypes = append(method.ParamTypes, "")
+			}
+			for p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+				p.nextToken()
+				method.Params = append(method.Params, p.curToken.Literal)
+				if p.peekToken.Type == TOKEN_COLON {
+					p.nextToken()
+					p.nextToken()
+					method.ParamTypes = append(method.ParamTypes, p.curToken.Literal)
+				} else {
+					method.ParamTypes = append(method.ParamTypes, "")
+				}
+			}
+		}
+
+		if !p.expectPeek(TOKEN_RPAREN) {
+			return nil
+		}
+
+		// Optional return type
+		if p.peekToken.Type == TOKEN_RET_ARROW {
+			p.nextToken()
+			p.nextToken()
+			method.ReturnType = p.curToken.Literal
+		}
+
+		stmt.Methods = append(stmt.Methods, method)
+	}
+
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+
 	return stmt
 }

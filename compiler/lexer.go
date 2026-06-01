@@ -39,6 +39,17 @@ const (
 	TOKEN_TOOL       TokenType = "TOOL"
 	TOKEN_LIMIT      TokenType = "LIMIT"
 	TOKEN_MIGRATION  TokenType = "MIGRATION"
+	TOKEN_IF         TokenType = "IF"
+	TOKEN_ELSE       TokenType = "ELSE"
+	TOKEN_FOR        TokenType = "FOR"
+	TOKEN_IN         TokenType = "IN"
+	TOKEN_TRUE       TokenType = "TRUE"
+	TOKEN_FALSE      TokenType = "FALSE"
+	TOKEN_NIL        TokenType = "NIL"
+	TOKEN_STRUCT     TokenType = "STRUCT"
+	TOKEN_SELF       TokenType = "SELF"
+	TOKEN_EXPORT     TokenType = "EXPORT"
+	TOKEN_INTERFACE  TokenType = "INTERFACE"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -393,6 +404,17 @@ var keywords = map[string]TokenType{
 	"tool":      TOKEN_TOOL,
 	"limit":     TOKEN_LIMIT,
 	"migration": TOKEN_MIGRATION,
+	"if":        TOKEN_IF,
+	"else":      TOKEN_ELSE,
+	"for":       TOKEN_FOR,
+	"in":        TOKEN_IN,
+	"true":      TOKEN_TRUE,
+	"false":     TOKEN_FALSE,
+	"nil":       TOKEN_NIL,
+	"struct":    TOKEN_STRUCT,
+	"self":      TOKEN_SELF,
+	"export":    TOKEN_EXPORT,
+	"interface": TOKEN_INTERFACE,
 }
 
 func lookupIdent(ident string) TokenType {

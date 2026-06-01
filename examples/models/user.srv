@@ -1,0 +1,21 @@
+// models/user.srv — User model module
+
+export struct User {
+    id: int
+    name: string
+    email: string
+    active: bool
+}
+
+export fn User.display() -> string {
+    return f"{self.name} <{self.email}>"
+}
+
+export fn createUser(id: int, name: string, email: string) -> User {
+    return User { id: id, name: name, email: email, active: true }
+}
+
+// Private helper — not exported, not visible to importers
+fn validateEmail(email: string) -> bool {
+    return true
+}

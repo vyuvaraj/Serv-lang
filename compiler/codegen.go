@@ -17,6 +17,8 @@ type Codegen struct {
 	goExterns           map[string]string // fnName -> pkgPath
 	testFuncs           []string          // collected test functions
 	regexDecls          []string          // collected compiled regex variables
+	structTypes         map[string]bool   // known struct type names
+	funcReturnTypes     map[string]string // fnName -> return type
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -27,6 +29,8 @@ func NewCodegen(program *Program) *Codegen {
 		varTypes:     make(map[string]string),
 		goExterns:    make(map[string]string),
 		regexDecls:   []string{},
+		structTypes:  make(map[string]bool),
+		funcReturnTypes: make(map[string]string),
 	}
 }
 
@@ -46,6 +50,27 @@ func (c *Codegen) Generate() (string, error) {
 	if hasNonTestStmts {
 		c.imports[`"serv/runtime"`] = true
 		c.imports[`"time"`] = true
+	}
+
+	// Pre-pass: collect struct type names and function return types
+	for _, stmt := range c.program.Statements {
+		switch s := stmt.(type) {
+		case *StructDecl:
+			c.structTypes[s.Name] = true
+		case *FnDecl:
+			if s.ReturnType != "" {
+				c.funcReturnTypes[s.Name] = s.ReturnType
+			}
+		case *ExportStmt:
+			switch inner := s.Inner.(type) {
+			case *StructDecl:
+				c.structTypes[inner.Name] = true
+			case *FnDecl:
+				if inner.ReturnType != "" {
+					c.funcReturnTypes[inner.Name] = inner.ReturnType
+				}
+			}
+		}
 	}
 
 	// First pass: extract externs and imports to build the header
@@ -68,6 +93,10 @@ func (c *Codegen) Generate() (string, error) {
 
 	// Generate body
 	for _, stmt := range c.program.Statements {
+		// Emit source line reference for traceability
+		if tok := stmtToken(stmt); tok.Line > 0 {
+			body.WriteString(fmt.Sprintf("// .srv line %d\n", tok.Line))
+		}
 		gen, err := c.genStatement(stmt)
 		if err != nil {
 			return "", err
@@ -124,6 +153,10 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 	case *ImportStmt:
 		// Local imports are handled at parser stage by merging ASTs, so nothing to output here
 		return "", nil
+
+	case *ExportStmt:
+		// Export is a visibility marker; generate the inner statement normally
+		return c.genStatement(s.Inner)
 
 	case *ExternFnStmt:
 		// Generate the Go wrapper function
@@ -183,6 +216,146 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		}
 		rOut.WriteString(")\n\n")
 		return rOut.String(), nil
+
+	case *IfStmt:
+		condStr, err := c.genExpression(s.Condition)
+		if err != nil {
+			return "", err
+		}
+		bodyStr, err := c.genBlockStatement(s.Body)
+		if err != nil {
+			return "", err
+		}
+		// Wrap condition in a truthiness check for interface{} values
+		condType := c.getExpressionType(s.Condition)
+		var condCode string
+		if condType == "bool" {
+			condCode = condStr
+		} else {
+			condCode = fmt.Sprintf("isTruthy(%s)", condStr)
+		}
+		if s.ElseBody != nil {
+			elseStr, err := c.genBlockStatement(s.ElseBody)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("if %s %s else %s\n", condCode, bodyStr, elseStr), nil
+		}
+		return fmt.Sprintf("if %s %s\n", condCode, bodyStr), nil
+
+	case *ForStmt:
+		if s.IsRange {
+			iterStr, err := c.genExpression(s.Iterable)
+			if err != nil {
+				return "", err
+			}
+			c.declaredVars[s.Variable] = true
+			bodyStr, err := c.genBlockStatement(s.Body)
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("for _, %s := range toSlice(%s) %s\n", s.Variable, iterStr, bodyStr), nil
+		}
+		// Condition-based loop
+		condStr, err := c.genExpression(s.Iterable)
+		if err != nil {
+			return "", err
+		}
+		bodyStr, err := c.genBlockStatement(s.Body)
+		if err != nil {
+			return "", err
+		}
+		condType := c.getExpressionType(s.Iterable)
+		var condCode string
+		if condType == "bool" {
+			condCode = condStr
+		} else {
+			condCode = fmt.Sprintf("isTruthy(%s)", condStr)
+		}
+		return fmt.Sprintf("for %s %s\n", condCode, bodyStr), nil
+
+	case *StructDecl:
+		var out bytes.Buffer
+		out.WriteString(fmt.Sprintf("type %s struct {\n", s.Name))
+		for _, f := range s.Fields {
+			goType := toGoType(f.Type)
+			if goType == "interface{}" {
+				// Check if it's a known struct type
+				goType = f.Type
+			}
+			out.WriteString(fmt.Sprintf("\t%s %s\n", capitalizeFirst(f.Name), goType))
+		}
+		out.WriteString("}\n\n")
+		// Register struct type for later use
+		c.varTypes[s.Name] = s.Name
+		return out.String(), nil
+
+	case *MethodDecl:
+		c.inFunction = true
+		oldDeclared := c.declaredVars
+		oldVarTypes := c.varTypes
+		c.declaredVars = make(map[string]bool)
+		c.varTypes = make(map[string]string)
+		for k, v := range oldVarTypes {
+			c.varTypes[k] = v
+		}
+		c.declaredVars["self"] = true
+		c.varTypes["self"] = s.TypeName
+
+		var params []string
+		for i, p := range s.Params {
+			c.declaredVars[p] = true
+			pt := "interface{}"
+			if i < len(s.ParamTypes) && s.ParamTypes[i] != "" {
+				pt = toGoType(s.ParamTypes[i])
+				c.varTypes[p] = pt
+			}
+			params = append(params, p+" "+pt)
+		}
+
+		bodyStr, err := c.genBlockStatement(s.Body)
+		if err != nil {
+			return "", err
+		}
+
+		c.declaredVars = oldDeclared
+		c.varTypes = oldVarTypes
+		c.inFunction = false
+
+		retType := "interface{}"
+		if s.ReturnType != "" {
+			retType = toGoType(s.ReturnType)
+			if retType == "interface{}" {
+				retType = s.ReturnType // might be a struct type
+			}
+		}
+
+		// Generate as Go method with pointer receiver
+		return fmt.Sprintf("func (self *%s) %s(%s) %s %s\n\n", s.TypeName, capitalizeFirst(s.Name), strings.Join(params, ", "), retType, bodyStr), nil
+
+	case *InterfaceDecl:
+		var out bytes.Buffer
+		out.WriteString(fmt.Sprintf("type %s interface {\n", s.Name))
+		for _, m := range s.Methods {
+			var params []string
+			for i, p := range m.Params {
+				pt := "interface{}"
+				if i < len(m.ParamTypes) && m.ParamTypes[i] != "" {
+					pt = toGoType(m.ParamTypes[i])
+				}
+				params = append(params, p+" "+pt)
+			}
+			retType := "interface{}"
+			if m.ReturnType != "" {
+				retType = toGoType(m.ReturnType)
+				if retType == "interface{}" {
+					retType = m.ReturnType
+				}
+			}
+			out.WriteString(fmt.Sprintf("\t%s(%s) %s\n", capitalizeFirst(m.Name), strings.Join(params, ", "), retType))
+		}
+		out.WriteString("}\n\n")
+		return out.String(), nil
 
 	case *BrokerStmt:
 		val, err := c.genExpression(s.Value)
@@ -329,9 +502,9 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 			semID := fmt.Sprintf("spawn_%d_%d", s.Token.Line, s.Token.Col)
 			c.imports[`"fmt"`] = true
 			c.imports[`"strconv"`] = true
-			return fmt.Sprintf("runtime.AcquireSemaphore(%q, func() int {\n\t\t\tval, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\tif val <= 0 { return 1 }\n\t\t\treturn val\n\t\t}())\ngo func() {\n\t\tdefer runtime.ReleaseSemaphore(%q)\n\t\t%s\n\t}()\n", semID, limStr, semID, call), nil
+			return fmt.Sprintf("runtime.AcquireSemaphore(%q, func() int {\n\t\t\tval, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\tif val <= 0 { return 1 }\n\t\t\treturn val\n\t\t}())\ngo func() {\n\t\tdefer runtime.ReleaseSemaphore(%q)\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", semID, limStr, semID, call), nil
 		}
-		return fmt.Sprintf("go func() {\n\t\t%s\n\t}()\n", call), nil
+		return fmt.Sprintf("go func() {\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", call), nil
 
 	case *TestStmt:
 		c.inFunction = true
@@ -354,8 +527,19 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
+		// Multi-return: let val, err = expr
+		if len(s.Names) > 1 {
+			for _, name := range s.Names {
+				c.declaredVars[name] = true
+			}
+			c.imports[`"fmt"`] = true
+			// Generate a safe call that catches panics and returns (value, error)
+			return fmt.Sprintf("%s, %s := safeCall(func() interface{} { return %s })\n_ = %s\n_ = %s\n",
+				s.Names[0], s.Names[1], val, s.Names[0], s.Names[1]), nil
+		}
+
 		// If already declared in current block scope, assign normal; else declare with var
-		// Since we transpiled function scope simply, we check if it is declared.
 		if c.declaredVars[s.Name] {
 			return fmt.Sprintf("%s = %s\n_ = %s\n", s.Name, val, s.Name), nil
 		}
@@ -363,7 +547,23 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		goType := "interface{}"
 		if s.Type != "" {
 			goType = toGoType(s.Type)
-			c.varTypes[s.Name] = goType
+			if goType == "interface{}" {
+				// Could be a struct type name
+				goType = "*" + s.Type
+			}
+			c.varTypes[s.Name] = s.Type
+		} else if structLit, ok := s.Value.(*StructLiteral); ok {
+			// Infer struct type from literal
+			goType = "*" + structLit.TypeName
+			c.varTypes[s.Name] = structLit.TypeName
+		} else if callExpr, ok := s.Value.(*CallExpr); ok {
+			// Infer type from function return type
+			if ident, ok := callExpr.Function.(*Identifier); ok {
+				if retType, exists := c.funcReturnTypes[ident.Value]; exists && c.structTypes[retType] {
+					goType = "*" + retType
+					c.varTypes[s.Name] = retType
+				}
+			}
 		} else {
 			inferred := c.getExpressionType(s.Value)
 			if inferred != "interface{}" {
@@ -422,9 +622,10 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		retType := "interface{}"
 		if s.ReturnType != "" {
 			retType = toGoType(s.ReturnType)
+			if retType == "interface{}" && c.structTypes[s.ReturnType] {
+				retType = "*" + s.ReturnType
+			}
 		}
-
-		// Ensure we have a return statement if none is at the end
 		hasReturn := false
 		if len(s.Body.Statements) > 0 {
 			lastStmt := s.Body.Statements[len(s.Body.Statements)-1]
@@ -539,6 +740,16 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 
+		// Self field access: self.field -> self.Field (direct struct access)
+		if _, isSelf := e.Object.(*SelfExpr); isSelf {
+			return fmt.Sprintf("self.%s", capitalizeFirst(e.Field)), nil
+		}
+
+		// Struct instance field access: if the object is a known struct type variable
+		if objType, ok := c.varTypes[objStr]; ok && objType != "interface{}" && objType != "int" && objType != "string" && objType != "float64" && objType != "bool" && objType != "[]interface{}" {
+			return fmt.Sprintf("%s.%s", objStr, capitalizeFirst(e.Field)), nil
+		}
+
 		// Builtin conversions
 		if objStr == "time" && e.Field == "now" {
 			return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
@@ -594,6 +805,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 		}
 
+		// Collection property access (no parentheses needed)
+		if e.Field == "length" {
+			return fmt.Sprintf("runtime.Length(%s)", objStr), nil
+		}
+
 		// Direct Go member access e.g. req.body
 		// We'll support .Body and .Status fields (or map them casing)
 		field := e.Field
@@ -622,12 +838,104 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 	case *CallExpr:
 		var funcStr string
 		var isRegexpCheck bool
+		var isCollectionMethod bool
+		var collectionResult string
+		var isStructMethodCall bool
+		var structMethodResult string
+
 		if memExpr, ok := e.Function.(*MemberExpr); ok {
 			objStr, err := c.genExpression(memExpr.Object)
 			if err == nil && objStr == "regexp" && memExpr.Field == "check" {
 				isRegexpCheck = true
 				funcStr = "regexp.check"
 			}
+
+			// Struct method calls: if the object is a known struct type, generate direct call
+			if err == nil && !isRegexpCheck {
+				objType := ""
+				if ident, ok := memExpr.Object.(*Identifier); ok {
+					if t, exists := c.varTypes[ident.Value]; exists {
+						objType = t
+					}
+				} else if _, ok := memExpr.Object.(*SelfExpr); ok {
+					if t, exists := c.varTypes["self"]; exists {
+						objType = t
+					}
+				}
+				// Check if it's a struct type (not a primitive)
+				if objType != "" && objType != "interface{}" && objType != "int" && objType != "string" && objType != "float64" && objType != "bool" && objType != "[]interface{}" {
+					var args []string
+					for _, arg := range e.Arguments {
+						argStr, err := c.genExpression(arg)
+						if err != nil {
+							break
+						}
+						args = append(args, argStr)
+					}
+					structMethodResult = fmt.Sprintf("%s.%s(%s)", objStr, capitalizeFirst(memExpr.Field), strings.Join(args, ", "))
+					isStructMethodCall = true
+				}
+			}
+
+			// Collection methods: .filter, .map, .find, .reduce, .forEach, .length, .push, .contains
+			if err == nil && !isRegexpCheck {
+				switch memExpr.Field {
+				case "filter":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genCollectionCallback(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.Filter(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "map":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genCollectionCallback(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.Map(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "find":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genCollectionCallback(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.Find(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "reduce":
+					if len(e.Arguments) == 2 {
+						cbStr, _ := c.genReduceCallback(e.Arguments[0])
+						initStr, _ := c.genExpression(e.Arguments[1])
+						collectionResult = fmt.Sprintf("runtime.Reduce(%s, %s, %s)", objStr, cbStr, initStr)
+						isCollectionMethod = true
+					}
+				case "forEach":
+					if len(e.Arguments) == 1 {
+						argStr, _ := c.genCollectionCallback(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.ForEach(%s, %s)", objStr, argStr)
+						isCollectionMethod = true
+					}
+				case "length":
+					collectionResult = fmt.Sprintf("runtime.Length(%s)", objStr)
+					isCollectionMethod = true
+				case "push":
+					if len(e.Arguments) == 1 {
+						elemStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.Push(%s, %s)", objStr, elemStr)
+						isCollectionMethod = true
+					}
+				case "contains":
+					if len(e.Arguments) == 1 {
+						elemStr, _ := c.genExpression(e.Arguments[0])
+						collectionResult = fmt.Sprintf("runtime.Contains(%s, %s)", objStr, elemStr)
+						isCollectionMethod = true
+					}
+				}
+			}
+		}
+
+		if isCollectionMethod {
+			return collectionResult, nil
+		}
+
+		if isStructMethodCall {
+			return structMethodResult, nil
 		}
 
 		if !isRegexpCheck {
@@ -688,7 +996,8 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 	case *MapLiteral:
 		var pairs []string
-		for k, v := range e.Pairs {
+		for _, k := range e.KeyOrder {
+			v := e.Pairs[k]
 			vStr, err := c.genExpression(v)
 			if err != nil {
 				return "", err
@@ -735,13 +1044,27 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		// Comparison operators return bool; arithmetic operators return numeric/string.
 		switch e.Operator {
 		case "==":
+			// Special case: comparison with nil
+			if _, isNil := e.Right.(*NilLiteral); isNil {
+				return fmt.Sprintf("(%s == nil)", leftStr), nil
+			}
+			if _, isNil := e.Left.(*NilLiteral); isNil {
+				return fmt.Sprintf("(%s == nil)", rightStr), nil
+			}
 			c.imports[`"fmt"`] = true
-			return fmt.Sprintf("(func() interface{} { return fmt.Sprintf(\"%%v\", %s) == fmt.Sprintf(\"%%v\", %s) }())", leftStr, rightStr), nil
+			return fmt.Sprintf("(fmt.Sprintf(\"%%v\", %s) == fmt.Sprintf(\"%%v\", %s))", leftStr, rightStr), nil
 		case "!=":
+			// Special case: comparison with nil
+			if _, isNil := e.Right.(*NilLiteral); isNil {
+				return fmt.Sprintf("(%s != nil)", leftStr), nil
+			}
+			if _, isNil := e.Left.(*NilLiteral); isNil {
+				return fmt.Sprintf("(%s != nil)", rightStr), nil
+			}
 			c.imports[`"fmt"`] = true
-			return fmt.Sprintf("(func() interface{} { return fmt.Sprintf(\"%%v\", %s) != fmt.Sprintf(\"%%v\", %s) }())", leftStr, rightStr), nil
+			return fmt.Sprintf("(fmt.Sprintf(\"%%v\", %s) != fmt.Sprintf(\"%%v\", %s))", leftStr, rightStr), nil
 		case "<", ">", "<=", ">=":
-			return fmt.Sprintf("(func() interface{} {\n\t\t\tl, r := interface{}(%s), interface{}(%s)\n\t\t\tswitch lv := l.(type) {\n\t\t\tcase int:\n\t\t\t\tif rv, ok := r.(int); ok { return lv %s rv }\n\t\t\tcase int64:\n\t\t\t\tif rv, ok := r.(int64); ok { return lv %s rv }\n\t\t\tcase float64:\n\t\t\t\tif rv, ok := r.(float64); ok { return lv %s rv }\n\t\t\t}\n\t\t\treturn false\n\t\t}())", leftStr, rightStr, e.Operator, e.Operator, e.Operator), nil
+			return fmt.Sprintf("(func() bool {\n\t\t\tl, r := interface{}(%s), interface{}(%s)\n\t\t\tswitch lv := l.(type) {\n\t\t\tcase int:\n\t\t\t\tif rv, ok := r.(int); ok { return lv %s rv }\n\t\t\tcase int64:\n\t\t\t\tif rv, ok := r.(int64); ok { return lv %s rv }\n\t\t\tcase float64:\n\t\t\t\tif rv, ok := r.(float64); ok { return lv %s rv }\n\t\t\t}\n\t\t\treturn false\n\t\t}())", leftStr, rightStr, e.Operator, e.Operator, e.Operator), nil
 		default:
 			// Arithmetic operators
 			return fmt.Sprintf("(func() interface{} {\n\t\t\tswitch l := interface{}(%s).(type) {\n\t\t\tcase int:\n\t\t\t\tif r, ok := interface{}(%s).(int); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase int64:\n\t\t\t\tif r, ok := interface{}(%s).(int64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase float64:\n\t\t\t\tif r, ok := interface{}(%s).(float64); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\tcase string:\n\t\t\t\tif r, ok := interface{}(%s).(string); ok {\n\t\t\t\t\treturn l %s r\n\t\t\t\t}\n\t\t\t}\n\t\t\treturn nil\n\t\t}())", leftStr, rightStr, e.Operator, rightStr, e.Operator, rightStr, e.Operator, rightStr, e.Operator), nil
@@ -755,6 +1078,30 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("%s = %s", e.Name, valStr), nil
+
+	case *BooleanLiteral:
+		if e.Value {
+			return "true", nil
+		}
+		return "false", nil
+
+	case *NilLiteral:
+		return "nil", nil
+
+	case *SelfExpr:
+		return "self", nil
+
+	case *StructLiteral:
+		var fields []string
+		for _, k := range e.KeyOrder {
+			v := e.Fields[k]
+			vStr, err := c.genExpression(v)
+			if err != nil {
+				return "", err
+			}
+			fields = append(fields, fmt.Sprintf("%s: %s", capitalizeFirst(k), vStr))
+		}
+		return fmt.Sprintf("&%s{\n\t\t%s,\n\t}", e.TypeName, strings.Join(fields, ",\n\t\t")), nil
 
 	case *AssertExpr:
 		condStr, err := c.genExpression(e.Cond)
@@ -773,6 +1120,80 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 func (c *Codegen) GenerateMainFunc() string {
 	return `func main() {
 	runtime.StartServer()
+}
+`
+}
+
+// GenerateHelpers returns utility functions needed by generated code (if/for/multi-return support).
+func (c *Codegen) GenerateHelpers() string {
+	return `
+// isTruthy evaluates truthiness of an interface{} value.
+func isTruthy(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	switch val := v.(type) {
+	case bool:
+		return val
+	case int:
+		return val != 0
+	case int64:
+		return val != 0
+	case float64:
+		return val != 0
+	case string:
+		return val != ""
+	default:
+		return true
+	}
+}
+
+// toSlice coerces an interface{} to []interface{} for range iteration.
+func toSlice(v interface{}) []interface{} {
+	if v == nil {
+		return nil
+	}
+	if s, ok := v.([]interface{}); ok {
+		return s
+	}
+	return nil
+}
+
+// multiReturn splits a value into (result, error) for multi-return assignment.
+// If the value is a [2]interface{} tuple, it unpacks it.
+// If the value is an error, returns (nil, error).
+// Otherwise returns (value, nil).
+func multiReturn(v interface{}) (interface{}, interface{}) {
+	if v == nil {
+		return nil, nil
+	}
+	if tuple, ok := v.([2]interface{}); ok {
+		return tuple[0], tuple[1]
+	}
+	if err, ok := v.(error); ok {
+		return nil, err.Error()
+	}
+	return v, nil
+}
+
+// safeCall executes a function and catches any panic, returning (result, error).
+// Used by multi-return let statements: let val, err = expr
+func safeCall(fn func() interface{}) (interface{}, interface{}) {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errVal = fmt.Sprint(r)
+			}
+		}()
+		result = fn()
+	}()
+	// If the result is already a tuple (from safe runtime functions), unpack it
+	if tuple, ok := result.([2]interface{}); ok {
+		return tuple[0], tuple[1]
+	}
+	return result, errVal
 }
 `
 }
@@ -848,6 +1269,34 @@ func sanitizeTestName(name string) string {
 }
 
 
+// genCollectionCallback generates a Go function literal for collection method callbacks.
+// Handles identifiers (function references) and inline fn expressions.
+func (c *Codegen) genCollectionCallback(expr Expression) (string, error) {
+	// If it's a simple identifier (function name), wrap it
+	if ident, ok := expr.(*Identifier); ok {
+		return fmt.Sprintf("func(item interface{}) interface{} { return %s(item) }", ident.Value), nil
+	}
+	// If it's a call expression that looks like fn(x) { body }, it would have been parsed differently.
+	// For now, generate the expression and wrap it as a callable
+	exprStr, err := c.genExpression(expr)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("func(item interface{}) interface{} { return %s(item) }", exprStr), nil
+}
+
+// genReduceCallback generates a Go function literal for reduce callbacks (2 params).
+func (c *Codegen) genReduceCallback(expr Expression) (string, error) {
+	if ident, ok := expr.(*Identifier); ok {
+		return fmt.Sprintf("func(acc interface{}, item interface{}) interface{} { return %s(acc, item) }", ident.Value), nil
+	}
+	exprStr, err := c.genExpression(expr)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("func(acc interface{}, item interface{}) interface{} { return %s(acc, item) }", exprStr), nil
+}
+
 func (c *Codegen) genFString(str string) (string, error) {
 	var formatParts []string
 	var args []string
@@ -874,7 +1323,15 @@ func (c *Codegen) genFString(str string) (string, error) {
 			}
 			i++ // skip '}'
 			formatParts = append(formatParts, "%v")
-			args = append(args, exprText)
+
+			// Parse and codegen the interpolated expression
+			exprCode, err := c.compileInlineExpr(exprText)
+			if err != nil {
+				// Fallback to raw text if parsing fails
+				args = append(args, exprText)
+			} else {
+				args = append(args, exprCode)
+			}
 		} else {
 			currentText += string(runes[i])
 			i++
@@ -890,6 +1347,19 @@ func (c *Codegen) genFString(str string) (string, error) {
 	}
 	c.imports[`"fmt"`] = true
 	return fmt.Sprintf("fmt.Sprintf(%q, %s)", formatStr, strings.Join(args, ", ")), nil
+}
+
+// compileInlineExpr parses and generates Go code for a single expression string.
+// Used by f-string interpolation to properly handle self.field -> self.Field etc.
+func (c *Codegen) compileInlineExpr(exprText string) (string, error) {
+	lexer := NewLexer(exprText)
+	parser := NewParser(lexer)
+	// Parse as a single expression
+	expr := parser.parseExpression(LOWEST)
+	if expr == nil || len(parser.Errors()) > 0 {
+		return "", fmt.Errorf("failed to parse inline expression")
+	}
+	return c.genExpression(expr)
 }
 
 func toGoType(t string) string {
@@ -939,6 +1409,17 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 		return "string"
 	case *DurationLiteral:
 		return "string"
+	case *BooleanLiteral:
+		return "bool"
+	case *NilLiteral:
+		return "interface{}"
+	case *StructLiteral:
+		return e.TypeName
+	case *SelfExpr:
+		if t, ok := c.varTypes["self"]; ok {
+			return t
+		}
+		return "interface{}"
 	case *InfixExpr:
 		switch e.Operator {
 		case "==", "!=", "<", ">", "<=", ">=":
@@ -977,6 +1458,15 @@ func hasConcurrency(node Node) bool {
 				return true
 			}
 		}
+	case *IfStmt:
+		if hasConcurrency(s.Body) {
+			return true
+		}
+		if s.ElseBody != nil {
+			return hasConcurrency(s.ElseBody)
+		}
+	case *ForStmt:
+		return hasConcurrency(s.Body)
 	case *LetStmt:
 		return hasConcurrency(s.Value)
 	case *ExprStmt:
@@ -985,5 +1475,67 @@ func hasConcurrency(node Node) bool {
 		return hasConcurrency(s.Value)
 	}
 	return false
+}
+
+// stmtToken extracts the Token from a statement for source line tracking.
+func stmtToken(stmt Statement) Token {
+	switch s := stmt.(type) {
+	case *LetStmt:
+		return s.Token
+	case *FnDecl:
+		return s.Token
+	case *RouteStmt:
+		return s.Token
+	case *EveryStmt:
+		return s.Token
+	case *CronStmt:
+		return s.Token
+	case *SubscribeStmt:
+		return s.Token
+	case *PublishStmt:
+		return s.Token
+	case *SpawnStmt:
+		return s.Token
+	case *ExternFnStmt:
+		return s.Token
+	case *BrokerStmt:
+		return s.Token
+	case *ServerStmt:
+		return s.Token
+	case *DatabaseStmt:
+		return s.Token
+	case *CacheStmt:
+		return s.Token
+	case *TryCatchStmt:
+		return s.Token
+	case *MatchStmt:
+		return s.Token
+	case *TestStmt:
+		return s.Token
+	case *EnumStmt:
+		return s.Token
+	case *ToolStmt:
+		return s.Token
+	case *MigrationStmt:
+		return s.Token
+	case *IfStmt:
+		return s.Token
+	case *ForStmt:
+		return s.Token
+	case *StructDecl:
+		return s.Token
+	case *MethodDecl:
+		return s.Token
+	case *InterfaceDecl:
+		return s.Token
+	case *ExportStmt:
+		return stmtToken(s.Inner)
+	case *ExprStmt:
+		return s.Token
+	case *ReturnStmt:
+		return s.Token
+	default:
+		return Token{}
+	}
 }
 

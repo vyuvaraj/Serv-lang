@@ -1,0 +1,73 @@
+// Serv Example 28: Interfaces & Collection Methods
+// Lint: serv lint examples/28_interfaces_collections.srv
+
+// --- Interfaces ---
+
+interface Displayable {
+    fn display() -> string
+}
+
+interface Serializable {
+    fn serialize() -> string
+}
+
+struct Product {
+    id: int
+    name: string
+    price: int
+    inStock: bool
+}
+
+fn Product.display() -> string {
+    return f"{self.name} (${self.price})"
+}
+
+fn Product.serialize() -> string {
+    return json.stringify(self)
+}
+
+// --- Collection Methods ---
+
+fn isExpensive(item) {
+    return item.price > 50
+}
+
+fn getProductName(item) {
+    return item.name
+}
+
+fn run() {
+    let products = [
+        Product { id: 1, name: "Keyboard", price: 75, inStock: true },
+        Product { id: 2, name: "Mouse", price: 25, inStock: true },
+        Product { id: 3, name: "Monitor", price: 300, inStock: false },
+        Product { id: 4, name: "Cable", price: 10, inStock: true }
+    ]
+
+    // Filter: get expensive products
+    let expensive = products.filter(isExpensive)
+    log.info("Expensive items: ", expensive.length)
+
+    // Map: extract names
+    let names = products.map(getProductName)
+    log.info("Product names: ", names)
+
+    // Find: first expensive item
+    let first = products.find(isExpensive)
+    log.info("First expensive: ", first)
+
+    // Contains
+    let hasKeyboard = names.contains("Keyboard")
+    log.info("Has keyboard: ", hasKeyboard)
+
+    // Push
+    let moreNames = names.push("Webcam")
+    log.info("After push: ", moreNames)
+
+    // ForEach
+    products.forEach(logProduct)
+}
+
+fn logProduct(item) {
+    log.info("Product: ", item)
+}

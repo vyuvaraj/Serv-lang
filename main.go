@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -151,9 +153,10 @@ func buildServNoExit(srvFile, outputBinary string) (string, error) {
 		return "", err
 	}
 
+	goCode += "\n" + codegen.GenerateHelpers()
 	goCode += "\n" + codegen.GenerateMainFunc()
 
-	buildDir := filepath.Join(filepath.Dir(absPath), ".build")
+	buildDir := buildDirFor(absPath)
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		return "", err
 	}
@@ -168,7 +171,10 @@ func buildServNoExit(srvFile, outputBinary string) (string, error) {
 		return "", err
 	}
 
-	goPath := "C:\\Program Files\\Go\\bin\\go.exe"
+	goPath, err := resolveGoPath()
+	if err != nil {
+		return "", fmt.Errorf("cannot find Go compiler: %w", err)
+	}
 	cmd := exec.Command(goPath, "build", "-o", filepath.Join(filepath.Dir(absPath), outputBinary), genGoFile)
 	cmd.Dir = filepath.Dir(absPath)
 	var stderr bytes.Buffer
@@ -288,7 +294,7 @@ func runTests(srvFile string) {
 		return
 	}
 
-	buildDir := filepath.Join(filepath.Dir(absPath), ".build")
+	buildDir := buildDirFor(absPath)
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		fmt.Printf("Failed to create build dir: %v\n", err)
 		os.Exit(1)
@@ -300,7 +306,8 @@ func runTests(srvFile string) {
 	}
 
 	// Write service.go: all generated declarations (functions, init blocks, etc.)
-	if err := os.WriteFile(filepath.Join(buildDir, "service.go"), []byte(goCode), 0644); err != nil {
+	serviceCode := goCode + "\n" + cg.GenerateHelpers()
+	if err := os.WriteFile(filepath.Join(buildDir, "service.go"), []byte(serviceCode), 0644); err != nil {
 		fmt.Printf("Failed to write service.go: %v\n", err)
 		os.Exit(1)
 	}
@@ -321,7 +328,11 @@ func runTests(srvFile string) {
 	}
 
 	fmt.Printf("Running tests from %s...\n", srvFile)
-	goPath := "C:\\Program Files\\Go\\bin\\go.exe"
+	goPath, err := resolveGoPath()
+	if err != nil {
+		fmt.Printf("Cannot find Go compiler: %v\n", err)
+		os.Exit(1)
+	}
 	cmd := exec.Command(goPath, "test", "-v", "./...")
 	cmd.Dir = buildDir
 	cmd.Stdout = os.Stdout
@@ -392,6 +403,34 @@ CMD ["./service_bin"]
 	fmt.Println("  docker run -p 8080:8080 -e PORT=8080 serv-service")
 }
 
+// resolveGoPath finds the Go compiler binary, checking PATH first then common install locations.
+func resolveGoPath() (string, error) {
+	// First try PATH lookup (works cross-platform)
+	if path, err := exec.LookPath("go"); err == nil {
+		return path, nil
+	}
+	// Fallback: check common install locations
+	candidates := []string{
+		"C:\\Program Files\\Go\\bin\\go.exe",
+		"/usr/local/go/bin/go",
+		"/usr/bin/go",
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("'go' not found in PATH or common install locations; ensure Go is installed and in your PATH")
+}
+
+// buildDirFor returns a unique .build subdirectory based on the source file path hash.
+// This prevents concurrent builds of different .srv files from clobbering each other.
+func buildDirFor(absPath string) string {
+	h := sha256.Sum256([]byte(absPath))
+	short := hex.EncodeToString(h[:4]) // 8 hex chars is enough uniqueness
+	return filepath.Join(filepath.Dir(absPath), ".build", short)
+}
+
 func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.Program, error) {
 	if visited[filePath] {
 		return &compiler.Program{}, nil // Prevent circular imports
@@ -420,7 +459,57 @@ func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.
 			if err != nil {
 				return nil, err
 			}
-			mergedStatements = append(mergedStatements, subProgram.Statements...)
+
+			if len(imp.Names) > 0 {
+				// Selective import: only include exported statements matching the requested names
+				// Also auto-include methods for any imported struct types
+				nameSet := make(map[string]bool)
+				for _, n := range imp.Names {
+					nameSet[n] = true
+				}
+				// First pass: collect imported struct names
+				structNames := make(map[string]bool)
+				for _, subStmt := range subProgram.Statements {
+					name := exportedName(subStmt)
+					if nameSet[name] {
+						inner := subStmt
+						if exp, ok := subStmt.(*compiler.ExportStmt); ok {
+							inner = exp.Inner
+						}
+						if _, isStruct := inner.(*compiler.StructDecl); isStruct {
+							structNames[name] = true
+						}
+					}
+				}
+				// Second pass: include matching names + methods on imported structs
+				for _, subStmt := range subProgram.Statements {
+					name := exportedName(subStmt)
+					inner := subStmt
+					if exp, ok := subStmt.(*compiler.ExportStmt); ok {
+						inner = exp.Inner
+					}
+					// Include if name matches directly
+					if nameSet[name] {
+						mergedStatements = append(mergedStatements, inner)
+						continue
+					}
+					// Auto-include methods for imported struct types
+					if method, ok := inner.(*compiler.MethodDecl); ok {
+						if structNames[method.TypeName] {
+							mergedStatements = append(mergedStatements, inner)
+						}
+					}
+				}
+			} else {
+				// Wildcard import: include all exported statements (and non-export statements for backward compat)
+				for _, subStmt := range subProgram.Statements {
+					if exp, ok := subStmt.(*compiler.ExportStmt); ok {
+						mergedStatements = append(mergedStatements, exp.Inner)
+					} else {
+						mergedStatements = append(mergedStatements, subStmt)
+					}
+				}
+			}
 		} else {
 			mergedStatements = append(mergedStatements, stmt)
 		}
@@ -428,4 +517,37 @@ func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.
 
 	program.Statements = mergedStatements
 	return program, nil
+}
+
+// exportedName returns the symbol name of an exported statement, or "" if not exported/named.
+func exportedName(stmt compiler.Statement) string {
+	// Check if it's an ExportStmt wrapper
+	if exp, ok := stmt.(*compiler.ExportStmt); ok {
+		return statementName(exp.Inner)
+	}
+	// For backward compatibility, non-exported statements in imported files
+	// are still included in wildcard imports
+	return statementName(stmt)
+}
+
+// statementName extracts the declared name from a statement (for import filtering).
+func statementName(stmt compiler.Statement) string {
+	switch s := stmt.(type) {
+	case *compiler.FnDecl:
+		return s.Name
+	case *compiler.StructDecl:
+		return s.Name
+	case *compiler.MethodDecl:
+		return s.TypeName + "." + s.Name
+	case *compiler.LetStmt:
+		return s.Name
+	case *compiler.EnumStmt:
+		return s.Name
+	case *compiler.InterfaceDecl:
+		return s.Name
+	case *compiler.ExportStmt:
+		return statementName(s.Inner)
+	default:
+		return ""
+	}
 }

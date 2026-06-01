@@ -41,14 +41,23 @@ func (p *Program) String() string {
 }
 
 // Import Statement
+// Supports both:
+//   import "path.srv"                         (imports all exported symbols)
+//   import { Symbol1, Symbol2 } from "path.srv"  (selective named imports)
 type ImportStmt struct {
-	Token TokenType
-	Path  string
+	Token   TokenType
+	Path    string
+	Names   []string // empty = import all, non-empty = selective
 }
 
 func (i *ImportStmt) statementNode()       {}
 func (i *ImportStmt) TokenLiteral() string { return string(i.Token) }
-func (i *ImportStmt) String() string       { return "import \"" + i.Path + "\"\n" }
+func (i *ImportStmt) String() string {
+	if len(i.Names) > 0 {
+		return "import { " + strings.Join(i.Names, ", ") + " } from \"" + i.Path + "\"\n"
+	}
+	return "import \"" + i.Path + "\"\n"
+}
 
 // Extern Statement
 type ExternFnStmt struct {
@@ -275,16 +284,24 @@ func (m *MatchStmt) String() string {
 }
 
 // Let Statement
+// Supports single: let x = expr
+// Supports multi:  let val, err = expr
 type LetStmt struct {
 	Token Token
-	Name  string
-	Type  string // optional type annotation
+	Name  string   // primary variable name
+	Names []string // all variable names (for multi-return: ["val", "err"])
+	Type  string   // optional type annotation
 	Value Expression
 }
 
 func (l *LetStmt) statementNode()       {}
 func (l *LetStmt) TokenLiteral() string { return l.Token.Literal }
-func (l *LetStmt) String() string       { return "let " + l.Name + " = " + l.Value.String() + "\n" }
+func (l *LetStmt) String() string {
+	if len(l.Names) > 1 {
+		return "let " + strings.Join(l.Names, ", ") + " = " + l.Value.String() + "\n"
+	}
+	return "let " + l.Name + " = " + l.Value.String() + "\n"
+}
 
 // Return Statement
 type ReturnStmt struct {
@@ -476,15 +493,17 @@ func (c *CallExpr) String() string {
 }
 
 type MapLiteral struct {
-	Token Token
-	Pairs map[string]Expression
+	Token    Token
+	Pairs    map[string]Expression
+	KeyOrder []string // preserves insertion order for deterministic codegen
 }
 
 func (m *MapLiteral) expressionNode()      {}
 func (m *MapLiteral) TokenLiteral() string { return m.Token.Literal }
 func (m *MapLiteral) String() string {
 	var pairs []string
-	for k, v := range m.Pairs {
+	for _, k := range m.KeyOrder {
+		v := m.Pairs[k]
 		pairs = append(pairs, "\""+k+"\": "+v.String())
 	}
 	return "{" + strings.Join(pairs, ", ") + "}"
@@ -521,4 +540,160 @@ func (e *EnumStmt) statementNode()       {}
 func (e *EnumStmt) TokenLiteral() string { return e.Token.Literal }
 func (e *EnumStmt) String() string {
 	return "enum " + e.Name + " { " + strings.Join(e.Members, ", ") + " }\n"
+}
+
+// If Statement
+type IfStmt struct {
+	Token       Token
+	Condition   Expression
+	Body        *BlockStmt
+	ElseBody    *BlockStmt // nil if no else
+}
+
+func (i *IfStmt) statementNode()       {}
+func (i *IfStmt) TokenLiteral() string { return i.Token.Literal }
+func (i *IfStmt) String() string {
+	out := "if " + i.Condition.String() + " " + i.Body.String()
+	if i.ElseBody != nil {
+		out += " else " + i.ElseBody.String()
+	}
+	return out + "\n"
+}
+
+// For Statement: for item in collection { ... } or for condition { ... }
+type ForStmt struct {
+	Token      Token
+	Variable   string     // loop variable name (empty for condition-based)
+	Iterable   Expression // collection to iterate, or condition expression
+	IsRange    bool       // true = for x in collection, false = for condition
+	Body       *BlockStmt
+}
+
+func (f *ForStmt) statementNode()       {}
+func (f *ForStmt) TokenLiteral() string { return f.Token.Literal }
+func (f *ForStmt) String() string {
+	if f.IsRange {
+		return "for " + f.Variable + " in " + f.Iterable.String() + " " + f.Body.String() + "\n"
+	}
+	return "for " + f.Iterable.String() + " " + f.Body.String() + "\n"
+}
+
+// Boolean Literal
+type BooleanLiteral struct {
+	Token Token
+	Value bool
+}
+
+func (b *BooleanLiteral) expressionNode()      {}
+func (b *BooleanLiteral) TokenLiteral() string { return b.Token.Literal }
+func (b *BooleanLiteral) String() string       { return b.Token.Literal }
+
+// Nil Literal
+type NilLiteral struct {
+	Token Token
+}
+
+func (n *NilLiteral) expressionNode()      {}
+func (n *NilLiteral) TokenLiteral() string { return n.Token.Literal }
+func (n *NilLiteral) String() string       { return "nil" }
+
+// Struct Declaration: struct Name { field: type, ... }
+type StructField struct {
+	Name string
+	Type string
+}
+
+type StructDecl struct {
+	Token  Token
+	Name   string
+	Fields []StructField
+}
+
+func (s *StructDecl) statementNode()       {}
+func (s *StructDecl) TokenLiteral() string { return s.Token.Literal }
+func (s *StructDecl) String() string {
+	var fields []string
+	for _, f := range s.Fields {
+		fields = append(fields, f.Name+": "+f.Type)
+	}
+	return "struct " + s.Name + " { " + strings.Join(fields, ", ") + " }\n"
+}
+
+// Struct Literal Expression: TypeName { field: value, ... }
+type StructLiteral struct {
+	Token    Token
+	TypeName string
+	Fields   map[string]Expression
+	KeyOrder []string
+}
+
+func (s *StructLiteral) expressionNode()      {}
+func (s *StructLiteral) TokenLiteral() string { return s.Token.Literal }
+func (s *StructLiteral) String() string {
+	var pairs []string
+	for _, k := range s.KeyOrder {
+		v := s.Fields[k]
+		pairs = append(pairs, k+": "+v.String())
+	}
+	return s.TypeName + " { " + strings.Join(pairs, ", ") + " }"
+}
+
+// Method Declaration: fn TypeName.methodName(params) -> returnType { body }
+type MethodDecl struct {
+	Token      Token
+	TypeName   string   // receiver type
+	Name       string   // method name
+	Params     []string
+	ParamTypes []string
+	ReturnType string
+	Body       *BlockStmt
+}
+
+func (m *MethodDecl) statementNode()       {}
+func (m *MethodDecl) TokenLiteral() string { return m.Token.Literal }
+func (m *MethodDecl) String() string {
+	return "fn " + m.TypeName + "." + m.Name + "(" + strings.Join(m.Params, ", ") + ") " + m.Body.String() + "\n"
+}
+
+// Self Expression: self.field access inside methods
+type SelfExpr struct {
+	Token Token
+}
+
+func (s *SelfExpr) expressionNode()      {}
+func (s *SelfExpr) TokenLiteral() string { return s.Token.Literal }
+func (s *SelfExpr) String() string       { return "self" }
+
+// ExportStmt wraps a statement to mark it as exported from a module.
+type ExportStmt struct {
+	Token Token
+	Inner Statement // the actual statement being exported
+}
+
+func (e *ExportStmt) statementNode()       {}
+func (e *ExportStmt) TokenLiteral() string { return e.Token.Literal }
+func (e *ExportStmt) String() string       { return "export " + e.Inner.String() }
+
+// Interface Declaration
+type InterfaceMethod struct {
+	Name       string
+	Params     []string
+	ParamTypes []string
+	ReturnType string
+}
+
+type InterfaceDecl struct {
+	Token   Token
+	Name    string
+	Methods []InterfaceMethod
+}
+
+func (i *InterfaceDecl) statementNode()       {}
+func (i *InterfaceDecl) TokenLiteral() string { return i.Token.Literal }
+func (i *InterfaceDecl) String() string {
+	var methods []string
+	for _, m := range i.Methods {
+		methods = append(methods, "fn "+m.Name+"()")
+	}
+	return "interface " + i.Name + " { " + strings.Join(methods, "; ") + " }\n"
 }

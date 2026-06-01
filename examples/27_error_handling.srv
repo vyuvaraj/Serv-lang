@@ -1,0 +1,44 @@
+// Serv Example 27: Error Handling with Multi-Return
+// Lint: serv lint examples/27_error_handling.srv
+// Run:  serv run examples/27_error_handling.srv
+
+server "8080"
+database "sqlite://test_errors.db"
+
+// Multi-return: catches panics from db.query and returns (result, error)
+fn safeQuery() {
+    let result, err = db.query("SELECT * FROM nonexistent_table")
+    if err != nil {
+        log.error("Query failed: ", err)
+    } else {
+        log.info("Query result: ", result)
+    }
+}
+
+// Multi-return with HTTP
+fn safeFetch(url: string) {
+    let response, err = http.get(url)
+    if err != nil {
+        log.error("HTTP request failed: ", err)
+    } else {
+        log.info("Got response: ", response.body)
+    }
+}
+
+// Multi-return with JSON parsing
+fn safeParseJSON(data: string) {
+    let parsed, err = json.parse(data)
+    if err != nil {
+        log.error("Invalid JSON: ", err)
+    } else {
+        log.info("Parsed: ", parsed)
+    }
+}
+
+route "GET" "/safe-query" (req) {
+    let result, err = db.query("SELECT 1 as test")
+    if err != nil {
+        return { "error": err }
+    }
+    return { "data": result }
+}

@@ -1,0 +1,19 @@
+// Serv Example 26: Module System
+// Lint: serv lint examples/26_modules.srv
+// Run:  serv run examples/26_modules.srv
+
+// Named import — only brings in User and createUser
+import { User, createUser } from "./models/user.srv"
+
+server "8080"
+
+let alice = createUser(1, "Alice", "alice@example.com")
+
+log.info("Created user: ", alice.display())
+
+route "GET" "/users" (req) {
+    let bob = createUser(2, "Bob", "bob@example.com")
+    return {
+        "users": [alice.display(), bob.display()]
+    }
+}

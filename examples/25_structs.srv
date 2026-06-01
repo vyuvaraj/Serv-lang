@@ -1,0 +1,43 @@
+// Serv Example 25: Structs & Methods (Phase 1)
+// Run: serv run examples/25_structs.srv
+// Lint: serv lint examples/25_structs.srv
+
+server "8080"
+
+// Define a struct
+struct User {
+    id: int
+    name: string
+    email: string
+    active: bool
+}
+
+// Define a method on User
+fn User.display() -> string {
+    return f"{self.name} <{self.email}>"
+}
+
+fn User.isActive() -> bool {
+    return self.active
+}
+
+// Create struct instances
+let alice = User { id: 1, name: "Alice", email: "alice@example.com", active: true }
+let bob = User { id: 2, name: "Bob", email: "bob@example.com", active: false }
+
+// Use methods
+log.info("User: ", alice.display())
+log.info("Active: ", alice.isActive())
+
+// Access fields directly
+log.info("Name: ", alice.name)
+log.info("Email: ", bob.email)
+
+// Use in a route
+route "GET" "/users" (req) {
+    return { "users": [alice.display(), bob.display()] }
+}
+
+route "GET" "/user/:id" (req) {
+    return { "user": alice.name, "email": alice.email }
+}
