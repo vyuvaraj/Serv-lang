@@ -855,8 +855,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		}
 
 		// Builtin conversions
-		if objStr == "time" && e.Field == "now" {
-			return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
+		if objStr == "time" {
+			if e.Field == "now" {
+				return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
+			} else if e.Field == "sleep" {
+				return "runtime.Sleep", nil
+			} else if e.Field == "unix" {
+				return "func() interface{} { return time.Now().Unix() }", nil
+			}
 		}
 
 		if objStr == "log" {
@@ -896,6 +902,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "db" {
 			if e.Field == "query" {
 				return "runtime.DBQuery", nil
+			} else if e.Field == "queryPage" {
+				return "runtime.DBQueryPage", nil
+			} else if e.Field == "findOne" {
+				return "runtime.DBFindOne", nil
+			} else if e.Field == "count" {
+				return "runtime.DBCount", nil
+			} else if e.Field == "upsert" {
+				return "runtime.DBUpsert", nil
 			} else if e.Field == "beforeQuery" {
 				return "runtime.AddBeforeQueryHook", nil
 			}
@@ -910,6 +924,24 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "mcp" {
 			if e.Field == "call" {
 				return "runtime.InvokeMCPToolForTesting", nil
+			}
+		}
+
+		// Atomic operations
+		if objStr == "atomic" {
+			switch e.Field {
+			case "new":
+				return "runtime.AtomicNew", nil
+			case "inc":
+				return "runtime.AtomicInc", nil
+			case "dec":
+				return "runtime.AtomicDec", nil
+			case "get":
+				return "runtime.AtomicGet", nil
+			case "set":
+				return "runtime.AtomicSet", nil
+			case "cas":
+				return "runtime.AtomicCAS", nil
 			}
 		}
 
