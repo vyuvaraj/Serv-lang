@@ -453,6 +453,16 @@ func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.
 	var mergedStatements []compiler.Statement
 
 	for _, stmt := range program.Statements {
+		// Go package imports are kept as-is for codegen (no file to load)
+		if _, ok := stmt.(*compiler.GoPackageImport); ok {
+			mergedStatements = append(mergedStatements, stmt)
+			continue
+		}
+		// Declare module statements are kept as-is for codegen
+		if _, ok := stmt.(*compiler.DeclareModuleStmt); ok {
+			mergedStatements = append(mergedStatements, stmt)
+			continue
+		}
 		if imp, ok := stmt.(*compiler.ImportStmt); ok {
 			importPath := filepath.Join(filepath.Dir(filePath), imp.Path)
 			subProgram, err := parseWithDependencies(importPath, visited)

@@ -53,6 +53,9 @@ const (
 	TOKEN_MIDDLEWARE TokenType = "MIDDLEWARE"
 	TOKEN_USE        TokenType = "USE"
 	TOKEN_AWAIT      TokenType = "AWAIT"
+	TOKEN_DECLARE    TokenType = "DECLARE"
+	TOKEN_MODULE     TokenType = "MODULE"
+	TOKEN_AS         TokenType = "AS"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -421,6 +424,9 @@ var keywords = map[string]TokenType{
 	"middleware": TOKEN_MIDDLEWARE,
 	"use":       TOKEN_USE,
 	"await":     TOKEN_AWAIT,
+	"declare":   TOKEN_DECLARE,
+	"module":    TOKEN_MODULE,
+	"as":        TOKEN_AS,
 }
 
 func lookupIdent(ident string) TokenType {
