@@ -1,0 +1,14 @@
+// Regulatory Cron Service — Entry Point
+// Build: serv build examples/regulatory-cron/main.srv -o cron-service.exe
+// Run: set MONGODB_URI=mongodb://localhost:27017/cron_service & set PORT=8086 & .\cron-service.exe
+
+import "./config.srv"
+import "./scheduler/seeder.srv"
+import "./scheduler/engine.srv"
+import "./api/jobs.srv"
+import "./api/dlq.srv"
+import "./api/bulk.srv"
+import "./api/stats.srv"
+
+// Seed sample data on startup if DB is empty
+seedIfEmpty()

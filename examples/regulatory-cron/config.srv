@@ -1,0 +1,6 @@
+// Service configuration — loaded from config.yml
+// Run from the regulatory-cron directory so config.yml is found,
+// or set SERV_CONFIG=path/to/config.yml, or use env vars as fallback.
+
+server config("server.port")
+database config("database.uri")

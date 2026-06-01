@@ -564,6 +564,7 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		var spawnCode string
 		if s.Limit != nil {
 			limStr, err := c.genExpression(s.Limit)
 			if err != nil {
@@ -572,9 +573,14 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 			semID := fmt.Sprintf("spawn_%d_%d", s.Token.Line, s.Token.Col)
 			c.imports[`"fmt"`] = true
 			c.imports[`"strconv"`] = true
-			return fmt.Sprintf("runtime.AcquireSemaphore(%q, func() int {\n\t\t\tval, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\tif val <= 0 { return 1 }\n\t\t\treturn val\n\t\t}())\ngo func() {\n\t\tdefer runtime.ReleaseSemaphore(%q)\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", semID, limStr, semID, call), nil
+			spawnCode = fmt.Sprintf("runtime.AcquireSemaphore(%q, func() int {\n\t\t\tval, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\tif val <= 0 { return 1 }\n\t\t\treturn val\n\t\t}())\ngo func() {\n\t\tdefer runtime.ReleaseSemaphore(%q)\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", semID, limStr, semID, call)
+		} else {
+			spawnCode = fmt.Sprintf("go func() {\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", call)
 		}
-		return fmt.Sprintf("go func() {\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", call), nil
+		if !c.inFunction {
+			return fmt.Sprintf("func init() {\n\t%s}\n\n", spawnCode), nil
+		}
+		return spawnCode, nil
 
 	case *TestStmt:
 		c.inFunction = true
@@ -783,6 +789,14 @@ func (c *Codegen) genBlockStatement(block *BlockStmt) (string, error) {
 	c.inFunction = true
 	defer func() { c.inFunction = oldInFunc }()
 
+	// Create a new scope for variables declared in this block
+	oldDeclared := c.declaredVars
+	c.declaredVars = make(map[string]bool)
+	for k, v := range oldDeclared {
+		c.declaredVars[k] = v
+	}
+	defer func() { c.declaredVars = oldDeclared }()
+
 	var out bytes.Buffer
 	out.WriteString("{\n")
 	for _, s := range block.Statements {
@@ -855,8 +869,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		}
 
 		// Builtin conversions
-		if objStr == "time" && e.Field == "now" {
-			return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
+		if objStr == "time" {
+			if e.Field == "now" {
+				return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
+			} else if e.Field == "sleep" {
+				return "runtime.Sleep", nil
+			} else if e.Field == "unix" {
+				return "func() interface{} { return time.Now().Unix() }", nil
+			}
 		}
 
 		if objStr == "log" {
@@ -896,6 +916,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "db" {
 			if e.Field == "query" {
 				return "runtime.DBQuery", nil
+			} else if e.Field == "queryPage" {
+				return "runtime.DBQueryPage", nil
+			} else if e.Field == "findOne" {
+				return "runtime.DBFindOne", nil
+			} else if e.Field == "count" {
+				return "runtime.DBCount", nil
+			} else if e.Field == "upsert" {
+				return "runtime.DBUpsert", nil
 			} else if e.Field == "beforeQuery" {
 				return "runtime.AddBeforeQueryHook", nil
 			}
@@ -910,6 +938,44 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "mcp" {
 			if e.Field == "call" {
 				return "runtime.InvokeMCPToolForTesting", nil
+			}
+		}
+
+		// Atomic operations
+		if objStr == "atomic" {
+			switch e.Field {
+			case "new":
+				return "runtime.AtomicNew", nil
+			case "inc":
+				return "runtime.AtomicInc", nil
+			case "dec":
+				return "runtime.AtomicDec", nil
+			case "get":
+				return "runtime.AtomicGet", nil
+			case "set":
+				return "runtime.AtomicSet", nil
+			case "cas":
+				return "runtime.AtomicCAS", nil
+			}
+		}
+
+		// Channel operations
+		if objStr == "channel" {
+			switch e.Field {
+			case "new":
+				return "runtime.ChannelNew", nil
+			case "send":
+				return "runtime.ChannelSend", nil
+			case "receive":
+				return "runtime.ChannelReceive", nil
+			case "tryReceive":
+				return "runtime.ChannelTryReceive", nil
+			case "trySend":
+				return "runtime.ChannelTrySend", nil
+			case "close":
+				return "runtime.ChannelClose", nil
+			case "len":
+				return "runtime.ChannelLen", nil
 			}
 		}
 

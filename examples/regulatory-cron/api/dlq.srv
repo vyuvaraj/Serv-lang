@@ -1,0 +1,11 @@
+// Dead Letter Queue API — list and replay failed executions
+
+route "GET" "/api/v1/dlq" (req) {
+    let result = db.queryPage("dlq", "{}", 0, 20)
+    return result
+}
+
+route "POST" "/api/v1/dlq/:id/replay" (req) {
+    db.upsert("dlq", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"REPLAYED\", \"replayedAt\": \"{time.now()}\"}}")
+    return { "replayed": true }
+}

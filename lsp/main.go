@@ -342,6 +342,16 @@ func extractSymbol(stmt compiler.Statement) symbolInfo {
 		return symbolInfo{Name: s.Name, Kind: "middleware", Line: s.Token.Line - 1}
 	case *compiler.InterfaceDecl:
 		return symbolInfo{Name: s.Name, Kind: "interface", Line: s.Token.Line - 1}
+	case *compiler.WsStmt:
+		return symbolInfo{Name: "ws " + s.Path, Kind: "route", Line: s.Token.Line - 1}
+	case *compiler.EveryStmt:
+		return symbolInfo{Name: "every " + s.Interval.String(), Kind: "fn", Line: s.Token.Line - 1}
+	case *compiler.CronStmt:
+		return symbolInfo{Name: "cron " + s.Cron.String(), Kind: "fn", Line: s.Token.Line - 1}
+	case *compiler.SubscribeStmt:
+		return symbolInfo{Name: "subscribe " + s.Topic.String(), Kind: "fn", Line: s.Token.Line - 1}
+	case *compiler.EnumStmt:
+		return symbolInfo{Name: s.Name, Kind: "enum", Line: s.Token.Line - 1, TypeInfo: strings.Join(s.Members, ", ")}
 	case *compiler.ExportStmt:
 		return extractSymbol(s.Inner)
 	default:
@@ -368,6 +378,7 @@ func (s *Server) handleCompletion(msg JSONRPCMessage) {
 		"server", "database", "broker", "cache", "try", "catch",
 		"test", "assert", "enum", "await", "true", "false", "nil",
 		"self", "declare", "module", "from", "extern", "migration", "tool",
+		"ws", "use", "channel", "atomic",
 	}
 	for _, kw := range keywords {
 		items = append(items, CompletionItem{
@@ -378,17 +389,59 @@ func (s *Server) handleCompletion(msg JSONRPCMessage) {
 
 	// Built-in functions/objects
 	builtins := []CompletionItem{
+		// Logging
 		{Label: "log.info", Kind: 3, Detail: "Log info message", InsertText: "log.info(\"$1\")"},
 		{Label: "log.warn", Kind: 3, Detail: "Log warning message", InsertText: "log.warn(\"$1\")"},
 		{Label: "log.error", Kind: 3, Detail: "Log error message", InsertText: "log.error(\"$1\")"},
+		{Label: "log.debug", Kind: 3, Detail: "Log debug message", InsertText: "log.debug(\"$1\")"},
+		{Label: "log.with", Kind: 3, Detail: "Structured log with context fields", InsertText: "log.with(\"$1\", $2, \"$3\")"},
+
+		// Database
 		{Label: "db.query", Kind: 3, Detail: "Execute database query", InsertText: "db.query(\"$1\")"},
-		{Label: "cache.set", Kind: 3, Detail: "Set cache value", InsertText: "cache.set(\"$1\", $2, \"10m\")"},
+		{Label: "db.queryPage", Kind: 3, Detail: "Paginated MongoDB query", InsertText: "db.queryPage(\"$1\", \"$2\", 0, 20)"},
+		{Label: "db.findOne", Kind: 3, Detail: "Find single document", InsertText: "db.findOne(\"$1\", \"$2\")"},
+		{Label: "db.count", Kind: 3, Detail: "Count documents", InsertText: "db.count(\"$1\", \"$2\")"},
+		{Label: "db.upsert", Kind: 3, Detail: "Insert or update document", InsertText: "db.upsert(\"$1\", \"$2\", \"$3\")"},
+
+		// Cache
+		{Label: "cache.set", Kind: 3, Detail: "Set cache value with TTL", InsertText: "cache.set(\"$1\", $2, \"10m\")"},
 		{Label: "cache.get", Kind: 3, Detail: "Get cache value", InsertText: "cache.get(\"$1\")"},
+
+		// HTTP
 		{Label: "http.get", Kind: 3, Detail: "HTTP GET request", InsertText: "http.get(\"$1\")"},
 		{Label: "http.post", Kind: 3, Detail: "HTTP POST request", InsertText: "http.post(\"$1\", $2)"},
+
+		// JSON
 		{Label: "json.parse", Kind: 3, Detail: "Parse JSON string", InsertText: "json.parse($1)"},
 		{Label: "json.stringify", Kind: 3, Detail: "Stringify to JSON", InsertText: "json.stringify($1)"},
-		{Label: "time.now", Kind: 3, Detail: "Current timestamp", InsertText: "time.now()"},
+
+		// Time
+		{Label: "time.now", Kind: 3, Detail: "Current RFC3339 timestamp", InsertText: "time.now()"},
+		{Label: "time.unix", Kind: 3, Detail: "Current Unix timestamp (seconds)", InsertText: "time.unix()"},
+		{Label: "time.sleep", Kind: 3, Detail: "Sleep for milliseconds", InsertText: "time.sleep($1)"},
+
+		// Channels
+		{Label: "channel.new", Kind: 3, Detail: "Create buffered channel", InsertText: "channel.new($1)"},
+		{Label: "channel.send", Kind: 3, Detail: "Send value to channel (blocking)", InsertText: "channel.send($1, $2)"},
+		{Label: "channel.receive", Kind: 3, Detail: "Receive from channel (blocking)", InsertText: "channel.receive($1)"},
+		{Label: "channel.trySend", Kind: 3, Detail: "Non-blocking send (returns bool)", InsertText: "channel.trySend($1, $2)"},
+		{Label: "channel.tryReceive", Kind: 3, Detail: "Non-blocking receive (returns nil if empty)", InsertText: "channel.tryReceive($1)"},
+		{Label: "channel.close", Kind: 3, Detail: "Close channel", InsertText: "channel.close($1)"},
+		{Label: "channel.len", Kind: 3, Detail: "Buffered item count", InsertText: "channel.len($1)"},
+
+		// Atomics
+		{Label: "atomic.new", Kind: 3, Detail: "Create named atomic value", InsertText: "atomic.new(\"$1\", $2)"},
+		{Label: "atomic.inc", Kind: 3, Detail: "Increment atomic counter", InsertText: "atomic.inc(\"$1\")"},
+		{Label: "atomic.dec", Kind: 3, Detail: "Decrement atomic counter", InsertText: "atomic.dec(\"$1\")"},
+		{Label: "atomic.get", Kind: 3, Detail: "Get atomic value", InsertText: "atomic.get(\"$1\")"},
+		{Label: "atomic.set", Kind: 3, Detail: "Set atomic value", InsertText: "atomic.set(\"$1\", $2)"},
+		{Label: "atomic.cas", Kind: 3, Detail: "Compare-and-swap", InsertText: "atomic.cas(\"$1\", $2, $3)"},
+
+		// Metrics
+		{Label: "metric.inc", Kind: 3, Detail: "Increment counter metric", InsertText: "metric.inc(\"$1\")"},
+		{Label: "metric.gauge", Kind: 3, Detail: "Set gauge metric value", InsertText: "metric.gauge(\"$1\", $2)"},
+
+		// Config
 		{Label: "env", Kind: 3, Detail: "Read environment variable", InsertText: "env(\"$1\")"},
 		{Label: "config", Kind: 3, Detail: "Read config value", InsertText: "config(\"$1\")"},
 	}
@@ -585,10 +638,12 @@ func (s *Server) handleDocumentSymbol(msg JSONRPCMessage) {
 // --- JSON-RPC Helpers ---
 
 func sendResponse(id interface{}, result interface{}) {
-	msg := JSONRPCMessage{
-		JSONRPC: "2.0",
-		ID:      id,
-		Result:  result,
+	// Use a map to ensure "result" is always present (even as null)
+	// JSON-RPC requires either "result" or "error" in every response
+	msg := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"result":  result,
 	}
 	data, _ := json.Marshal(msg)
 	content := string(data)

@@ -1,0 +1,55 @@
+// Job Management API — CRUD + pause/resume/trigger
+
+import "./middleware.srv"
+
+route "GET" "/api/v1/jobs" (req) use [xActor] {
+    let result = db.queryPage("jobs", "{}", 0, 20)
+    return result
+}
+
+route "GET" "/api/v1/jobs/:id" (req) {
+    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.id}\"}")
+    if job == nil {
+        return { "error": "Job not found", "status": 404 }
+    }
+    return { "job": job }
+}
+
+route "POST" "/api/v1/jobs" (req) use [xActor] {
+    let result = db.query("insert", "jobs", req.body)
+    return { "created": true, "id": result }
+}
+
+route "PUT" "/api/v1/jobs/:id" (req) use [xActor] {
+    let result = db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", req.body)
+    return result
+}
+
+route "DELETE" "/api/v1/jobs/:id" (req) use [xActor] {
+    db.query("delete", "jobs", f"{\"_id\": \"{req.params.id}\"}")
+    return { "deleted": true }
+}
+
+route "POST" "/api/v1/jobs/:id/pause" (req) use [xActor] {
+    db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"PAUSED\"}}")
+    return { "status": "paused" }
+}
+
+route "POST" "/api/v1/jobs/:id/resume" (req) use [xActor] {
+    db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"ACTIVE\"}}")
+    return { "status": "resumed" }
+}
+
+route "POST" "/api/v1/jobs/:id/trigger" (req) use [xActor] {
+    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.id}\"}")
+    if job == nil {
+        return { "error": "Job not found" }
+    }
+    channel.send(jobQueue, job)
+    return { "triggered": true, "queued": channel.len(jobQueue) }
+}
+
+route "GET" "/api/v1/jobs/:id/executions" (req) {
+    let result = db.queryPage("executions", f"{\"jobId\": \"{req.params.id}\"}", 0, 20)
+    return result
+}

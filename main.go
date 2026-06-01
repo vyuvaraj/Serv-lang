@@ -25,18 +25,23 @@ func main() {
 
 	switch command {
 	case "build":
-		buildCmd := flag.NewFlagSet("build", flag.ExitOnError)
-		outputFlag := buildCmd.String("o", "service.exe", "Output binary name")
-		if err := buildCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Printf("Error parsing arguments: %v\n", err)
-			os.Exit(1)
+		// Parse -o flag from anywhere in the args
+		outputBinary := "service.exe"
+		var buildArgs []string
+		rawArgs := os.Args[2:]
+		for i := 0; i < len(rawArgs); i++ {
+			if rawArgs[i] == "-o" && i+1 < len(rawArgs) {
+				outputBinary = rawArgs[i+1]
+				i++ // skip the value
+			} else {
+				buildArgs = append(buildArgs, rawArgs[i])
+			}
 		}
-		args := buildCmd.Args()
-		if len(args) < 1 {
+		if len(buildArgs) < 1 {
 			fmt.Println("Usage: serv build <file.srv> [-o <output>]")
 			os.Exit(1)
 		}
-		buildServ(args[0], *outputFlag)
+		buildServ(buildArgs[0], outputBinary)
 
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
@@ -161,7 +166,7 @@ func buildServ(srvFile, outputBinary string) string {
 		fmt.Printf("Build failed: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Build successful! Native binary generated: %s\n", outputBinary)
+	fmt.Printf("Build successful! Binary: %s\n", absPath)
 	return absPath
 }
 

@@ -1,0 +1,83 @@
+// Domain models for the Regulatory Cron Service
+
+export struct JobConfiguration {
+    id: string
+    name: string
+    description: string
+    cronExpression: string
+    timezone: string
+    jobClass: string
+    enabled: bool
+    status: string
+    executionTimeoutSeconds: int
+    lockTtlSeconds: int
+    maxConcurrentExecutions: int
+    version: int
+}
+
+export struct RetryPolicy {
+    maxRetries: int
+    retryDelaySeconds: int
+    backoffMultiplier: int
+    maxRetryDelaySeconds: int
+}
+
+export fn RetryPolicy.computeDelay(attempt: int) -> int {
+    let delay = self.retryDelaySeconds
+    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
+        if i < attempt {
+            delay = delay * self.backoffMultiplier
+        }
+    }
+    if delay > self.maxRetryDelaySeconds {
+        return self.maxRetryDelaySeconds
+    }
+    return delay
+}
+
+export struct ExecutionRecord {
+    id: string
+    jobId: string
+    jobName: string
+    executionId: string
+    idempotencyKey: string
+    correlationId: string
+    triggerType: string
+    status: string
+    startTime: int
+    endTime: int
+    durationMs: int
+    errorDetails: string
+}
+
+export struct DlqEntry {
+    id: string
+    jobId: string
+    jobName: string
+    executionId: string
+    errorDetails: string
+    attemptCount: int
+    status: string
+    failedAt: int
+    replayedAt: int
+}
+
+// Enums as constants
+export enum ExecutionStatus {
+    RUNNING,
+    SUCCESS,
+    FAILED,
+    RETRYING,
+    TIMED_OUT
+}
+
+export enum JobStatus {
+    ACTIVE,
+    PAUSED
+}
+
+export enum TriggerType {
+    SCHEDULED,
+    MANUAL,
+    REPLAY
+}

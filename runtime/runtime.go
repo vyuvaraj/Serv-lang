@@ -1820,6 +1820,388 @@ func ReleaseSemaphore(id string) {
 	}
 }
 
+// Atomic operations — thread-safe counters and values
+
+type AtomicValue struct {
+	mu    sync.RWMutex
+	value interface{}
+}
+
+var (
+	atomicValues   = make(map[string]*AtomicValue)
+	atomicValuesMu sync.Mutex
+)
+
+func getOrCreateAtomic(name string) *AtomicValue {
+	atomicValuesMu.Lock()
+	defer atomicValuesMu.Unlock()
+	if av, ok := atomicValues[name]; ok {
+		return av
+	}
+	av := &AtomicValue{value: 0}
+	atomicValues[name] = av
+	return av
+}
+
+// AtomicNew creates a new atomic value with an initial value.
+func AtomicNew(name interface{}, initial interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.Lock()
+	av.value = initial
+	av.mu.Unlock()
+	return nil
+}
+
+// AtomicInc increments an atomic counter by 1 and returns the new value.
+func AtomicInc(name interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	switch v := av.value.(type) {
+	case int:
+		av.value = v + 1
+		return av.value
+	case int64:
+		av.value = v + 1
+		return av.value
+	default:
+		av.value = 1
+		return 1
+	}
+}
+
+// AtomicDec decrements an atomic counter by 1 and returns the new value.
+func AtomicDec(name interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	switch v := av.value.(type) {
+	case int:
+		av.value = v - 1
+		return av.value
+	case int64:
+		av.value = v - 1
+		return av.value
+	default:
+		av.value = -1
+		return -1
+	}
+}
+
+// AtomicGet returns the current value of an atomic.
+func AtomicGet(name interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.RLock()
+	defer av.mu.RUnlock()
+	return av.value
+}
+
+// AtomicSet sets the value of an atomic.
+func AtomicSet(name interface{}, value interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.Lock()
+	av.value = value
+	av.mu.Unlock()
+	return nil
+}
+
+// AtomicCAS performs a compare-and-swap. Returns true if swapped.
+func AtomicCAS(name interface{}, expected interface{}, newValue interface{}) interface{} {
+	key := fmt.Sprint(name)
+	av := getOrCreateAtomic(key)
+	av.mu.Lock()
+	defer av.mu.Unlock()
+	if fmt.Sprint(av.value) == fmt.Sprint(expected) {
+		av.value = newValue
+		return true
+	}
+	return false
+}
+
+// Pagination support for MongoDB queries
+
+// DBQueryPage executes a paginated MongoDB find query.
+// Usage: db.queryPage("collection", filter, page, pageSize)
+func DBQueryPage(collection string, args ...interface{}) interface{} {
+	if mongoDB == nil {
+		panic("MongoDB not initialized for paginated queries")
+	}
+
+	var filter interface{} = bson.M{}
+	page := 0
+	pageSize := 20
+
+	if len(args) >= 1 && args[0] != nil {
+		filterStr, ok := args[0].(string)
+		if ok && strings.TrimSpace(filterStr) != "" {
+			var f interface{}
+			if err := json.Unmarshal([]byte(filterStr), &f); err == nil {
+				filter = f
+			}
+		} else if !ok {
+			filter = args[0]
+		}
+	}
+	if len(args) >= 2 {
+		page = toInt(args[1])
+	}
+	if len(args) >= 3 {
+		pageSize = toInt(args[2])
+		if pageSize > 100 {
+			pageSize = 100
+		}
+	}
+
+	coll := mongoDB.Collection(collection)
+
+	// Count total
+	total, err := coll.CountDocuments(ctx, filter)
+	if err != nil {
+		panic(fmt.Sprintf("MongoDB count error: %s", err.Error()))
+	}
+
+	// Find with skip/limit
+	opts := options.Find().SetSkip(int64(page * pageSize)).SetLimit(int64(pageSize))
+	cursor, err := coll.Find(ctx, filter, opts)
+	if err != nil {
+		panic(fmt.Sprintf("MongoDB find error: %s", err.Error()))
+	}
+	defer cursor.Close(ctx)
+
+	var results []interface{}
+	for cursor.Next(ctx) {
+		var row map[string]interface{}
+		if err := cursor.Decode(&row); err == nil {
+			results = append(results, ToSafeValue(row))
+		}
+	}
+
+	return map[string]interface{}{
+		"data":     results,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+		"pages":    (total + int64(pageSize) - 1) / int64(pageSize),
+	}
+}
+
+// DBFindOne finds a single document matching the filter.
+// Usage: db.findOne("collection", filter)
+func DBFindOne(collection string, args ...interface{}) interface{} {
+	if mongoDB == nil {
+		panic("MongoDB not initialized")
+	}
+
+	var filter interface{} = bson.M{}
+	if len(args) >= 1 && args[0] != nil {
+		filterStr, ok := args[0].(string)
+		if ok && strings.TrimSpace(filterStr) != "" {
+			var f interface{}
+			if err := json.Unmarshal([]byte(filterStr), &f); err == nil {
+				filter = f
+			}
+		} else if !ok {
+			filter = args[0]
+		}
+	}
+
+	coll := mongoDB.Collection(collection)
+	var result map[string]interface{}
+	err := coll.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		if err.Error() == "mongo: no documents in result" {
+			return nil
+		}
+		panic(fmt.Sprintf("MongoDB findOne error: %s", err.Error()))
+	}
+	return ToSafeValue(result)
+}
+
+// DBCount counts documents matching a filter.
+// Usage: db.count("collection", filter)
+func DBCount(collection string, args ...interface{}) interface{} {
+	if mongoDB == nil {
+		panic("MongoDB not initialized")
+	}
+
+	var filter interface{} = bson.M{}
+	if len(args) >= 1 && args[0] != nil {
+		filterStr, ok := args[0].(string)
+		if ok && strings.TrimSpace(filterStr) != "" {
+			var f interface{}
+			if err := json.Unmarshal([]byte(filterStr), &f); err == nil {
+				filter = f
+			}
+		} else if !ok {
+			filter = args[0]
+		}
+	}
+
+	coll := mongoDB.Collection(collection)
+	count, err := coll.CountDocuments(ctx, filter)
+	if err != nil {
+		panic(fmt.Sprintf("MongoDB count error: %s", err.Error()))
+	}
+	return count
+}
+
+// DBUpsert inserts or updates a document.
+// Usage: db.upsert("collection", filter, update)
+func DBUpsert(collection string, args ...interface{}) interface{} {
+	if mongoDB == nil {
+		panic("MongoDB not initialized")
+	}
+	if len(args) < 2 {
+		panic("db.upsert requires filter and update arguments")
+	}
+
+	var filter interface{} = bson.M{}
+	var update interface{}
+
+	// Parse filter
+	filterStr, ok := args[0].(string)
+	if ok {
+		var f interface{}
+		if err := json.Unmarshal([]byte(filterStr), &f); err == nil {
+			filter = f
+		}
+	} else {
+		filter = args[0]
+	}
+
+	// Parse update
+	updateStr, ok := args[1].(string)
+	if ok {
+		var u interface{}
+		if err := json.Unmarshal([]byte(updateStr), &u); err == nil {
+			update = u
+		}
+	} else {
+		update = args[1]
+	}
+
+	coll := mongoDB.Collection(collection)
+	opts := options.Update().SetUpsert(true)
+	result, err := coll.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		panic(fmt.Sprintf("MongoDB upsert error: %s", err.Error()))
+	}
+
+	return map[string]interface{}{
+		"matched_count":  result.MatchedCount,
+		"modified_count": result.ModifiedCount,
+		"upserted_id":   fmt.Sprint(result.UpsertedID),
+	}
+}
+
+// SpawnWithTimeout runs a function with a timeout. Returns result or nil on timeout.
+func SpawnWithTimeout(timeoutMs interface{}, fn func() interface{}) interface{} {
+	timeout := time.Duration(toInt(timeoutMs)) * time.Millisecond
+	ch := make(chan interface{}, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ch <- nil
+			}
+		}()
+		ch <- fn()
+	}()
+	select {
+	case result := <-ch:
+		return result
+	case <-time.After(timeout):
+		return nil
+	}
+}
+
+// Channel operations — Go channels exposed to Serv
+
+// ChannelNew creates a buffered channel with the given capacity.
+// Usage: let ch = channel.new(100)
+func ChannelNew(capacity interface{}) interface{} {
+	cap := toInt(capacity)
+	if cap <= 0 {
+		cap = 1
+	}
+	return make(chan interface{}, cap)
+}
+
+// ChannelSend sends a value to a channel. Blocks if channel is full.
+// Usage: channel.send(ch, value)
+func ChannelSend(ch interface{}, value interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		c <- value
+	}
+	return nil
+}
+
+// ChannelReceive receives a value from a channel. Blocks until a value is available.
+// Usage: let value = channel.receive(ch)
+func ChannelReceive(ch interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		val, ok := <-c
+		if !ok {
+			return nil // channel closed
+		}
+		return val
+	}
+	return nil
+}
+
+// ChannelTryReceive attempts to receive without blocking. Returns nil if nothing available.
+// Usage: let value = channel.tryReceive(ch)
+func ChannelTryReceive(ch interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		select {
+		case val, ok := <-c:
+			if !ok {
+				return nil
+			}
+			return val
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// ChannelTrySend attempts to send without blocking. Returns true if sent, false if full.
+// Usage: let sent = channel.trySend(ch, value)
+func ChannelTrySend(ch interface{}, value interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		select {
+		case c <- value:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// ChannelClose closes a channel. Receivers will get nil after all buffered values are consumed.
+// Usage: channel.close(ch)
+func ChannelClose(ch interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		close(c)
+	}
+	return nil
+}
+
+// ChannelLen returns the number of elements currently buffered in the channel.
+// Usage: let pending = channel.len(ch)
+func ChannelLen(ch interface{}) interface{} {
+	if c, ok := ch.(chan interface{}); ok {
+		return len(c)
+	}
+	return 0
+}
+
 // Helper to configure connection pool from YAML config or Env
 func configureDBPool(db *sql.DB) {
 	maxOpen := 25

@@ -1,0 +1,71 @@
+// Dead Letter Queue Service
+// Routes permanently failed executions to a DLQ for manual review and replay.
+
+export fn createDlqEntry(jobId: string, jobName: string, executionId: string, errorDetails: string) {
+    let now = time.unix()
+    let doc = f"{\"jobId\": \"{jobId}\", \"jobName\": \"{jobName}\", \"executionId\": \"{executionId}\", \"errorDetails\": \"{errorDetails}\", \"status\": \"PENDING\", \"failedAt\": {now}, \"createdAt\": {now}}"
+
+    let result, err = db.query("insert", "dlq", doc)
+    if err != nil {
+        log.error(f"Failed to create DLQ entry: {err}")
+        return nil
+    }
+
+    log.info(f"DLQ entry created jobId={jobId} executionId={executionId}")
+    metric.inc("dlq_entries_total")
+    return result
+}
+
+export fn listDlq(page: int, pageSize: int) {
+    return db.queryPage("dlq", "{}", page, pageSize)
+}
+
+export fn replayDlq(entryId: string, jobQueue) {
+    let entry = db.findOne("dlq", f"{\"_id\": \"{entryId}\"}")
+    if entry == nil {
+        log.error(f"DLQ entry not found: {entryId}")
+        return nil
+    }
+
+    // Mark as replayed
+    let now = time.unix()
+    db.upsert("dlq",
+        f"{\"_id\": \"{entryId}\"}",
+        f"{\"$set\": {\"status\": \"REPLAYED\", \"replayedAt\": {now}}}"
+    )
+
+    // Re-queue the job for execution
+    let job = db.findOne("jobs", f"{\"_id\": \"{entry.jobId}\"}")
+    if job != nil {
+        channel.send(jobQueue, job)
+        log.info(f"DLQ entry replayed entryId={entryId} jobId={entry.jobId}")
+    }
+
+    return f"replay-{now}"
+}
+
+// Purge expired entries (called by daily cron in main.srv)
+export fn purgeExpiredDlq(replayedRetentionDays: int, pendingRetentionDays: int) {
+    let replayedCutoff = time.unix() - (replayedRetentionDays * 86400)
+    let pendingCutoff = time.unix() - (pendingRetentionDays * 86400)
+
+    // Delete old REPLAYED entries
+    let replayed, err = db.query("find", "dlq", f"{\"status\": \"REPLAYED\", \"createdAt\": {\"$lt\": {replayedCutoff}}}")
+    if err == nil {
+        for entry in replayed {
+            db.query("delete", "dlq", f"{\"_id\": \"{entry.id}\"}")
+        }
+        log.info(f"Purged {replayed.length} expired REPLAYED DLQ entries")
+    }
+
+    // Delete old PENDING entries (with warning)
+    let pending, err2 = db.query("find", "dlq", f"{\"status\": \"PENDING\", \"createdAt\": {\"$lt\": {pendingCutoff}}}")
+    if err2 == nil {
+        if pending.length > 0 {
+            log.warn(f"Purging {pending.length} PENDING DLQ entries older than {pendingRetentionDays} days")
+            for entry in pending {
+                db.query("delete", "dlq", f"{\"_id\": \"{entry.id}\"}")
+            }
+        }
+    }
+}

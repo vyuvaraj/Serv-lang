@@ -1,0 +1,56 @@
+// Serv Example 36: Channels
+// Lint: serv lint examples/36_channels.srv
+// Build: serv build examples/36_channels.srv -o test_channels.exe
+//
+// Demonstrates Go channels for concurrent job scheduling patterns.
+
+server "8080"
+
+// Create a job queue channel (buffered, capacity 50)
+let jobQueue = channel.new(50)
+
+// Producer: push work items onto the channel
+every 5s {
+    log.info("Producing work items...")
+    channel.send(jobQueue, "task-1")
+    channel.send(jobQueue, "task-2")
+    channel.send(jobQueue, "task-3")
+    log.info("Queue length: ", channel.len(jobQueue))
+}
+
+// Worker pool: 3 workers consuming from the channel
+fn startWorker(id: int) {
+    for true {
+        let task = channel.receive(jobQueue)
+        if task == nil {
+            log.info(f"Worker {id}: channel closed, stopping")
+            return nil
+        }
+        log.info(f"Worker {id}: processing {task}")
+        time.sleep(1000)
+        log.info(f"Worker {id}: done with {task}")
+    }
+}
+
+// Start 3 workers
+spawn startWorker(1)
+spawn startWorker(2)
+spawn startWorker(3)
+
+// Non-blocking receive example
+route "GET" "/queue/peek" (req) {
+    let item = channel.tryReceive(jobQueue)
+    if item == nil {
+        return { "status": "empty", "pending": channel.len(jobQueue) }
+    }
+    return { "item": item, "pending": channel.len(jobQueue) }
+}
+
+// Non-blocking send example
+route "POST" "/queue/push" (req) {
+    let sent = channel.trySend(jobQueue, req.body)
+    if sent == false {
+        return { "error": "queue full" }
+    }
+    return { "status": "queued", "pending": channel.len(jobQueue) }
+}

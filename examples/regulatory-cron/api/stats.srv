@@ -1,0 +1,10 @@
+// Observability API — runtime stats
+
+route "GET" "/api/v1/stats" (req) {
+    return {
+        "running_jobs": atomic.get("running_jobs"),
+        "total_executions": atomic.get("total_executions"),
+        "total_failures": atomic.get("total_failures"),
+        "queue_depth": channel.len(jobQueue)
+    }
+}

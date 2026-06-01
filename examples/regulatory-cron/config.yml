@@ -1,0 +1,42 @@
+server:
+  port: "8087"
+
+database:
+  uri: "mongodb://localhost:27017/cron_service"
+  max_open_conns: 30
+  conn_max_lifetime: "5m"
+
+cache:
+  type: "in-memory"
+
+scheduler:
+  poll_interval_seconds: 5
+  worker_count: 3
+  queue_capacity: 200
+  sync_interval_seconds: 60
+
+retry:
+  max_retries: 3
+  base_delay_seconds: 60
+  backoff_multiplier: 2
+  max_delay_seconds: 3600
+
+dlq:
+  replayed_retention_days: 30
+  pending_retention_days: 365
+  purge_cron: "0 0 2 * * *"
+
+alerting:
+  webhook:
+    url: ""
+    timeout_seconds: 10
+    retry_count: 3
+    retry_interval_seconds: 5
+
+log:
+  format: "json"
+  level: "info"
+
+pubsub:
+  queue_size: 10000
+  workers: 20

@@ -1,0 +1,53 @@
+// Alert Service — emits failure alerts via log and optional webhook.
+// Rate-limited: suppresses duplicate alerts within 5-minute window.
+
+export fn emitAlert(jobId: string, jobName: string, errorDetails: string) {
+    // Rate limiting: check if we already alerted for this job recently
+    let lastAlert = cache.get(f"alert:{jobId}")
+    if lastAlert != nil {
+        log.debug(f"Alert suppressed for job {jobId} (rate limited)")
+        return nil
+    }
+
+    // Set rate limit marker (5 minute TTL)
+    cache.set(f"alert:{jobId}", time.unix(), "5m")
+
+    // Always log the alert
+    log.error(f"ALERT: Job failure jobId={jobId} jobName={jobName} error={errorDetails}")
+    metric.inc("alerts_total")
+
+    // Deliver webhook if configured
+    let webhookUrl = config("alerting.webhook.url")
+    if webhookUrl != "" {
+        deliverWebhook(webhookUrl, jobId, jobName, errorDetails)
+    }
+}
+
+fn deliverWebhook(url: string, jobId: string, jobName: string, errorDetails: string) {
+    let payload = json.stringify({
+        "jobId": jobId,
+        "jobName": jobName,
+        "error": errorDetails,
+        "failedAt": time.now()
+    })
+
+    let maxRetries = 3
+    let attempt = 0
+
+    for attempt < maxRetries {
+        let response, err = http.post(url, payload)
+        if err == nil {
+            log.debug(f"Webhook alert delivered for job {jobId}")
+            return nil
+        }
+
+        log.warn(f"Webhook delivery failed attempt={attempt + 1}: {err}")
+        attempt = attempt + 1
+
+        if attempt < maxRetries {
+            time.sleep(5000)
+        }
+    }
+
+    log.error(f"Webhook alert delivery exhausted for job {jobId} after {maxRetries} attempts")
+}

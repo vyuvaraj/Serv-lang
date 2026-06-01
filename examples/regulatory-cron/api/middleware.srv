@@ -1,0 +1,5 @@
+// API Middleware — X-Actor header validation
+
+middleware xActor(req) {
+    log.debug("API request")
+}

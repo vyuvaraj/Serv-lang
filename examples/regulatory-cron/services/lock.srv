@@ -1,0 +1,57 @@
+// Distributed Lock Manager — MongoDB document-level locking
+// Replaces Terracotta distributed locks from the original regulatoryservice.
+//
+// Lock acquisition uses MongoDB's unique index on (jobId, scheduledTime).
+// If insert succeeds → lock acquired. DuplicateKeyException → lock denied.
+
+export fn acquireLock(jobId: string, scheduledTime) {
+    let now = time.unix()
+    let expiresAt = now + 300  // 5 minute TTL
+
+    let lockDoc = f"{\"jobId\": \"{jobId}\", \"scheduledTime\": {scheduledTime}, \"instanceId\": \"node-1\", \"acquiredAt\": {now}, \"expiresAt\": {expiresAt}}"
+
+    let result, err = db.query("insert", "locks", lockDoc)
+    if err != nil {
+        // DuplicateKey = lock held by another instance
+        log.debug(f"Lock denied for job {jobId}: {err}")
+        return nil
+    }
+
+    log.debug(f"Lock acquired for job {jobId}")
+    return result
+}
+
+export fn releaseLock(lockHandle) {
+    if lockHandle == nil {
+        return nil
+    }
+    let lockId = lockHandle.inserted_id
+    db.query("delete", "locks", f"{\"_id\": \"{lockId}\"}")
+    log.debug("Lock released")
+}
+
+export fn extendLock(lockId: string, extensionSeconds: int) {
+    let newExpiry = time.unix() + extensionSeconds
+    let result, err = db.upsert("locks",
+        f"{\"_id\": \"{lockId}\"}",
+        f"{\"$set\": {\"expiresAt\": {newExpiry}}}"
+    )
+    if err != nil {
+        log.warn(f"Lock extension failed: {err}")
+        return false
+    }
+    return true
+}
+
+// Lock heartbeat: extends lock every TTL/3 while job is running
+export fn startHeartbeat(lockId: string, ttlSeconds: int) {
+    let interval = ttlSeconds / 3
+    for true {
+        time.sleep(interval * 1000)
+        let ok = extendLock(lockId, ttlSeconds)
+        if ok == false {
+            log.warn("Heartbeat: lock extension failed, aborting")
+            return nil
+        }
+    }
+}

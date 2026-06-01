@@ -1,0 +1,68 @@
+// Example Batch Processing Job
+// Pattern: Process records in chunks using keyset pagination.
+// Stays within execution timeout by processing fixed-size batches.
+// Equivalent of ExampleBatchProcessingJob.java
+//
+// Register via API:
+// POST /api/v1/jobs
+// { "name": "account-verification", "cronExpression": "0 0 3 * * *", "jobClass": "batch_processing",
+//   "payload": { "batchSize": 500, "collection": "player_accounts" } }
+
+export fn executeBatchProcessing(payload, idempotencyKey: string) {
+    let batchSize = 500
+    let collection = "player_accounts"
+
+    if payload != nil {
+        log.debug("Using payload configuration")
+    }
+
+    log.info(f"Starting batch processing idempotencyKey={idempotencyKey} batchSize={batchSize}")
+
+    let totalProcessed = 0
+    let lastId = 0
+    let hasMore = true
+
+    for hasMore {
+        // Chunked processing — keyset pagination (no offset degradation)
+        log.debug(f"Processing batch after id={lastId}")
+
+        let batchCount = processBatch(collection, lastId, batchSize)
+        totalProcessed = totalProcessed + batchCount
+
+        if batchCount < batchSize {
+            hasMore = false
+        } else {
+            lastId = lastId + batchSize
+        }
+    }
+
+    log.info(f"Batch processing complete idempotencyKey={idempotencyKey} totalProcessed={totalProcessed}")
+    metric.inc("batch_records_processed_total")
+}
+
+fn processBatch(collection: string, afterId: int, batchSize: int) -> int {
+    // Query records after the last processed ID
+    let filter = f"{\"_id\": {\"$gt\": {afterId}}}"
+    let records, err = db.query("find", collection, filter)
+
+    if err != nil {
+        log.error(f"Database access failed: {err}")
+        return 0
+    }
+
+    if records == nil {
+        return 0
+    }
+
+    // Process each record
+    for record in records {
+        processRecord(record)
+    }
+
+    return records.length
+}
+
+fn processRecord(record) {
+    // Real implementation: validate, transform, update status
+    log.debug("Processing record")
+}

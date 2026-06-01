@@ -1,0 +1,62 @@
+// Serv Example 35: Missing Primitives (for regulatory-cron-service port)
+// Lint: serv lint examples/35_primitives.srv
+
+server "8080"
+database "mongodb://localhost:27017/cron_service"
+
+// Atomic counters for concurrency control
+atomic.new("running_jobs", 0)
+
+// Time operations
+fn retryWithBackoff(attempt: int, baseDelay: int) {
+    let delay = baseDelay * attempt
+    time.sleep(delay)
+}
+
+// Paginated MongoDB queries
+route "GET" "/api/v1/jobs" (req) {
+    let page = 0
+    let result = db.queryPage("jobs", "{}", page, 20)
+    return result
+}
+
+// Find single document
+route "GET" "/api/v1/jobs/:id" (req) {
+    let filter = f"{\"_id\": \"{req.params.id}\"}"
+    let job = db.findOne("jobs", filter)
+    if job == nil {
+        return { "error": "Job not found" }
+    }
+    return { "job": job }
+}
+
+// Count documents
+route "GET" "/api/v1/jobs/count" (req) {
+    let total = db.count("jobs", "{\"enabled\": true}")
+    return { "count": total }
+}
+
+// Upsert (insert or update)
+route "POST" "/api/v1/locks" (req) {
+    let result = db.upsert("locks", req.body, req.body)
+    return result
+}
+
+// Atomic concurrency control
+fn acquireSlot(jobId: string) -> bool {
+    let current = atomic.get("running_jobs")
+    if current > 10 {
+        return false
+    }
+    atomic.inc("running_jobs")
+    return true
+}
+
+fn releaseSlot() {
+    atomic.dec("running_jobs")
+}
+
+// Unix timestamp
+fn getTimestamp() -> int {
+    return time.unix()
+}

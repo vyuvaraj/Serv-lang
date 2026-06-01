@@ -1,0 +1,232 @@
+// Data Seeder — seeds sample jobs if the database is empty.
+// Equivalent of DataSeeder.java (dev profile).
+// Runs once at startup.
+
+export fn seedIfEmpty() {
+    let count = db.count("jobs", "{}")
+    if count > 0 {
+        log.info(f"Database already has {count} jobs, skipping seed")
+        return nil
+    }
+
+    log.info("Seeding sample job data...")
+
+    // 1. KYC reminder batch — Italy
+    db.query("insert", "jobs", json.stringify({
+        "name": "kyc-reminder-batch-it",
+        "description": "KYC reminder batch for Italy",
+        "cronExpression": "0 */30 * * *",
+        "timezone": "Europe/Rome",
+        "jobClass": "batch_processing",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Italy"],
+        "executionTimeoutSeconds": 300,
+        "lockTtlSeconds": 300,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 2. AAMS daily sync — Italy
+    db.query("insert", "jobs", json.stringify({
+        "name": "aams-sync-daily",
+        "description": "Daily AAMS regulatory sync",
+        "cronExpression": "0 0 3 * * *",
+        "timezone": "Europe/Rome",
+        "jobClass": "data_sync",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Italy"],
+        "executionTimeoutSeconds": 600,
+        "lockTtlSeconds": 600,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 3. Gamstop check — UK
+    db.query("insert", "jobs", json.stringify({
+        "name": "gamstop-check-uk",
+        "description": "Gamstop self-exclusion check",
+        "cronExpression": "0 */15 * * *",
+        "timezone": "Europe/London",
+        "jobClass": "data_sync",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["UK"],
+        "executionTimeoutSeconds": 180,
+        "lockTtlSeconds": 180,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 4. CNJ verification — Brazil (PAUSED)
+    db.query("insert", "jobs", json.stringify({
+        "name": "cnj-verification-brazil",
+        "description": "CNJ regulatory verification",
+        "cronExpression": "0 0 */2 * *",
+        "timezone": "America/Sao_Paulo",
+        "jobClass": "data_sync",
+        "enabled": true,
+        "status": "PAUSED",
+        "jurisdictionTags": ["Brazil"],
+        "executionTimeoutSeconds": 300,
+        "lockTtlSeconds": 300,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 5. TSUPIS sync — Greece
+    db.query("insert", "jobs", json.stringify({
+        "name": "tsupis-sync-greece",
+        "description": "TSUPIS data synchronization",
+        "cronExpression": "0 0 4 * * *",
+        "timezone": "Europe/Athens",
+        "jobClass": "data_sync",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Greece"],
+        "executionTimeoutSeconds": 900,
+        "lockTtlSeconds": 900,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 6. Account closure batch — multi-jurisdiction
+    db.query("insert", "jobs", json.stringify({
+        "name": "account-closure-batch",
+        "description": "Account closure processing",
+        "cronExpression": "0 0 2 * * *",
+        "timezone": "UTC",
+        "jobClass": "batch_processing",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Italy", "UK", "Germany"],
+        "executionTimeoutSeconds": 600,
+        "lockTtlSeconds": 600,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 7. Audit log cleanup
+    db.query("insert", "jobs", json.stringify({
+        "name": "audit-log-cleanup",
+        "description": "Cleanup old audit log entries",
+        "cronExpression": "0 0 1 * * *",
+        "timezone": "UTC",
+        "jobClass": "cleanup",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": [],
+        "payload": { "collection": "audit_logs", "retentionDays": 90 },
+        "executionTimeoutSeconds": 120,
+        "lockTtlSeconds": 120,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 8. Cache invalidation (frequent)
+    db.query("insert", "jobs", json.stringify({
+        "name": "cache-invalidation-all",
+        "description": "Cache invalidation across jurisdictions",
+        "cronExpression": "*/5 * * * *",
+        "timezone": "UTC",
+        "jobClass": "cleanup",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": [],
+        "executionTimeoutSeconds": 30,
+        "lockTtlSeconds": 30,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 1, "retryDelaySeconds": 5, "backoffMultiplier": 1, "maxRetryDelaySeconds": 10 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 9. KYC reminder — Germany
+    db.query("insert", "jobs", json.stringify({
+        "name": "kyc-reminder-batch-de",
+        "description": "KYC reminder batch for Germany",
+        "cronExpression": "0 0 8 * * *",
+        "timezone": "Europe/Berlin",
+        "jobClass": "batch_processing",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Germany"],
+        "executionTimeoutSeconds": 300,
+        "lockTtlSeconds": 300,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 10. Jumio verification — multi-jurisdiction
+    db.query("insert", "jobs", json.stringify({
+        "name": "jumio-verification-check",
+        "description": "Jumio identity verification batch",
+        "cronExpression": "0 */10 * * *",
+        "timezone": "UTC",
+        "jobClass": "data_sync",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Italy", "UK", "Germany", "Greece"],
+        "executionTimeoutSeconds": 240,
+        "lockTtlSeconds": 240,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 11. Player dormancy — Spain (PAUSED)
+    db.query("insert", "jobs", json.stringify({
+        "name": "player-dormancy-check-es",
+        "description": "Spain player dormancy check",
+        "cronExpression": "0 0 6 * * *",
+        "timezone": "Europe/Madrid",
+        "jobClass": "batch_processing",
+        "enabled": true,
+        "status": "PAUSED",
+        "jurisdictionTags": ["Spain"],
+        "executionTimeoutSeconds": 300,
+        "lockTtlSeconds": 300,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    // 12. Regulatory report — Romania (weekly)
+    db.query("insert", "jobs", json.stringify({
+        "name": "regulatory-report-ro",
+        "description": "Romania regulatory reporting",
+        "cronExpression": "0 0 5 * * 1",
+        "timezone": "Europe/Bucharest",
+        "jobClass": "batch_processing",
+        "enabled": true,
+        "status": "ACTIVE",
+        "jurisdictionTags": ["Romania"],
+        "executionTimeoutSeconds": 1800,
+        "lockTtlSeconds": 1800,
+        "maxConcurrentExecutions": 1,
+        "retryPolicy": { "maxRetries": 3, "retryDelaySeconds": 60, "backoffMultiplier": 2, "maxRetryDelaySeconds": 3600 },
+        "createdBy": "data-seeder",
+        "version": 1
+    }))
+
+    log.info("Seeded 12 sample jobs")
+}

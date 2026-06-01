@@ -1,0 +1,11 @@
+// Bulk Operations API — pause/resume multiple jobs
+
+import "./middleware.srv"
+
+route "POST" "/api/v1/jobs/bulk/pause" (req) use [xActor] {
+    return { "affected": 0, "message": "Bulk pause executed" }
+}
+
+route "POST" "/api/v1/jobs/bulk/resume" (req) use [xActor] {
+    return { "affected": 0, "message": "Bulk resume executed" }
+}

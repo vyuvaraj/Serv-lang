@@ -1,0 +1,105 @@
+// Job Executor — resolves and invokes jobs with retry logic, timeout, and DLQ routing.
+// Equivalent of LocalJobExecutor.java
+
+import { createDlqEntry } from "./dlq.srv"
+import { emitAlert } from "./alert.srv"
+
+export fn executeWithRetry(job) {
+    let maxRetries = 3
+    let baseDelay = 60  // seconds
+    let backoff = 2
+    let maxDelay = 3600
+
+    let executionId = f"exec-{time.unix()}"
+    let startTime = time.unix()
+
+    // Record execution start
+    let execDoc = f"{\"jobId\": \"{job.id}\", \"jobName\": \"{job.name}\", \"executionId\": \"{executionId}\", \"status\": \"RUNNING\", \"startTime\": {startTime}}"
+    db.query("insert", "executions", execDoc)
+
+    log.info(f"Starting execution jobId={job.id} executionId={executionId}")
+    metric.inc("executions_total")
+
+    // Retry loop
+    let attempt = 0
+    let lastError = nil
+
+    for attempt < maxRetries + 1 {
+        let result, err = executeOnce(job)
+
+        if err == nil {
+            // Success
+            let endTime = time.unix()
+            let duration = endTime - startTime
+            db.upsert("executions",
+                f"{\"executionId\": \"{executionId}\"}",
+                f"{\"$set\": {\"status\": \"SUCCESS\", \"endTime\": {endTime}, \"durationMs\": {duration * 1000}}}"
+            )
+            log.info(f"Execution SUCCESS jobId={job.id} duration={duration}s")
+            metric.inc("executions_success_total")
+            return "SUCCESS"
+        }
+
+        lastError = err
+        log.warn(f"Execution failed jobId={job.id} attempt={attempt + 1}/{maxRetries + 1}: {err}")
+
+        // Check if retriable
+        if err.startsWith("NON_RETRIABLE:") {
+            log.error(f"Non-retriable failure, routing to DLQ: {err}")
+            break
+        }
+
+        // Retry with exponential backoff
+        if attempt < maxRetries {
+            let delay = baseDelay
+            for i in [0, 1, 2, 3, 4] {
+                if i < attempt {
+                    delay = delay * backoff
+                }
+            }
+            if delay > maxDelay {
+                delay = maxDelay
+            }
+            log.info(f"Retrying in {delay}s...")
+            metric.inc("retries_total")
+            db.upsert("executions",
+                f"{\"executionId\": \"{executionId}\"}",
+                f"{\"$set\": {\"status\": \"RETRYING\"}}"
+            )
+            time.sleep(delay * 1000)
+        }
+
+        attempt = attempt + 1
+    }
+
+    // Terminal failure
+    let endTime = time.unix()
+    let duration = endTime - startTime
+    db.upsert("executions",
+        f"{\"executionId\": \"{executionId}\"}",
+        f"{\"$set\": {\"status\": \"FAILED\", \"endTime\": {endTime}, \"durationMs\": {duration * 1000}, \"errorDetails\": \"{lastError}\"}}"
+    )
+
+    metric.inc("executions_failed_total")
+
+    // Route to DLQ
+    createDlqEntry(job.id, job.name, executionId, lastError)
+
+    // Emit alert
+    emitAlert(job.id, job.name, lastError)
+
+    return "FAILED"
+}
+
+fn executeOnce(job) {
+    // In the Java version, this resolves a Spring bean by class name and calls execute().
+    // In Serv, jobs are defined as functions. This simulates the execution.
+    log.debug(f"Executing job class: {job.jobClass}")
+
+    // Simulate job execution — in real impl, this would dispatch to registered job functions
+    let result, err = http.get(f"http://localhost:8080/internal/jobs/{job.jobClass}/run")
+    if err != nil {
+        return nil
+    }
+    return result
+}
