@@ -1,21 +1,24 @@
 {
   "name": "serv-vscode",
   "displayName": "Serv Language Support",
-  "description": "Syntax highlighting and language configuration for the Serv programming language (.srv files).",
-  "version": "1.0.0",
+  "description": "Full language support for the Serv programming language (.srv files) — diagnostics, autocomplete, hover, go-to-definition.",
+  "version": "2.0.0",
   "publisher": "serv-lang",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:serv"
   ],
   "main": "./extension.js",
   "icon": "images/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/serv-lang/Serv.git"
+    "url": "https://github.com/vyuvaraj/Serv-lang.git"
   },
   "author": {
     "name": "Serv Language Team"
@@ -25,12 +28,10 @@
     "background services",
     "dsl",
     "syntax highlighting",
-    "snippets"
+    "snippets",
+    "lsp"
   ],
-  "bugPreviews": {
-    "url": "https://github.com/serv-lang/Serv/issues"
-  },
-  "homepage": "https://github.com/serv-lang/Serv",
+  "homepage": "https://github.com/vyuvaraj/Serv-lang",
   "contributes": {
     "languages": [
       {
@@ -57,6 +58,19 @@
         "language": "serv",
         "path": "./snippets/serv.code-snippets"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Serv",
+      "properties": {
+        "serv.lspPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the serv-lsp binary. If empty, looks for 'serv-lsp' in PATH or workspace root."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }
