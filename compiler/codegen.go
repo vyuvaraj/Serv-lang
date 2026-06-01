@@ -19,6 +19,8 @@ type Codegen struct {
 	regexDecls          []string          // collected compiled regex variables
 	structTypes         map[string]bool   // known struct type names
 	funcReturnTypes     map[string]string // fnName -> return type
+	goPackageAliases    map[string]string // alias -> Go package name (e.g. "uuid" -> "uuid")
+	declaredGoFuncs     map[string]string // "pkg:FuncName" -> "pkgname.FuncName"
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -31,6 +33,8 @@ func NewCodegen(program *Program) *Codegen {
 		regexDecls:   []string{},
 		structTypes:  make(map[string]bool),
 		funcReturnTypes: make(map[string]string),
+		goPackageAliases: make(map[string]string),
+		declaredGoFuncs:  make(map[string]string),
 	}
 }
 
@@ -152,6 +156,24 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 	switch s := stmt.(type) {
 	case *ImportStmt:
 		// Local imports are handled at parser stage by merging ASTs, so nothing to output here
+		return "", nil
+
+	case *GoPackageImport:
+		// Register the Go package import and alias for codegen
+		c.imports[`"`+s.Path+`"`] = true
+		// Store alias -> package mapping for member expression resolution
+		pkgName := filepath.Base(s.Path)
+		c.goPackageAliases[s.Alias] = pkgName
+		return "", nil
+
+	case *DeclareModuleStmt:
+		// Declaration files don't generate code — they inform the type system
+		// Register the package functions for later resolution
+		pkgName := filepath.Base(s.PkgPath)
+		for _, fn := range s.Functions {
+			key := s.PkgPath + ":" + fn.Name
+			c.declaredGoFuncs[key] = pkgName + "." + fn.Name
+		}
 		return "", nil
 
 	case *ExportStmt:
@@ -769,6 +791,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		// Struct instance field access: if the object is a known struct type variable
 		if objType, ok := c.varTypes[objStr]; ok && objType != "interface{}" && objType != "int" && objType != "string" && objType != "float64" && objType != "bool" && objType != "[]interface{}" {
 			return fmt.Sprintf("%s.%s", objStr, capitalizeFirst(e.Field)), nil
+		}
+
+		// Go package alias: uuid.New -> uuid.New (direct Go package call)
+		if goPkg, ok := c.goPackageAliases[objStr]; ok {
+			return fmt.Sprintf("%s.%s", goPkg, e.Field), nil
 		}
 
 		// Builtin conversions
@@ -1577,6 +1604,10 @@ func stmtToken(stmt Statement) Token {
 	case *InterfaceDecl:
 		return s.Token
 	case *MiddlewareDecl:
+		return s.Token
+	case *DeclareModuleStmt:
+		return s.Token
+	case *GoPackageImport:
 		return s.Token
 	case *ExportStmt:
 		return stmtToken(s.Inner)

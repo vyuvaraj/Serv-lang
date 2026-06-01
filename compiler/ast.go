@@ -722,3 +722,36 @@ func (m *MiddlewareDecl) TokenLiteral() string { return m.Token.Literal }
 func (m *MiddlewareDecl) String() string {
 	return "middleware " + m.Name + "(" + m.Param + ") " + m.Body.String() + "\n"
 }
+
+// DeclareModuleStmt: declare module "github.com/pkg" { fn Name() -> type }
+type DeclareModuleFunc struct {
+	Name       string
+	Params     []string
+	ParamTypes []string
+	ReturnType string
+}
+
+type DeclareModuleStmt struct {
+	Token     Token
+	PkgPath   string // Go import path
+	Functions []DeclareModuleFunc
+}
+
+func (d *DeclareModuleStmt) statementNode()       {}
+func (d *DeclareModuleStmt) TokenLiteral() string { return d.Token.Literal }
+func (d *DeclareModuleStmt) String() string {
+	return "declare module \"" + d.PkgPath + "\" { ... }\n"
+}
+
+// GoPackageImport: import alias from "github.com/pkg"
+type GoPackageImport struct {
+	Token Token
+	Alias string // local alias name
+	Path  string // Go package import path
+}
+
+func (g *GoPackageImport) statementNode()       {}
+func (g *GoPackageImport) TokenLiteral() string { return g.Token.Literal }
+func (g *GoPackageImport) String() string {
+	return "import " + g.Alias + " from \"" + g.Path + "\"\n"
+}

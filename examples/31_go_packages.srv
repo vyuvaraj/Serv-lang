@@ -1,0 +1,41 @@
+// Serv Example 31: Go Package Declarations
+// Lint: serv lint examples/31_go_packages.srv
+// Build: serv build examples/31_go_packages.srv -o test_gopkg.exe
+//
+// This demonstrates calling Go packages directly from Serv
+// using declare module + import alias from "path"
+
+// Declare the Go package interface (what functions are available)
+declare module "strings" {
+    fn ToUpper(s: string) -> string
+    fn ToLower(s: string) -> string
+    fn Contains(s: string, substr: string) -> bool
+    fn ReplaceAll(s: string, old: string, new: string) -> string
+    fn Split(s: string, sep: string) -> string
+}
+
+declare module "strconv" {
+    fn Itoa(i: int) -> string
+    fn Atoi(s: string) -> int
+}
+
+// Import with alias
+import strings from "strings"
+import strconv from "strconv"
+
+server "8080"
+
+route "GET" "/upper" (req) {
+    let result = strings.ToUpper("hello serv")
+    return { "result": result }
+}
+
+route "GET" "/convert" (req) {
+    let num = strconv.Itoa(42)
+    return { "number_as_string": num }
+}
+
+route "GET" "/check" (req) {
+    let has = strings.Contains("hello world", "world")
+    return { "contains_world": has }
+}

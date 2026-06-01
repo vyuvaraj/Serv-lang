@@ -187,6 +187,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseInterfaceDeclaration()
 	case TOKEN_MIDDLEWARE:
 		return p.parseMiddlewareDeclaration()
+	case TOKEN_DECLARE:
+		return p.parseDeclareStatement()
 	case TOKEN_EXPORT:
 		return p.parseExportStatement()
 	default:
@@ -195,6 +197,19 @@ func (p *Parser) parseStatement() Statement {
 }
 
 func (p *Parser) parseImportStatement() Statement {
+	// Check for Go package import: import alias from "go/package/path"
+	if p.peekToken.Type == TOKEN_IDENT {
+		alias := p.peekToken.Literal
+		p.nextToken() // consume alias
+		if !p.expectPeek(TOKEN_FROM) {
+			return nil
+		}
+		if !p.expectPeek(TOKEN_STRING) {
+			return nil
+		}
+		return &GoPackageImport{Token: p.curToken, Alias: alias, Path: p.curToken.Literal}
+	}
+
 	stmt := &ImportStmt{Token: p.curToken.Type}
 
 	// Check for named import: import { Name1, Name2 } from "path"
@@ -1281,6 +1296,88 @@ func (p *Parser) parseStructDeclaration() Statement {
 		if p.peekToken.Type == TOKEN_COMMA {
 			p.nextToken()
 		}
+	}
+
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+
+	return stmt
+}
+
+// parseDeclareStatement parses: declare module "pkg/path" { fn Name(params) -> type; ... }
+func (p *Parser) parseDeclareStatement() Statement {
+	stmt := &DeclareModuleStmt{Token: p.curToken}
+
+	// Expect 'module'
+	if !p.expectPeek(TOKEN_MODULE) {
+		return nil
+	}
+
+	// Package path string
+	if !p.expectPeek(TOKEN_STRING) {
+		return nil
+	}
+	stmt.PkgPath = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Functions = []DeclareModuleFunc{}
+	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+		p.nextToken()
+		if p.curToken.Type != TOKEN_FN {
+			p.addError(fmt.Sprintf("expected 'fn' in declare module body, got %s", p.curToken.Type))
+			return nil
+		}
+
+		if !p.expectPeek(TOKEN_IDENT) {
+			return nil
+		}
+		fn := DeclareModuleFunc{Name: p.curToken.Literal}
+
+		if !p.expectPeek(TOKEN_LPAREN) {
+			return nil
+		}
+
+		fn.Params = []string{}
+		fn.ParamTypes = []string{}
+		if p.peekToken.Type != TOKEN_RPAREN {
+			p.nextToken()
+			fn.Params = append(fn.Params, p.curToken.Literal)
+			if p.peekToken.Type == TOKEN_COLON {
+				p.nextToken()
+				p.nextToken()
+				fn.ParamTypes = append(fn.ParamTypes, p.curToken.Literal)
+			} else {
+				fn.ParamTypes = append(fn.ParamTypes, "")
+			}
+			for p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+				p.nextToken()
+				fn.Params = append(fn.Params, p.curToken.Literal)
+				if p.peekToken.Type == TOKEN_COLON {
+					p.nextToken()
+					p.nextToken()
+					fn.ParamTypes = append(fn.ParamTypes, p.curToken.Literal)
+				} else {
+					fn.ParamTypes = append(fn.ParamTypes, "")
+				}
+			}
+		}
+
+		if !p.expectPeek(TOKEN_RPAREN) {
+			return nil
+		}
+
+		if p.peekToken.Type == TOKEN_RET_ARROW {
+			p.nextToken()
+			p.nextToken()
+			fn.ReturnType = p.curToken.Literal
+		}
+
+		stmt.Functions = append(stmt.Functions, fn)
 	}
 
 	if !p.expectPeek(TOKEN_RBRACE) {
