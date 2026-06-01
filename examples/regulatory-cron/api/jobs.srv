@@ -1,18 +1,23 @@
 // Job Management API — CRUD + pause/resume/trigger
 
-import "./middleware.srv"
-
-route "GET" "/api/v1/jobs" (req) use [xActor] {
+route "GET" "/api/v1/jobs" (req) {
     let result = db.queryPage("jobs", "{}", 0, 20)
-    return result
+    // Return Spring Page-compatible format
+    return {
+        "content": result.data,
+        "totalElements": result.total,
+        "totalPages": result.pages,
+        "size": result.pageSize,
+        "number": result.page
+    }
 }
 
-route "GET" "/api/v1/jobs/:id" (req) {
-    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.id}\"}")
+route "GET" "/api/v1/jobs/:jobId" (req) {
+    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.jobId}\"}")
     if job == nil {
         return { "error": "Job not found", "status": 404 }
     }
-    return { "job": job }
+    return { "job": job, "recentExecutions": [] }
 }
 
 route "POST" "/api/v1/jobs" (req) use [xActor] {
@@ -20,36 +25,42 @@ route "POST" "/api/v1/jobs" (req) use [xActor] {
     return { "created": true, "id": result }
 }
 
-route "PUT" "/api/v1/jobs/:id" (req) use [xActor] {
-    let result = db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", req.body)
+route "PUT" "/api/v1/jobs/:jobId" (req) use [xActor] {
+    let result = db.upsert("jobs", f"{\"_id\": \"{req.params.jobId}\"}", req.body)
     return result
 }
 
-route "DELETE" "/api/v1/jobs/:id" (req) use [xActor] {
-    db.query("delete", "jobs", f"{\"_id\": \"{req.params.id}\"}")
+route "DELETE" "/api/v1/jobs/:jobId" (req) use [xActor] {
+    db.query("delete", "jobs", f"{\"_id\": \"{req.params.jobId}\"}")
     return { "deleted": true }
 }
 
-route "POST" "/api/v1/jobs/:id/pause" (req) use [xActor] {
-    db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"PAUSED\"}}")
+route "POST" "/api/v1/jobs/:jobId/pause" (req) use [xActor] {
+    db.upsert("jobs", f"{\"_id\": \"{req.params.jobId}\"}", f"{\"$set\": {\"status\": \"PAUSED\"}}")
     return { "status": "paused" }
 }
 
-route "POST" "/api/v1/jobs/:id/resume" (req) use [xActor] {
-    db.upsert("jobs", f"{\"_id\": \"{req.params.id}\"}", f"{\"$set\": {\"status\": \"ACTIVE\"}}")
+route "POST" "/api/v1/jobs/:jobId/resume" (req) use [xActor] {
+    db.upsert("jobs", f"{\"_id\": \"{req.params.jobId}\"}", f"{\"$set\": {\"status\": \"ACTIVE\"}}")
     return { "status": "resumed" }
 }
 
-route "POST" "/api/v1/jobs/:id/trigger" (req) use [xActor] {
-    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.id}\"}")
+route "POST" "/api/v1/jobs/:jobId/trigger" (req) use [xActor] {
+    let job = db.findOne("jobs", f"{\"_id\": \"{req.params.jobId}\"}")
     if job == nil {
         return { "error": "Job not found" }
     }
     channel.send(jobQueue, job)
-    return { "triggered": true, "queued": channel.len(jobQueue) }
+    return { "executionId": f"exec-{time.unix()}" }
 }
 
-route "GET" "/api/v1/jobs/:id/executions" (req) {
-    let result = db.queryPage("executions", f"{\"jobId\": \"{req.params.id}\"}", 0, 20)
-    return result
+route "GET" "/api/v1/jobs/:jobId/executions" (req) {
+    let result = db.queryPage("executions", f"{\"jobId\": \"{req.params.jobId}\"}", 0, 20)
+    return {
+        "content": result.data,
+        "totalElements": result.total,
+        "totalPages": result.pages,
+        "size": result.pageSize,
+        "number": result.page
+    }
 }

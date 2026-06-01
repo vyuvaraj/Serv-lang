@@ -2099,6 +2099,157 @@ func DBUpsert(collection string, args ...interface{}) interface{} {
 	}
 }
 
+// Registry — generic named function map for dynamic dispatch.
+// Supports registering functions by name and calling them dynamically.
+// Use cases: job schedulers, event handlers, plugin systems, command dispatch.
+
+var (
+	registryFuncs   = make(map[string]interface{})
+	registryFuncsMu sync.RWMutex
+)
+
+// RegistrySet registers a function by name.
+// Usage: registry.set("batch_processing", executeBatchProcessing)
+func RegistrySet(name interface{}, handler interface{}) interface{} {
+	key := fmt.Sprint(name)
+	registryFuncsMu.Lock()
+	registryFuncs[key] = handler
+	registryFuncsMu.Unlock()
+	LogInfo("Registry: registered handler '", key, "'")
+	return nil
+}
+
+// RegistryCall invokes a registered function by name with the given arguments.
+// Usage: registry.call("batch_processing", payload, idempotencyKey)
+func RegistryCall(name interface{}, args ...interface{}) interface{} {
+	key := fmt.Sprint(name)
+	registryFuncsMu.RLock()
+	handler, exists := registryFuncs[key]
+	registryFuncsMu.RUnlock()
+
+	if !exists {
+		LogError("Registry: handler not found: '", key, "'")
+		return nil
+	}
+
+	// Call the handler based on its type
+	switch fn := handler.(type) {
+	case func(interface{}) interface{}:
+		if len(args) >= 1 {
+			return fn(args[0])
+		}
+		return fn(nil)
+	case func(interface{}, interface{}) interface{}:
+		var a, b interface{}
+		if len(args) >= 1 {
+			a = args[0]
+		}
+		if len(args) >= 2 {
+			b = args[1]
+		}
+		return fn(a, b)
+	case func(interface{}, interface{}, interface{}) interface{}:
+		var a, b, c interface{}
+		if len(args) >= 1 {
+			a = args[0]
+		}
+		if len(args) >= 2 {
+			b = args[1]
+		}
+		if len(args) >= 3 {
+			c = args[2]
+		}
+		return fn(a, b, c)
+	default:
+		LogError("Registry: handler '", key, "' has unsupported signature")
+		return nil
+	}
+}
+
+// RegistryList returns all registered handler names.
+// Usage: let handlers = registry.list()
+func RegistryList() interface{} {
+	registryFuncsMu.RLock()
+	defer registryFuncsMu.RUnlock()
+	names := make([]interface{}, 0, len(registryFuncs))
+	for k := range registryFuncs {
+		names = append(names, k)
+	}
+	return names
+}
+
+// RegistryHas checks if a handler is registered.
+// Usage: let exists = registry.has("batch_processing")
+func RegistryHas(name interface{}) interface{} {
+	key := fmt.Sprint(name)
+	registryFuncsMu.RLock()
+	_, exists := registryFuncs[key]
+	registryFuncsMu.RUnlock()
+	return exists
+}
+
+// CronNext computes the next execution time for a cron expression.
+// Returns Unix timestamp (seconds) of the next occurrence.
+// Usage: let nextTime = cron.next("0 */30 * * *")
+func CronNext(cronExpr interface{}) interface{} {
+	expr := fmt.Sprint(cronExpr)
+	fields := strings.Fields(expr)
+	var schedule cron.Schedule
+	var err error
+
+	if len(fields) == 6 {
+		parser6 := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err = parser6.Parse(expr)
+	} else {
+		parser5 := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err = parser5.Parse(expr)
+	}
+
+	if err != nil {
+		LogError("CronNext: invalid cron expression '", expr, "': ", err.Error())
+		return 0
+	}
+	next := schedule.Next(time.Now())
+	return next.Unix()
+}
+
+// CronSleepUntilNext sleeps until the next occurrence of the cron expression.
+// Returns the Unix timestamp when it woke up.
+// Supports both 5-field (min hour dom month dow) and 6-field (sec min hour dom month dow).
+// Usage: cron.sleepUntilNext("0 */30 * * *")
+func CronSleepUntilNext(cronExpr interface{}) interface{} {
+	expr := fmt.Sprint(cronExpr)
+
+	// Count fields to determine format
+	fields := strings.Fields(expr)
+	var schedule cron.Schedule
+	var err error
+
+	if len(fields) == 6 {
+		// 6-field: second minute hour dom month dow
+		parser6 := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err = parser6.Parse(expr)
+	} else {
+		// 5-field: minute hour dom month dow
+		parser5 := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err = parser5.Parse(expr)
+	}
+
+	if err != nil {
+		LogError("CronSleepUntilNext: invalid cron expression '", expr, "': ", err.Error())
+		time.Sleep(60 * time.Second)
+		return time.Now().Unix()
+	}
+
+	next := schedule.Next(time.Now())
+	sleepDuration := time.Until(next)
+	LogDebug("CronSleepUntilNext: expr='", expr, "' next=", next.Format(time.RFC3339), " sleeping ", sleepDuration.String())
+	if sleepDuration > 0 {
+		time.Sleep(sleepDuration)
+	}
+	return time.Now().Unix()
+}
+
 // SpawnWithTimeout runs a function with a timeout. Returns result or nil on timeout.
 func SpawnWithTimeout(timeoutMs interface{}, fn func() interface{}) interface{} {
 	timeout := time.Duration(toInt(timeoutMs)) * time.Millisecond

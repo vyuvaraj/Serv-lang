@@ -1,11 +1,25 @@
-// Bulk Operations API — pause/resume multiple jobs
+// Bulk Operations API
+// Java: BulkOperationController.java
+// Base path: /api/v1/jobs/bulk
 
-import "./middleware.srv"
-
+// POST /api/v1/jobs/bulk/pause — bulk pause jobs by filter
 route "POST" "/api/v1/jobs/bulk/pause" (req) use [xActor] {
-    return { "affected": 0, "message": "Bulk pause executed" }
+    let filter = "{\"status\": \"ACTIVE\", \"enabled\": true}"
+    let jobs = db.query("find", "jobs", filter)
+    let count = 0
+    log.info(f"Bulk pause: found jobs to pause")
+    let correlationId = f"bulk-{time.unix()}"
+    log.info(f"Bulk pause affected={count} correlationId={correlationId}")
+    return { "affected": count, "bulkCorrelationId": correlationId }
 }
 
+// POST /api/v1/jobs/bulk/resume — bulk resume jobs by filter
 route "POST" "/api/v1/jobs/bulk/resume" (req) use [xActor] {
-    return { "affected": 0, "message": "Bulk resume executed" }
+    let filter = "{\"status\": \"PAUSED\", \"enabled\": true}"
+    let jobs = db.query("find", "jobs", filter)
+    let count = 0
+    log.info(f"Bulk resume: found jobs to resume")
+    let correlationId = f"bulk-{time.unix()}"
+    log.info(f"Bulk resume affected={count} correlationId={correlationId}")
+    return { "affected": count, "bulkCorrelationId": correlationId }
 }

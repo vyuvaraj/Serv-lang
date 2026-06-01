@@ -1,36 +1,27 @@
 // Example Cleanup/Archival Job
-// Pattern: Remove or archive stale records based on configurable retention period.
-// Equivalent of ExampleCleanupJob.java
-//
-// Register via API:
-// POST /api/v1/jobs
-// { "name": "audit-log-cleanup", "cronExpression": "0 0 2 * * *", "jobClass": "cleanup",
-//   "payload": { "collection": "audit_logs", "retentionDays": 90 } }
+// Pattern: Remove stale records based on configurable retention.
+// Registers itself in the global registry at startup.
 
-export fn executeCleanup(payload, idempotencyKey: string) {
+registry.set("cleanup", executeCleanup)
+
+export fn executeCleanup(payload, idempotencyKey) {
     let retentionDays = 90
     let collection = "audit_logs"
 
-    if payload != nil {
-        log.debug("Using payload configuration")
-    }
-
     log.info(f"Starting cleanup idempotencyKey={idempotencyKey} collection={collection} retentionDays={retentionDays}")
 
-    // Calculate cutoff timestamp (current time - retention days in seconds)
     let cutoffSeconds = retentionDays * 86400
     let cutoff = time.unix() - cutoffSeconds
 
-    // Delete records older than cutoff
     let filter = f"{\"createdAt\": {\"$lt\": {cutoff}}}"
     let result, err = db.query("delete", collection, filter)
 
     if err != nil {
         log.error(f"MongoDB access failed during cleanup: {err}")
-        // Retriable — DB connectivity issue
-        return nil
+        return "RETRIABLE"
     }
 
-    log.info(f"Cleanup complete idempotencyKey={idempotencyKey} collection={collection} deleted={result}")
+    log.info(f"Cleanup complete idempotencyKey={idempotencyKey} collection={collection}")
     metric.inc("cleanup_records_deleted_total")
+    return "ok"
 }

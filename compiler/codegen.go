@@ -959,6 +959,30 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 		}
 
+		// Registry — generic named function map
+		if objStr == "registry" {
+			switch e.Field {
+			case "set":
+				return "runtime.RegistrySet", nil
+			case "call":
+				return "runtime.RegistryCall", nil
+			case "list":
+				return "runtime.RegistryList", nil
+			case "has":
+				return "runtime.RegistryHas", nil
+			}
+		}
+
+		// Cron utilities
+		if objStr == "schedule" {
+			switch e.Field {
+			case "next":
+				return "runtime.CronNext", nil
+			case "sleepUntilNext":
+				return "runtime.CronSleepUntilNext", nil
+			}
+		}
+
 		// Channel operations
 		if objStr == "channel" {
 			switch e.Field {
