@@ -110,6 +110,19 @@ func main() {
 		}
 		addPackage(args[0])
 
+	case "fmt":
+		fmtCmd := flag.NewFlagSet("fmt", flag.ExitOnError)
+		if err := fmtCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error parsing arguments: %v\n", err)
+			os.Exit(1)
+		}
+		args := fmtCmd.Args()
+		if len(args) < 1 {
+			fmt.Println("Usage: serv fmt <file.srv>")
+			os.Exit(1)
+		}
+		formatFile(args[0])
+
 	default:
 		printUsage()
 	}
@@ -122,6 +135,7 @@ func printUsage() {
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
 	fmt.Println("  serv test <file.srv>                       Run tests defined in a Serv file")
 	fmt.Println("  serv lint <file.srv>                       Validate syntax of a Serv file")
+	fmt.Println("  serv fmt <file.srv>                        Format a Serv file")
 	fmt.Println("  serv add <go-package>                      Generate .srv.d declaration for a Go package")
 	fmt.Println("  serv dockerize <file.srv>                  Generate a Dockerfile for the Serv service")
 }
@@ -444,6 +458,73 @@ func buildDirFor(absPath string) string {
 	h := sha256.Sum256([]byte(absPath))
 	short := hex.EncodeToString(h[:4]) // 8 hex chars is enough uniqueness
 	return filepath.Join(filepath.Dir(absPath), ".build", short)
+}
+
+// formatFile formats a .srv file with consistent indentation and spacing.
+func formatFile(srvFile string) {
+	content, err := os.ReadFile(srvFile)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var result []string
+	indentLevel := 0
+	indent := "    " // 4 spaces
+	prevEmpty := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip multiple consecutive empty lines
+		if trimmed == "" {
+			if !prevEmpty {
+				result = append(result, "")
+				prevEmpty = true
+			}
+			continue
+		}
+		prevEmpty = false
+
+		// Decrease indent for closing braces
+		if strings.HasPrefix(trimmed, "}") || strings.HasPrefix(trimmed, "]") {
+			indentLevel--
+			if indentLevel < 0 {
+				indentLevel = 0
+			}
+		}
+
+		// Apply indentation
+		formatted := strings.Repeat(indent, indentLevel) + trimmed
+		result = append(result, formatted)
+
+		// Increase indent for opening braces
+		openBraces := strings.Count(trimmed, "{") + strings.Count(trimmed, "[")
+		closeBraces := strings.Count(trimmed, "}") + strings.Count(trimmed, "]")
+		indentLevel += openBraces - closeBraces
+		// Re-adjust if we already decremented for leading close brace
+		if strings.HasPrefix(trimmed, "}") || strings.HasPrefix(trimmed, "]") {
+			indentLevel += 1 // we already decremented above
+			indentLevel += openBraces - closeBraces
+			indentLevel -= 1
+		}
+		if indentLevel < 0 {
+			indentLevel = 0
+		}
+	}
+
+	// Ensure file ends with newline
+	output := strings.Join(result, "\n")
+	if !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+
+	if err := os.WriteFile(srvFile, []byte(output), 0644); err != nil {
+		fmt.Printf("Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Formatted: %s\n", srvFile)
 }
 
 // addPackage generates a .srv.d declaration file for a Go package.

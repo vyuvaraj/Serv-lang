@@ -394,6 +394,9 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 			return "", err
 		}
 		c.imports[`"fmt"`] = true
+		if s.TLS {
+			return fmt.Sprintf("func init() {\n\truntime.InitServerTLS(fmt.Sprint(%s), %q, %q)\n}\n\n", val, s.CertFile, s.KeyFile), nil
+		}
 		return fmt.Sprintf("func init() {\n\truntime.InitServer(fmt.Sprint(%s))\n}\n\n", val), nil
 
 	case *DatabaseStmt:

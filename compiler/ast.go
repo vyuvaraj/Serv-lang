@@ -85,8 +85,11 @@ func (b *BrokerStmt) String() string       { return "broker " + b.Value.String()
 
 // Server Statement
 type ServerStmt struct {
-	Token Token
-	Value Expression
+	Token    Token
+	Value    Expression
+	TLS      bool
+	CertFile string
+	KeyFile  string
 }
 
 func (s *ServerStmt) statementNode()       {}

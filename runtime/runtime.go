@@ -902,6 +902,19 @@ func InitServer(port string) {
 	serverPort = port
 }
 
+var (
+	tlsCertFile string
+	tlsKeyFile  string
+	tlsEnabled  bool
+)
+
+func InitServerTLS(port, certFile, keyFile string) {
+	serverPort = port
+	tlsCertFile = certFile
+	tlsKeyFile = keyFile
+	tlsEnabled = true
+}
+
 type routeRateLimiter struct {
 	limitRate   int
 	limitPeriod time.Duration
@@ -1492,8 +1505,15 @@ func StartServer() interface{} {
 	}()
 
 	LogInfo("Serv service listening on port ", serverPort)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		LogError("Web server error: ", err)
+	if tlsEnabled {
+		LogInfo("TLS enabled with cert=", tlsCertFile, " key=", tlsKeyFile)
+		if err := srv.ListenAndServeTLS(tlsCertFile, tlsKeyFile); err != nil && err != http.ErrServerClosed {
+			LogError("Web server TLS error: ", err)
+		}
+	} else {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			LogError("Web server error: ", err)
+		}
 	}
 	return nil
 }

@@ -306,6 +306,21 @@ func (p *Parser) parseServerStatement() Statement {
 	stmt := &ServerStmt{Token: p.curToken}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+
+	// Optional TLS: server "8080" tls "cert.pem" "key.pem"
+	if p.peekToken.Type == TOKEN_IDENT && p.peekToken.Literal == "tls" {
+		p.nextToken() // consume 'tls'
+		if !p.expectPeek(TOKEN_STRING) {
+			return nil
+		}
+		stmt.TLS = true
+		stmt.CertFile = p.curToken.Literal
+		if !p.expectPeek(TOKEN_STRING) {
+			return nil
+		}
+		stmt.KeyFile = p.curToken.Literal
+	}
+
 	return stmt
 }
 
