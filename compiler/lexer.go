@@ -86,6 +86,10 @@ const (
 	TOKEN_LTE        TokenType = "<="
 	TOKEN_GTE        TokenType = ">="
 	TOKEN_BANG       TokenType = "!"
+	TOKEN_QUESTION_DOT TokenType = "?."
+	TOKEN_SPREAD     TokenType = "..."
+	TOKEN_TYPE       TokenType = "TYPE"
+	TOKEN_VALIDATE   TokenType = "VALIDATE"
 )
 
 type Token struct {
@@ -179,7 +183,28 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = TOKEN_COMMA
 		tok.Literal = string(l.ch)
 	case '.':
+		if l.peekChar() == '.' {
+			// Check for '...' (spread operator)
+			if l.readPosition < len(l.input) && l.input[l.readPosition] == '.' {
+				l.readChar() // skip first '.'
+				l.readChar() // skip second '.'
+				l.readChar() // skip third '.'
+				tok.Type = TOKEN_SPREAD
+				tok.Literal = "..."
+				return tok
+			}
+		}
 		tok.Type = TOKEN_DOT
+		tok.Literal = string(l.ch)
+	case '?':
+		if l.peekChar() == '.' {
+			l.readChar() // skip '?'
+			l.readChar() // skip '.'
+			tok.Type = TOKEN_QUESTION_DOT
+			tok.Literal = "?."
+			return tok
+		}
+		tok.Type = TOKEN_ILLEGAL
 		tok.Literal = string(l.ch)
 	case ':':
 		tok.Type = TOKEN_COLON
@@ -429,6 +454,8 @@ var keywords = map[string]TokenType{
 	"module":    TOKEN_MODULE,
 	"as":        TOKEN_AS,
 	"ws":        TOKEN_WS,
+	"type":      TOKEN_TYPE,
+	"validate":  TOKEN_VALIDATE,
 }
 
 func lookupIdent(ident string) TokenType {

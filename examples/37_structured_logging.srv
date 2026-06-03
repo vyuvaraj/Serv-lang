@@ -1,0 +1,67 @@
+// Serv Example 37: Enhanced Structured Logging
+// Build: serv build examples/37_structured_logging.srv -o logging_demo.exe
+//
+// Features demonstrated:
+// - log.info/warn/error/debug — basic level logging
+// - log.with(key, val, ...) — create a reusable context logger
+// - log.fields({...}) — create logger from a map
+// - logger.info/warn/error/debug — log with pre-set context fields
+// - log.setLevel("debug") — change log level at runtime
+// - log.getLevel() — read current log level
+//
+// Environment:
+//   LOG_FORMAT=json   → JSON output (default: plain text)
+//   LOG_LEVEL=debug   → set initial level (default: info)
+
+server "8080"
+
+// Basic structured logging
+log.info("Service starting up")
+log.debug("Debug details — only visible at debug level")
+
+// Create a context logger with pre-set fields
+let logger = log.with("service", "user-api", "version", "1.2.0")
+
+// Use the context logger — fields are included automatically
+route "GET" "/api/users" (req) {
+    logger.info("Listing users")
+    logger.debug("Fetching from database")
+    return { "users": ["Alice", "Bob", "Charlie"] }
+}
+
+route "POST" "/api/users" (req) {
+    // Create a request-scoped logger with additional fields
+    let reqLogger = log.with("service", "user-api", "endpoint", "/api/users", "method", "POST")
+    
+    reqLogger.info("Creating user")
+    
+    // Simulate validation
+    if req.body == nil {
+        reqLogger.warn("Empty request body")
+        return { "error": "body required" }
+    }
+    
+    reqLogger.info("User created successfully")
+    return { "status": "created" }
+}
+
+// Using log.fields() with a map
+route "GET" "/api/health" (req) {
+    let healthLogger = log.fields({ "component": "health", "version": "1.0" })
+    healthLogger.info("Health check requested")
+    return { "status": "healthy" }
+}
+
+// Runtime level management
+route "PUT" "/api/log-level" (req) {
+    let level = req.body
+    log.setLevel(level)
+    log.info("Log level changed to: ", level)
+    return { "level": log.getLevel() }
+}
+
+// Legacy log.with() still works — odd args = immediate log with fields
+route "GET" "/api/legacy" (req) {
+    log.with("endpoint", "/api/legacy", "method", "GET", "Request handled")
+    return { "ok": true }
+}

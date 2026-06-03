@@ -232,12 +232,55 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 	case *EnumStmt:
 		var rOut bytes.Buffer
 		rOut.WriteString("const (\n")
-		for _, m := range s.Members {
-			c.varTypes[m] = "string"
-			rOut.WriteString(fmt.Sprintf("\t%s = %q\n", m, m))
+		for i, m := range s.Members {
+			if valExpr, hasValue := s.Values[m]; hasValue {
+				valStr, err := c.genExpression(valExpr)
+				if err != nil {
+					return "", err
+				}
+				// Determine type from value
+				switch valExpr.(type) {
+				case *IntegerLiteral:
+					c.varTypes[m] = "int"
+					rOut.WriteString(fmt.Sprintf("\t%s = %s\n", m, valStr))
+				case *FloatLiteral:
+					c.varTypes[m] = "float64"
+					rOut.WriteString(fmt.Sprintf("\t%s = %s\n", m, valStr))
+				case *StringLiteral:
+					c.varTypes[m] = "string"
+					rOut.WriteString(fmt.Sprintf("\t%s = %s\n", m, valStr))
+				default:
+					c.varTypes[m] = "interface{}"
+					rOut.WriteString(fmt.Sprintf("\t%s = %s\n", m, valStr))
+				}
+			} else {
+				// No explicit value: use iota for first, string name otherwise
+				if i == 0 && len(s.Values) == 0 {
+					// All-string enum (original behavior)
+					c.varTypes[m] = "string"
+					rOut.WriteString(fmt.Sprintf("\t%s = %q\n", m, m))
+				} else {
+					c.varTypes[m] = "string"
+					rOut.WriteString(fmt.Sprintf("\t%s = %q\n", m, m))
+				}
+			}
 		}
 		rOut.WriteString(")\n\n")
 		return rOut.String(), nil
+
+	case *TypeAliasStmt:
+		goType := toGoType(s.BaseType)
+		if goType == "interface{}" && s.BaseType != "any" {
+			goType = s.BaseType
+		}
+		return fmt.Sprintf("type %s = %s\n\n", s.Name, goType), nil
+
+	case *ValidateStmt:
+		var keys []string
+		for _, k := range s.Required {
+			keys = append(keys, fmt.Sprintf("%q", k))
+		}
+		return fmt.Sprintf("func init() {\n\truntime.ValidateConfig([]string{%s})\n}\n\n", strings.Join(keys, ", ")), nil
 
 	case *IfStmt:
 		condStr, err := c.genExpression(s.Condition)
@@ -598,6 +641,29 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		c.testFuncs = append(c.testFuncs, fmt.Sprintf("func %s(t *testing.T) %s\n", funcName, bodyStr))
 		return "", nil
 
+	case *DestructureLetStmt:
+		val, err := c.genExpression(s.Value)
+		if err != nil {
+			return "", err
+		}
+		// Generate: tmpVar := expr; field1 := extract(tmpVar, "field1"); ...
+		var out bytes.Buffer
+		tmpVar := fmt.Sprintf("_destructure_%d_%d", s.Token.Line, s.Token.Col)
+		out.WriteString(fmt.Sprintf("var %s interface{} = %s\n", tmpVar, val))
+		c.imports[`"fmt"`] = true
+		for _, field := range s.Fields {
+			c.declaredVars[field] = true
+			out.WriteString(fmt.Sprintf("var %s interface{} = func() interface{} {\n", field))
+			out.WriteString(fmt.Sprintf("\tswitch v := %s.(type) {\n", tmpVar))
+			out.WriteString(fmt.Sprintf("\tcase *runtime.SafeMap:\n\t\treturn v.Get(%q)\n", field))
+			out.WriteString(fmt.Sprintf("\tcase map[string]interface{}:\n\t\treturn v[%q]\n", field))
+			out.WriteString(fmt.Sprintf("\tdefault:\n"))
+			out.WriteString(fmt.Sprintf("\t\treturn runtime.GetField(v, %q)\n", field))
+			out.WriteString(fmt.Sprintf("\t}\n}()\n"))
+			out.WriteString(fmt.Sprintf("_ = %s\n", field))
+		}
+		return out.String(), nil
+
 	case *LetStmt:
 		val, err := c.genExpression(s.Value)
 		if err != nil {
@@ -847,6 +913,15 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 	case *DurationLiteral:
 		return fmt.Sprintf("%q", e.Value), nil
 
+	case *OptionalMemberExpr:
+		objStr, err := c.genExpression(e.Object)
+		if err != nil {
+			return "", err
+		}
+		field := e.Field
+		capitalField := strings.ToUpper(field[:1]) + field[1:]
+		return fmt.Sprintf("func() interface{} {\n\t\t\tobj := interface{}(%s)\n\t\t\tif obj == nil {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t\tswitch v := obj.(type) {\n\t\t\tcase *runtime.SafeMap:\n\t\t\t\treturn v.Get(%q)\n\t\t\tcase map[string]interface{}:\n\t\t\t\treturn v[%q]\n\t\t\tdefault:\n\t\t\t\treturn runtime.GetField(v, %q)\n\t\t\t}\n\t\t}()", objStr, field, field, capitalField), nil
+
 	case *MemberExpr:
 		objStr, err := c.genExpression(e.Object)
 		if err != nil {
@@ -890,6 +965,12 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.LogDebug", nil
 			} else if e.Field == "with" {
 				return "runtime.LogWith", nil
+			} else if e.Field == "fields" {
+				return "runtime.LogFields", nil
+			} else if e.Field == "setLevel" {
+				return "runtime.LogSetLevel", nil
+			} else if e.Field == "getLevel" {
+				return "runtime.LogGetLevel", nil
 			}
 		}
 		if objStr == "metric" {
@@ -1088,8 +1169,65 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 
 			// Collection methods: .filter, .map, .find, .reduce, .forEach, .length, .push, .contains
-			if err == nil && !isRegexpCheck {
+			if err == nil && !isRegexpCheck && !isStructMethodCall {
 				switch memExpr.Field {
+				// ContextLogger methods: .info, .warn, .error, .debug, .with on user-declared variables
+				case "info":
+					if !isStructMethodCall {
+						if ident, ok := memExpr.Object.(*Identifier); ok {
+							if c.declaredVars[ident.Value] {
+								var args []string
+								for _, arg := range e.Arguments {
+									argStr, _ := c.genExpression(arg)
+									args = append(args, argStr)
+								}
+								collectionResult = fmt.Sprintf("runtime.ContextLoggerInfo(%s, %s)", objStr, strings.Join(args, ", "))
+								isCollectionMethod = true
+							}
+						}
+					}
+				case "warn":
+					if !isStructMethodCall {
+						if ident, ok := memExpr.Object.(*Identifier); ok {
+							if c.declaredVars[ident.Value] {
+								var args []string
+								for _, arg := range e.Arguments {
+									argStr, _ := c.genExpression(arg)
+									args = append(args, argStr)
+								}
+								collectionResult = fmt.Sprintf("runtime.ContextLoggerWarn(%s, %s)", objStr, strings.Join(args, ", "))
+								isCollectionMethod = true
+							}
+						}
+					}
+				case "error":
+					if !isStructMethodCall {
+						if ident, ok := memExpr.Object.(*Identifier); ok {
+							if c.declaredVars[ident.Value] {
+								var args []string
+								for _, arg := range e.Arguments {
+									argStr, _ := c.genExpression(arg)
+									args = append(args, argStr)
+								}
+								collectionResult = fmt.Sprintf("runtime.ContextLoggerError(%s, %s)", objStr, strings.Join(args, ", "))
+								isCollectionMethod = true
+							}
+						}
+					}
+				case "debug":
+					if !isStructMethodCall {
+						if ident, ok := memExpr.Object.(*Identifier); ok {
+							if c.declaredVars[ident.Value] {
+								var args []string
+								for _, arg := range e.Arguments {
+									argStr, _ := c.genExpression(arg)
+									args = append(args, argStr)
+								}
+								collectionResult = fmt.Sprintf("runtime.ContextLoggerDebug(%s, %s)", objStr, strings.Join(args, ", "))
+								isCollectionMethod = true
+							}
+						}
+					}
 				case "filter":
 					if len(e.Arguments) == 1 {
 						argStr, _ := c.genCollectionCallback(e.Arguments[0])
@@ -1275,6 +1413,33 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		return c.genFString(e.Value)
 
 	case *MapLiteral:
+		// If there are spread entries, generate a runtime.MergeMaps call
+		if len(e.Spreads) > 0 {
+			var mergeArgs []string
+			// Build a combined sequence: spreads and inline map fragments
+			// Strategy: generate inline map for explicit keys, spread exprs merged in order
+			if len(e.KeyOrder) > 0 {
+				var pairs []string
+				for _, k := range e.KeyOrder {
+					v := e.Pairs[k]
+					vStr, err := c.genExpression(v)
+					if err != nil {
+						return "", err
+					}
+					pairs = append(pairs, fmt.Sprintf("%q: %s", k, vStr))
+				}
+				mergeArgs = append(mergeArgs, fmt.Sprintf("map[string]interface{}{\n\t\t%s,\n\t}", strings.Join(pairs, ",\n\t\t")))
+			}
+			for _, spread := range e.Spreads {
+				spreadStr, err := c.genExpression(spread.Value)
+				if err != nil {
+					return "", err
+				}
+				mergeArgs = append(mergeArgs, spreadStr)
+			}
+			return fmt.Sprintf("runtime.MergeMaps(%s)", strings.Join(mergeArgs, ", ")), nil
+		}
+
 		var pairs []string
 		for _, k := range e.KeyOrder {
 			v := e.Pairs[k]
@@ -1851,6 +2016,8 @@ func hasConcurrency(node Node) bool {
 		return hasConcurrency(s.Body)
 	case *LetStmt:
 		return hasConcurrency(s.Value)
+	case *DestructureLetStmt:
+		return hasConcurrency(s.Value)
 	case *ExprStmt:
 		return hasConcurrency(s.Value)
 	case *ReturnStmt:
@@ -1923,6 +2090,12 @@ func stmtToken(stmt Statement) Token {
 	case *ExprStmt:
 		return s.Token
 	case *ReturnStmt:
+		return s.Token
+	case *DestructureLetStmt:
+		return s.Token
+	case *TypeAliasStmt:
+		return s.Token
+	case *ValidateStmt:
 		return s.Token
 	default:
 		return Token{}

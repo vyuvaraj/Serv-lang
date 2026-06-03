@@ -19,21 +19,22 @@ const (
 )
 
 var precedences = map[TokenType]int{
-	TOKEN_ARROW:    ASSIGN, // => has same precedence as assignment (low)
-	TOKEN_ASSIGN:   ASSIGN,
-	TOKEN_EQ:       COMPARE,
-	TOKEN_NEQ:      COMPARE,
-	TOKEN_LT:       COMPARE,
-	TOKEN_GT:       COMPARE,
-	TOKEN_LTE:      COMPARE,
-	TOKEN_GTE:      COMPARE,
-	TOKEN_PLUS:     SUM,
-	TOKEN_MINUS:    SUM,
-	TOKEN_ASTERISK: PRODUCT,
-	TOKEN_SLASH:    PRODUCT,
-	TOKEN_LPAREN:   CALL,
-	TOKEN_DOT:      MEMBER,
-	TOKEN_LBRACKET: INDEX,
+	TOKEN_ARROW:        ASSIGN, // => has same precedence as assignment (low)
+	TOKEN_ASSIGN:       ASSIGN,
+	TOKEN_EQ:           COMPARE,
+	TOKEN_NEQ:          COMPARE,
+	TOKEN_LT:           COMPARE,
+	TOKEN_GT:           COMPARE,
+	TOKEN_LTE:          COMPARE,
+	TOKEN_GTE:          COMPARE,
+	TOKEN_PLUS:         SUM,
+	TOKEN_MINUS:        SUM,
+	TOKEN_ASTERISK:     PRODUCT,
+	TOKEN_SLASH:        PRODUCT,
+	TOKEN_LPAREN:       CALL,
+	TOKEN_DOT:          MEMBER,
+	TOKEN_QUESTION_DOT: MEMBER,
+	TOKEN_LBRACKET:     INDEX,
 }
 
 type Parser struct {
@@ -86,6 +87,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_GTE, p.parseInfixExpression)
 	p.registerInfix(TOKEN_LPAREN, p.parseCallExpression)
 	p.registerInfix(TOKEN_DOT, p.parseMemberExpression)
+	p.registerInfix(TOKEN_QUESTION_DOT, p.parseOptionalMemberExpression)
 	p.registerInfix(TOKEN_LBRACKET, p.parseIndexExpression)
 	p.registerInfix(TOKEN_ASSIGN, p.parseAssignmentExpression)
 	p.registerInfix(TOKEN_ARROW, p.parseArrowFunction)
@@ -194,6 +196,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseDeclareStatement()
 	case TOKEN_WS:
 		return p.parseWsStatement()
+	case TOKEN_TYPE:
+		return p.parseTypeAliasStatement()
+	case TOKEN_VALIDATE:
+		return p.parseValidateStatement()
 	case TOKEN_EXPORT:
 		return p.parseExportStatement()
 	default:
@@ -527,7 +533,34 @@ func (p *Parser) parseSpawnStatement() Statement {
 }
 
 func (p *Parser) parseLetStatement() Statement {
-	stmt := &LetStmt{Token: p.curToken}
+	letToken := p.curToken
+
+	// Destructuring: let { field1, field2 } = expr
+	if p.peekToken.Type == TOKEN_LBRACE {
+		p.nextToken() // consume '{'
+		stmt := &DestructureLetStmt{Token: letToken}
+		stmt.Fields = []string{}
+		for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+			p.nextToken()
+			if p.curToken.Type == TOKEN_IDENT {
+				stmt.Fields = append(stmt.Fields, p.curToken.Literal)
+			}
+			if p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+			}
+		}
+		if !p.expectPeek(TOKEN_RBRACE) {
+			return nil
+		}
+		if !p.expectPeek(TOKEN_ASSIGN) {
+			return nil
+		}
+		p.nextToken()
+		stmt.Value = p.parseExpression(LOWEST)
+		return stmt
+	}
+
+	stmt := &LetStmt{Token: letToken}
 
 	if !p.expectPeek(TOKEN_IDENT) {
 		return nil
@@ -1037,8 +1070,22 @@ func (p *Parser) parseArrayLiteral() Expression {
 func (p *Parser) parseMapLiteral() Expression {
 	m := &MapLiteral{Token: p.curToken, Pairs: make(map[string]Expression), KeyOrder: []string{}}
 
+	entryIndex := 0
 	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
-		p.nextToken() // move to key
+		p.nextToken() // move to key or spread
+
+		// Spread operator: ...expr
+		if p.curToken.Type == TOKEN_SPREAD {
+			p.nextToken() // move to the expression after '...'
+			spreadExpr := p.parseExpression(LOWEST)
+			m.Spreads = append(m.Spreads, SpreadEntry{Position: entryIndex, Value: spreadExpr})
+			entryIndex++
+			if p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+			}
+			continue
+		}
+
 		key := p.curToken.Literal
 
 		// If it's a string, we strip quotes (lexer already stripped quotes from TOKEN_STRING literal)
@@ -1056,6 +1103,7 @@ func (p *Parser) parseMapLiteral() Expression {
 		val := p.parseExpression(LOWEST)
 		m.Pairs[key] = val
 		m.KeyOrder = append(m.KeyOrder, key)
+		entryIndex++
 
 		if p.peekToken.Type == TOKEN_COMMA {
 			p.nextToken()
@@ -1164,6 +1212,17 @@ func (p *Parser) parseMemberExpression(left Expression) Expression {
 	return expr
 }
 
+func (p *Parser) parseOptionalMemberExpression(left Expression) Expression {
+	expr := &OptionalMemberExpr{Token: p.curToken, Object: left}
+
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	expr.Field = p.curToken.Literal
+
+	return expr
+}
+
 func (p *Parser) parseAssignmentExpression(left Expression) Expression {
 	switch l := left.(type) {
 	case *Identifier:
@@ -1259,10 +1318,67 @@ func (p *Parser) parseEnumStatement() Statement {
 		return nil
 	}
 	stmt.Members = []string{}
+	stmt.Values = make(map[string]Expression)
 	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
 		p.nextToken()
 		if p.curToken.Type == TOKEN_IDENT {
-			stmt.Members = append(stmt.Members, p.curToken.Literal)
+			memberName := p.curToken.Literal
+			stmt.Members = append(stmt.Members, memberName)
+			// Check for explicit value: Member = expr
+			if p.peekToken.Type == TOKEN_ASSIGN {
+				p.nextToken() // consume '='
+				p.nextToken() // move to value expression
+				stmt.Values[memberName] = p.parseExpression(LOWEST)
+			}
+		}
+		if p.peekToken.Type == TOKEN_COMMA {
+			p.nextToken()
+		}
+	}
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+	return stmt
+}
+
+// parseTypeAliasStatement parses: type Name = baseType
+func (p *Parser) parseTypeAliasStatement() Statement {
+	stmt := &TypeAliasStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+	if !p.expectPeek(TOKEN_ASSIGN) {
+		return nil
+	}
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.BaseType = p.curToken.Literal
+	return stmt
+}
+
+// parseValidateStatement parses: validate { required "key", optional "key" }
+func (p *Parser) parseValidateStatement() Statement {
+	stmt := &ValidateStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Required = []string{}
+	stmt.Optional = []string{}
+	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
+		p.nextToken()
+		if p.curToken.Type == TOKEN_IDENT {
+			kind := p.curToken.Literal // "required" or "optional"
+			if !p.expectPeek(TOKEN_STRING) {
+				return nil
+			}
+			key := p.curToken.Literal
+			if kind == "required" {
+				stmt.Required = append(stmt.Required, key)
+			} else if kind == "optional" {
+				stmt.Optional = append(stmt.Optional, key)
+			}
 		}
 		if p.peekToken.Type == TOKEN_COMMA {
 			p.nextToken()

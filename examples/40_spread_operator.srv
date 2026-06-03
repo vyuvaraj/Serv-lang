@@ -1,0 +1,39 @@
+// Serv Example 40: Spread Operator
+// Build: serv build examples/40_spread_operator.srv -o spread_demo.exe
+//
+// Syntax: { ...source, key: value }
+// Merges all key-value pairs from source into the new map.
+// Later entries override earlier ones.
+
+server "8080"
+
+// Basic spread — merge defaults with overrides
+route "GET" "/api/config" (req) {
+    let defaults = { "timeout": 30, "retries": 3, "debug": false }
+    let overrides = { "debug": true, "timeout": 60 }
+    
+    let config = { ...defaults, ...overrides }
+    
+    return config
+}
+
+// Spread with additional keys
+route "GET" "/api/user" (req) {
+    let base = { "role": "user", "active": true }
+    
+    let user = { ...base, "name": "Alice", "email": "alice@example.com" }
+    
+    return user
+}
+
+// Spread for creating modified copies
+fn withTimestamp(data) {
+    return { ...data, "timestamp": time.now() }
+}
+
+route "GET" "/api/event" (req) {
+    let event = { "type": "click", "target": "button" }
+    let stamped = withTimestamp(event)
+    
+    return stamped
+}

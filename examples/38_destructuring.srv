@@ -1,0 +1,60 @@
+// Serv Example 38: Destructuring
+// Build: serv build examples/38_destructuring.srv -o destruct_demo.exe
+//
+// Syntax: let { field1, field2 } = expr
+// Extracts named fields from maps or structs into local variables.
+
+server "8080"
+
+// Destructuring from a map literal
+route "GET" "/api/user" (req) {
+    let user = { "name": "Alice", "email": "alice@example.com", "role": "admin" }
+    
+    // Extract specific fields
+    let { name, email, role } = user
+    
+    log.info("User: ", name, " (", email, ")")
+    
+    return { "name": name, "email": email, "role": role }
+}
+
+// Destructuring from function return value
+fn getConfig() {
+    return { "host": "localhost", "port": 8080, "debug": true }
+}
+
+route "GET" "/api/config" (req) {
+    let { host, port, debug } = getConfig()
+    
+    log.info("Config loaded: ", host, ":", port)
+    
+    return { "host": host, "port": port, "debug": debug }
+}
+
+// Destructuring with structs
+struct UserProfile {
+    name: string,
+    email: string,
+    age: int
+}
+
+fn createProfile() -> UserProfile {
+    return UserProfile { name: "Bob", email: "bob@test.com", age: 30 }
+}
+
+route "GET" "/api/profile" (req) {
+    let profile = createProfile()
+    let { name, email, age } = profile
+    
+    return { "name": name, "email": email, "age": age }
+}
+
+// Partial destructuring — only grab what you need
+route "GET" "/api/summary" (req) {
+    let data = { "id": 42, "title": "Hello", "body": "World", "author": "Alice", "views": 100 }
+    
+    // Only extract title and author
+    let { title, author } = data
+    
+    return { "title": title, "by": author }
+}

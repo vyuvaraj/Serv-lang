@@ -27,11 +27,11 @@ Tracking remaining work to make Serv production-ready and competitive.
 |--------|------|-------------|----------|
 | ✅ | String methods | `.split()`, `.trim()`, `.replace()`, `.startsWith()`, `.includes()`, `.toUpper()`, `.toLower()` | High |
 | ✅ | Closures / arrow fns | `let double = fn(x) { return x * 2 }` and `x => x * 2` shorthand | High |
-| ⬜ | Destructuring | `let { name, email } = user` | Medium |
-| ⬜ | Optional chaining | `user?.address?.city` — returns nil if any part is nil | Medium |
-| ⬜ | Spread operator | `let merged = { ...defaults, ...overrides }` | Medium |
-| ⬜ | Enums with values | `enum Status { Active = 1, Inactive = 2 }` | Low |
-| ⬜ | Type aliases | `type UserID = int` | Low |
+| ✅ | Destructuring | `let { name, email } = user` | Medium |
+| ✅ | Optional chaining | `user?.address?.city` — returns nil if any part is nil | Medium |
+| ✅ | Spread operator | `let merged = { ...defaults, ...overrides }` | Medium |
+| ✅ | Enums with values | `enum Status { Active = 1, Inactive = 2 }` | Low |
+| ✅ | Type aliases | `type UserID = int` | Low |
 | ⬜ | Generic constraints | `fn sort[T: Comparable](items: []T)` | Low |
 
 ---
@@ -40,12 +40,12 @@ Tracking remaining work to make Serv production-ready and competitive.
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
-| ⬜ | Structured logging | JSON log output, log levels, context fields | High |
+| ✅ | Structured logging | JSON log output, log levels, context fields | High |
 | ⬜ | OpenTelemetry | Built-in tracing/metrics export (OTLP) | Medium |
 | ✅ | Health endpoints | Auto-generated `/health` and `/ready` | High |
-| ⬜ | Config validation | Schema validation at startup, fail fast | Medium |
+| ✅ | Config validation | Schema validation at startup, fail fast | Medium |
 | ⬜ | TLS support | `server "8080" tls "cert.pem" "key.pem"` | Medium |
-| ⬜ | WebSocket support | `ws "/chat" (conn) { ... }` | High |
+| ✅ | WebSocket support | `ws "/chat" (conn) { ... }` | High |
 | ⬜ | Graceful hot-reload | Zero-downtime restarts in watch mode | Low |
 | ⬜ | Request validation | Built-in body/param validation with schema | Medium |
 

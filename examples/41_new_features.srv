@@ -1,0 +1,44 @@
+// Serv Example 41: Enums with Values, Type Aliases, Config Validation
+// Build: serv build examples/41_new_features.srv -o features_demo.exe
+//
+// Demonstrates:
+// - enum with explicit values
+// - type aliases
+// - config validation (fail-fast on missing keys)
+
+server "8080"
+
+// Type aliases
+type UserID = int
+type Email = string
+
+// Enums with explicit integer values
+enum HttpStatus {
+    OK = 200,
+    Created = 201,
+    BadRequest = 400,
+    NotFound = 404,
+    ServerError = 500
+}
+
+// Enums with string values
+enum Role {
+    Admin = "admin",
+    Editor = "editor",
+    Viewer = "viewer"
+}
+
+// Traditional enum (string name auto-values)
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+route "GET" "/api/status" (req) {
+    return { "status": OK, "role": Admin, "color": Red }
+}
+
+route "GET" "/api/error" (req) {
+    return { "code": NotFound, "message": "Resource not found" }
+}

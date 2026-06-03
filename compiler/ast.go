@@ -502,6 +502,14 @@ type MapLiteral struct {
 	Token    Token
 	Pairs    map[string]Expression
 	KeyOrder []string // preserves insertion order for deterministic codegen
+	Spreads  []SpreadEntry // spread expressions in order
+}
+
+// SpreadEntry represents a ...expr in a map literal.
+// Position is the index in KeyOrder where this spread should be merged.
+type SpreadEntry struct {
+	Position int // index in final output order
+	Value    Expression
 }
 
 func (m *MapLiteral) expressionNode()      {}
@@ -540,6 +548,7 @@ type EnumStmt struct {
 	Token   Token
 	Name    string
 	Members []string
+	Values  map[string]Expression // member -> explicit value (nil if auto)
 }
 
 func (e *EnumStmt) statementNode()       {}
@@ -793,3 +802,51 @@ func (w *WsStmt) TokenLiteral() string { return w.Token.Literal }
 func (w *WsStmt) String() string {
 	return "ws \"" + w.Path + "\" (" + w.Param + ") " + w.Body.String() + "\n"
 }
+
+// DestructureLetStmt: let { name, email } = expr
+// Extracts named fields from a map or struct into local variables.
+type DestructureLetStmt struct {
+	Token  Token
+	Fields []string   // field names to extract
+	Value  Expression // the source expression
+}
+
+func (d *DestructureLetStmt) statementNode()       {}
+func (d *DestructureLetStmt) TokenLiteral() string { return d.Token.Literal }
+func (d *DestructureLetStmt) String() string {
+	return "let { " + strings.Join(d.Fields, ", ") + " } = " + d.Value.String() + "\n"
+}
+
+// OptionalMemberExpr: user?.address?.city — returns nil if any part is nil
+type OptionalMemberExpr struct {
+	Token  Token
+	Object Expression
+	Field  string
+}
+
+func (o *OptionalMemberExpr) expressionNode()      {}
+func (o *OptionalMemberExpr) TokenLiteral() string { return o.Token.Literal }
+func (o *OptionalMemberExpr) String() string       { return o.Object.String() + "?." + o.Field }
+
+// TypeAliasStmt: type UserID = int
+type TypeAliasStmt struct {
+	Token    Token
+	Name     string
+	BaseType string
+}
+
+func (t *TypeAliasStmt) statementNode()       {}
+func (t *TypeAliasStmt) TokenLiteral() string { return t.Token.Literal }
+func (t *TypeAliasStmt) String() string       { return "type " + t.Name + " = " + t.BaseType + "\n" }
+
+// ValidateStmt: validate { required "db.host", required "db.port", optional "log.level" }
+// Defines config keys that must exist at startup — fail fast if missing.
+type ValidateStmt struct {
+	Token    Token
+	Required []string // config keys that must be present
+	Optional []string // config keys that are allowed but not required
+}
+
+func (v *ValidateStmt) statementNode()       {}
+func (v *ValidateStmt) TokenLiteral() string { return v.Token.Literal }
+func (v *ValidateStmt) String() string       { return "validate { ... }\n" }

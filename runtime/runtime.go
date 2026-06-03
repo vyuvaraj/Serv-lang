@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -507,6 +508,10 @@ func shouldLog(level string) bool {
 }
 
 func logStructured(level string, args ...interface{}) {
+	logStructuredWithFields(level, nil, args...)
+}
+
+func logStructuredWithFields(level string, fields map[string]interface{}, args ...interface{}) {
 	if !shouldLog(level) {
 		return
 	}
@@ -517,10 +522,21 @@ func logStructured(level string, args ...interface{}) {
 			"message":   msg,
 			"timestamp": time.Now().Format(time.RFC3339),
 		}
+		for k, v := range fields {
+			entry[k] = v
+		}
 		b, _ := json.Marshal(entry)
 		fmt.Println(string(b))
 	} else {
-		log.Printf("[%s] %s", strings.ToUpper(level), msg)
+		if len(fields) > 0 {
+			var pairs []string
+			for k, v := range fields {
+				pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+			}
+			log.Printf("[%s] %s %s", strings.ToUpper(level), msg, strings.Join(pairs, " "))
+		} else {
+			log.Printf("[%s] %s", strings.ToUpper(level), msg)
+		}
 	}
 }
 
@@ -540,38 +556,156 @@ func LogDebug(args ...interface{}) {
 	logStructured("debug", args...)
 }
 
-// LogWith logs a message with structured context fields (key-value pairs).
-// Usage from Serv: log.with("user_id", 123, "action", "login")
-func LogWith(args ...interface{}) interface{} {
-	if len(args) < 2 {
-		return nil
+// ContextLogger holds pre-set fields and emits them with every log call.
+// Usage from Serv: let logger = log.with("request_id", id, "service", "auth")
+//                  logger.info("request processed")
+type ContextLogger struct {
+	Fields map[string]interface{}
+}
+
+// Info logs at info level with the logger's context fields.
+func (cl *ContextLogger) Info(args ...interface{}) interface{} {
+	logStructuredWithFields("info", cl.Fields, args...)
+	return nil
+}
+
+// Warn logs at warn level with the logger's context fields.
+func (cl *ContextLogger) Warn(args ...interface{}) interface{} {
+	logStructuredWithFields("warn", cl.Fields, args...)
+	return nil
+}
+
+// Error logs at error level with the logger's context fields.
+func (cl *ContextLogger) Error(args ...interface{}) interface{} {
+	logStructuredWithFields("error", cl.Fields, args...)
+	return nil
+}
+
+// Debug logs at debug level with the logger's context fields.
+func (cl *ContextLogger) Debug(args ...interface{}) interface{} {
+	logStructuredWithFields("debug", cl.Fields, args...)
+	return nil
+}
+
+// With returns a new ContextLogger with additional fields merged in.
+func (cl *ContextLogger) With(args ...interface{}) *ContextLogger {
+	merged := make(map[string]interface{})
+	for k, v := range cl.Fields {
+		merged[k] = v
 	}
-	// Last arg is the message, preceding pairs are key-value context
-	msg := fmt.Sprint(args[len(args)-1])
+	for i := 0; i+1 < len(args); i += 2 {
+		merged[fmt.Sprint(args[i])] = args[i+1]
+	}
+	return &ContextLogger{Fields: merged}
+}
+
+// LogWith creates a ContextLogger with the given key-value pairs.
+// Usage from Serv:
+//   log.with("user_id", 123, "action", "login")            — logs at info with fields (legacy)
+//   let logger = log.with("request_id", id)                 — returns a reusable logger
+//   logger.info("handled request")
+func LogWith(args ...interface{}) interface{} {
 	fields := make(map[string]interface{})
-	for i := 0; i+1 < len(args)-1; i += 2 {
+	for i := 0; i+1 < len(args); i += 2 {
 		fields[fmt.Sprint(args[i])] = args[i+1]
 	}
+	// If odd number of args, last arg is a message — log immediately (legacy behavior)
+	if len(args)%2 == 1 {
+		msg := fmt.Sprint(args[len(args)-1])
+		logStructuredWithFields("info", fields, msg)
+		return nil
+	}
+	// Even number of args: return a ContextLogger for chaining
+	return &ContextLogger{Fields: fields}
+}
 
-	if logJSON {
-		entry := map[string]interface{}{
-			"level":     "info",
-			"message":   msg,
-			"timestamp": time.Now().Format(time.RFC3339),
+// LogFields creates a ContextLogger from a map of fields.
+// Usage from Serv: let logger = log.fields({ request_id: id, service: "auth" })
+//                  logger.info("ready")
+func LogFields(args ...interface{}) interface{} {
+	fields := make(map[string]interface{})
+	if len(args) == 1 {
+		switch m := args[0].(type) {
+		case map[string]interface{}:
+			fields = m
+		case *SafeMap:
+			for k, v := range m.All() {
+				fields[k] = v
+			}
 		}
-		for k, v := range fields {
-			entry[k] = v
-		}
-		b, _ := json.Marshal(entry)
-		fmt.Println(string(b))
-	} else {
-		var pairs []string
-		for k, v := range fields {
-			pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
-		}
-		log.Printf("[INFO] %s %s", msg, strings.Join(pairs, " "))
+	}
+	return &ContextLogger{Fields: fields}
+}
+
+// LogSetLevel changes the runtime log level.
+// Usage from Serv: log.setLevel("debug")
+func LogSetLevel(args ...interface{}) interface{} {
+	if len(args) == 0 {
+		return nil
+	}
+	lvl := strings.ToLower(fmt.Sprint(args[0]))
+	switch lvl {
+	case "debug", "info", "warn", "error":
+		logLevelMu.Lock()
+		logLevel = lvl
+		logLevelMu.Unlock()
 	}
 	return nil
+}
+
+// LogGetLevel returns the current log level.
+// Usage from Serv: let level = log.getLevel()
+func LogGetLevel(args ...interface{}) interface{} {
+	logLevelMu.RLock()
+	defer logLevelMu.RUnlock()
+	return logLevel
+}
+
+// ContextLoggerInfo calls .Info() on a ContextLogger value.
+// Used when codegen encounters: logger.info("msg")
+func ContextLoggerInfo(logger interface{}, args ...interface{}) interface{} {
+	if cl, ok := logger.(*ContextLogger); ok {
+		return cl.Info(args...)
+	}
+	// Fallback: just log normally
+	logStructured("info", args...)
+	return nil
+}
+
+// ContextLoggerWarn calls .Warn() on a ContextLogger value.
+func ContextLoggerWarn(logger interface{}, args ...interface{}) interface{} {
+	if cl, ok := logger.(*ContextLogger); ok {
+		return cl.Warn(args...)
+	}
+	logStructured("warn", args...)
+	return nil
+}
+
+// ContextLoggerError calls .Error() on a ContextLogger value.
+func ContextLoggerError(logger interface{}, args ...interface{}) interface{} {
+	if cl, ok := logger.(*ContextLogger); ok {
+		return cl.Error(args...)
+	}
+	logStructured("error", args...)
+	return nil
+}
+
+// ContextLoggerDebug calls .Debug() on a ContextLogger value.
+func ContextLoggerDebug(logger interface{}, args ...interface{}) interface{} {
+	if cl, ok := logger.(*ContextLogger); ok {
+		return cl.Debug(args...)
+	}
+	logStructured("debug", args...)
+	return nil
+}
+
+// ContextLoggerWith calls .With() on a ContextLogger value to add more fields.
+func ContextLoggerWith(logger interface{}, args ...interface{}) interface{} {
+	if cl, ok := logger.(*ContextLogger); ok {
+		return cl.With(args...)
+	}
+	// If not a ContextLogger, create a new one
+	return LogWith(args...)
 }
 
 // Metrics
@@ -2824,6 +2958,96 @@ func (s *SafeMap) MarshalJSON() ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return json.Marshal(s.m)
+}
+
+// All returns a copy of all key-value pairs in the SafeMap.
+func (s *SafeMap) All() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	cp := make(map[string]interface{}, len(s.m))
+	for k, v := range s.m {
+		cp[k] = v
+	}
+	return cp
+}
+
+// GetField extracts a named field from a value using reflection.
+// Supports struct pointer fields (capitalized) and falls back to lowercase matches.
+// Used by destructuring: let { name, email } = user
+func GetField(obj interface{}, field string) interface{} {
+	if obj == nil {
+		return nil
+	}
+	// Try SafeMap
+	if sm, ok := obj.(*SafeMap); ok {
+		return sm.Get(field)
+	}
+	// Try plain map
+	if m, ok := obj.(map[string]interface{}); ok {
+		return m[field]
+	}
+	// Use reflection for struct field access
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	// Try capitalized field name first (Go convention)
+	capitalized := strings.ToUpper(field[:1]) + field[1:]
+	f := v.FieldByName(capitalized)
+	if f.IsValid() {
+		return f.Interface()
+	}
+	// Try exact name
+	f = v.FieldByName(field)
+	if f.IsValid() {
+		return f.Interface()
+	}
+	return nil
+}
+
+// MergeMaps merges multiple maps into a single map[string]interface{}.
+// Later maps override earlier ones. Supports map[string]interface{}, *SafeMap, and interface{} values.
+// Usage from Serv: { ...defaults, ...overrides, extra: "value" }
+func MergeMaps(maps ...interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for _, m := range maps {
+		switch v := m.(type) {
+		case map[string]interface{}:
+			for k, val := range v {
+				result[k] = val
+			}
+		case *SafeMap:
+			for k, val := range v.All() {
+				result[k] = val
+			}
+		}
+	}
+	return result
+}
+
+// ValidateConfig checks that all required config keys are present at startup.
+// If any key is missing, it logs an error and exits the process immediately.
+// Usage from Serv: validate { required "db.host", required "db.port" }
+func ValidateConfig(requiredKeys []string) {
+	var missing []string
+	for _, key := range requiredKeys {
+		val := Config(key)
+		if val == "" {
+			// Also check environment variable equivalent: db.host -> DB_HOST
+			envKey := strings.ToUpper(strings.ReplaceAll(key, ".", "_"))
+			if os.Getenv(envKey) == "" {
+				missing = append(missing, key)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		log.Fatalf("[FATAL] Config validation failed. Missing required keys: %v\n"+
+			"Set them via config file or environment variables (e.g., %s -> %s)",
+			missing, missing[0], strings.ToUpper(strings.ReplaceAll(missing[0], ".", "_")))
+	}
 }
 
 func ToSafeValue(val interface{}) interface{} {

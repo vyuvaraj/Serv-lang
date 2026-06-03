@@ -1,0 +1,25 @@
+// Serv Example 42: Config Validation
+// Build: serv build examples/42_config_validation.srv -o config_demo.exe
+//
+// Validates required config keys exist at startup.
+// If missing, prints helpful error and exits immediately.
+//
+// To run successfully, set environment variables:
+//   set DB_HOST=localhost
+//   set DB_PORT=5432
+//   set APP_SECRET=mysecret
+//
+// Or provide a config.yml with those keys.
+
+server "8080"
+
+// Fail fast if required config is missing
+validate {
+    required "db.host",
+    required "db.port",
+    required "app.secret"
+}
+
+route "GET" "/api/health" (req) {
+    return { "status": "ok", "db": config("db.host") }
+}
