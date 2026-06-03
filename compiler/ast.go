@@ -758,10 +758,11 @@ func (m *MiddlewareDecl) String() string {
 
 // DeclareModuleStmt: declare module "github.com/pkg" { fn Name() -> type }
 type DeclareModuleFunc struct {
-	Name       string
-	Params     []string
-	ParamTypes []string
-	ReturnType string
+	Name        string
+	Params      []string
+	ParamTypes  []string
+	ReturnType  string
+	MultiReturn bool // true if Go function returns (value, error)
 }
 
 type DeclareModuleStmt struct {

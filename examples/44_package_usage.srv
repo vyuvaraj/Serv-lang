@@ -1,0 +1,19 @@
+// Serv Example 44: Using External Packages
+// Prerequisites: serv add github.com/google/uuid
+// Build: serv build examples/44_package_usage.srv -o pkg_demo.exe
+//
+// Demonstrates importing and using Go packages via declarations.
+
+import uuid from "github.com/google/uuid"
+
+server "8080"
+
+route "GET" "/api/id" (req) {
+    let id = uuid.New()
+    return { "id": id }
+}
+
+route "GET" "/api/v7" (req) {
+    let id = uuid.NewV7()
+    return { "uuid_v7": id }
+}

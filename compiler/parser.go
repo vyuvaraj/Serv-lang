@@ -1662,10 +1662,17 @@ func (p *Parser) parseDeclareStatement() Statement {
 			return nil
 		}
 
+		// Check for fn! (multi-return / failable function)
+		multiReturn := false
+		if p.peekToken.Type == TOKEN_BANG {
+			multiReturn = true
+			p.nextToken() // consume '!'
+		}
+
 		if !p.expectPeek(TOKEN_IDENT) {
 			return nil
 		}
-		fn := DeclareModuleFunc{Name: p.curToken.Literal}
+		fn := DeclareModuleFunc{Name: p.curToken.Literal, MultiReturn: multiReturn}
 
 		if !p.expectPeek(TOKEN_LPAREN) {
 			return nil

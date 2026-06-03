@@ -21,6 +21,7 @@ type Codegen struct {
 	funcReturnTypes     map[string]string // fnName -> return type
 	goPackageAliases    map[string]string // alias -> Go package name (e.g. "uuid" -> "uuid")
 	declaredGoFuncs     map[string]string // "pkg:FuncName" -> "pkgname.FuncName"
+	goMultiReturnFuncs  map[string]bool   // "pkgname.FuncName" -> true (multi-return)
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -35,6 +36,7 @@ func NewCodegen(program *Program) *Codegen {
 		funcReturnTypes: make(map[string]string),
 		goPackageAliases: make(map[string]string),
 		declaredGoFuncs:  make(map[string]string),
+		goMultiReturnFuncs: make(map[string]bool),
 	}
 }
 
@@ -177,6 +179,9 @@ func (c *Codegen) genStatement(stmt Statement) (string, error) {
 		for _, fn := range s.Functions {
 			key := s.PkgPath + ":" + fn.Name
 			c.declaredGoFuncs[key] = pkgName + "." + fn.Name
+			if fn.MultiReturn {
+				c.goMultiReturnFuncs[pkgName+"."+fn.Name] = true
+			}
 		}
 		return "", nil
 
@@ -1415,7 +1420,21 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			typeArgStr = "[" + strings.Join(e.TypeArgs, ", ") + "]"
 		}
 
-		return fmt.Sprintf("%s%s(%s)", funcStr, typeArgStr, strings.Join(args, ", ")), nil
+		// Detect Go package function calls that return (value, error)
+		// Wrap them to discard error and return first value
+		callStr := fmt.Sprintf("%s%s(%s)", funcStr, typeArgStr, strings.Join(args, ", "))
+		if memExpr, ok := e.Function.(*MemberExpr); ok {
+			if ident, ok := memExpr.Object.(*Identifier); ok {
+				if goPkg, isGoAlias := c.goPackageAliases[ident.Value]; isGoAlias {
+					qualifiedName := goPkg + "." + memExpr.Field
+					if c.goMultiReturnFuncs[qualifiedName] {
+						// Multi-return Go function: wrap to discard error
+						return fmt.Sprintf("func() interface{} { v, _ := %s; return v }()", callStr), nil
+					}
+				}
+			}
+		}
+		return callStr, nil
 
 	case *FStringLiteral:
 		return c.genFString(e.Value)
