@@ -1,0 +1,45 @@
+// Serv Standard Library: Request Tracing
+// Import: import { startSpan, endSpan, traceId, addTag } from "stdlib/tracing.srv"
+//
+// Lightweight tracing for service calls. Creates trace/span IDs
+// and records durations. For full OpenTelemetry, integrate via serv add.
+
+// Generate a new trace ID
+export fn traceId() {
+    return f"trace_{time.now()}"
+}
+
+// Generate a new span ID
+export fn spanId() {
+    return f"span_{time.now()}"
+}
+
+// Start a named span — logs the start and returns span metadata
+export fn startSpan(name) {
+    let id = spanId()
+    let start = time.unix()
+    log.debug(f"[TRACE] span.start name={name} id={id}")
+    return { "id": id, "name": name, "start": start }
+}
+
+// End a span — logs the duration
+export fn endSpan(span) {
+    let end = time.unix()
+    let duration = end - span?.start
+    log.debug(f"[TRACE] span.end name={span?.name} id={span?.id} duration={duration}s")
+    return { "id": span?.id, "name": span?.name, "duration": duration }
+}
+
+// Add a tag/attribute to structured log context
+export fn addTag(key, value) {
+    log.with(key, value)
+}
+
+// Create a trace context for passing between services
+export fn traceContext(traceID, spanID) {
+    return {
+        "trace_id": traceID,
+        "span_id": spanID,
+        "timestamp": time.now()
+    }
+}

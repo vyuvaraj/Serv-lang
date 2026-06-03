@@ -39,6 +39,20 @@ import { requireAuth, bearerToken } from "stdlib/auth.srv"
 | `metrics.srv` | `counter`, `counterWithLabel`, `gauge`, `recordLatency`, `trackRequest` | Observability |
 | `testing_helpers.srv` | `assertEqual`, `assertNotNil`, `assertNil`, `assertContains`, `assertTrue`, `assertFalse`, `assertLength` | Testing |
 | `health.srv` | `healthy`, `unhealthy`, `degraded`, `buildHealthResponse` | Ops |
+| `scheduler.srv` | `scheduleAfter`, `isScheduled`, `cancelSchedule`, `getDelay` | Scheduling |
+| `webhook.srv` | `buildPayload`, `sendWebhook`, `verifySignature`, `retryRecord` | Integration |
+| `cors.srv` | `allowOrigin`, `allowAll`, `preflightResponse`, `isOriginAllowed` | HTTP |
+| `graceful.srv` | `initShutdown`, `isShuttingDown`, `connectionOpened`, `connectionClosed`, `isDrained` | Ops |
+| `tracing.srv` | `traceId`, `spanId`, `startSpan`, `endSpan`, `addTag`, `traceContext` | Observability |
+| `semaphore.srv` | `createSemaphore`, `tryAcquire`, `release`, `available`, `utilization` | Concurrency |
+| `batch.srv` | `createBatch`, `addToBatch`, `batchSize`, `isBatchFull`, `flushBatch` | Processing |
+| `idempotency.srv` | `checkIdempotency`, `markProcessed`, `isProcessed`, `getProcessedResult` | Reliability |
+| `job.srv` | `createJob`, `startJob`, `completeJob`, `failJob`, `jobStatus` | Processing |
+| `feature_flags.srv` | `enableFlag`, `disableFlag`, `isEnabled`, `toggleFlag`, `initFlag` | Config |
+| `config.srv` | `getConfig`, `requireConfig`, `configInt`, `configBool`, `configList`, `hasConfig` | Config |
+| `tenant.srv` | `extractTenant`, `tenantConfig`, `isTenantActive`, `tenantCacheKey`, `tenantFilter` | Multi-tenancy |
+| `dlq.srv` | `createDLQ`, `sendToDLQ`, `dlqSize`, `dlqHasItems`, `clearDLQ` | Reliability |
+| `audit.srv` | `auditLog`, `auditAction`, `auditAccess`, `auditAuth`, `auditDenied` | Compliance |
 
 ---
 
@@ -48,46 +62,57 @@ import { requireAuth, bearerToken } from "stdlib/auth.srv"
 - **auth.srv** — Token extraction, bearer/basic auth, auth guards
 - **crypto.srv** — Password hashing, HMAC signing, token generation
 - **jwt.srv** — JWT encode/decode/expiry (lightweight; use `serv add github.com/golang-jwt/jwt/v5` for production)
-- **sanitize.srv** — XSS prevention, HTML escaping, SQL escaping, filename sanitization
-- **ratelimit.srv** — Per-key rate limiting with atomic counters
 
 ### HTTP
 - **response.srv** — Standard HTTP response builders (ok, notFound, etc.)
 - **pagination.srv** — Page offset calculation, response envelope
 - **middleware.srv** — CORS headers, request ID generation, preflight detection
 - **http_client.srv** — JSON GET/POST wrappers, status code helpers
-- **url.srv** — URI encoding, query string parsing/building, path joining
 
 ### Utilities
 - **datetime.srv** — Timestamps, expiry checks, duration formatting
 - **strings_util.srv** — Slugify, truncate, capitalize, pattern matching
-- **math.srv** — Min/max, clamp, abs, percent, sum, average
-- **sort.srv** — List sorting, reverse, min/max extraction
 - **collections.srv** — Array utilities (unique, flatten, chunk, first/last)
-
-### Data
-- **csv.srv** — CSV parsing and generation
-- **diff.srv** — Object change detection, audit record creation
 
 ### Config & Environment
 - **env.srv** — Required env vars, defaults, type coercion (int/bool)
 
 ### Resilience
 - **retry.srv** — Exponential backoff calculation
-- **circuit_breaker.srv** — Circuit breaker pattern (open/closed/half-open states)
-- **queue.srv** — In-memory FIFO queue with atomic size tracking
 
 ### Messaging
 - **events.srv** — In-process event bus (emit/on pattern)
-
-### Observability
-- **metrics.srv** — Structured counters, gauges, latency recording, request tracking
 
 ### Testing
 - **testing_helpers.srv** — Expressive assertions for test blocks
 
 ### Operations
 - **health.srv** — Custom health check builders
+- **graceful.srv** — Shutdown state, connection draining, drain detection
+
+### Scheduling
+- **scheduler.srv** — Dynamic runtime scheduling beyond `every`/`cron`
+
+### Integration
+- **webhook.srv** — Outgoing webhook payloads, signature verification, retry records
+- **cors.srv** — CORS header generation, origin checking, preflight responses
+
+### Concurrency
+- **semaphore.srv** — Named semaphores with slot tracking and utilization metrics
+
+### Processing
+- **batch.srv** — Accumulate-and-flush batch pattern with size tracking
+- **job.srv** — Background job lifecycle (pending → running → completed/failed)
+
+### Reliability
+- **idempotency.srv** — Idempotency key pattern for deduplication
+- **dlq.srv** — Dead letter queue for failed message tracking
+
+### Multi-tenancy
+- **tenant.srv** — Tenant extraction from requests, scoped config/cache/DB keys
+
+### Compliance
+- **audit.srv** — Structured audit trail (actions, access, auth, denied events)
 
 ---
 

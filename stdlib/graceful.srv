@@ -1,0 +1,41 @@
+// Serv Standard Library: Graceful Shutdown Helpers
+// Import: import { onShutdown, drainConnections, setDrainTimeout } from "stdlib/graceful.srv"
+//
+// Helpers for managing service lifecycle during deployments.
+
+// Default drain timeout in seconds
+export fn defaultDrainTimeout() {
+    return 30
+}
+
+// Create a shutdown state tracker
+export fn initShutdown() {
+    atomic.new("shutdown_requested", 0)
+    atomic.new("active_connections", 0)
+    log.debug("Graceful shutdown initialized")
+}
+
+// Check if shutdown has been requested
+export fn isShuttingDown() {
+    return atomic.get("shutdown_requested") == 1
+}
+
+// Increment active connection count
+export fn connectionOpened() {
+    atomic.inc("active_connections")
+}
+
+// Decrement active connection count
+export fn connectionClosed() {
+    atomic.dec("active_connections")
+}
+
+// Get active connection count
+export fn activeConnections() {
+    return atomic.get("active_connections")
+}
+
+// Check if all connections are drained
+export fn isDrained() {
+    return atomic.get("active_connections") <= 0
+}

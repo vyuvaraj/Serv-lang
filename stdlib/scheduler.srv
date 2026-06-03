@@ -1,0 +1,30 @@
+// Serv Standard Library: Dynamic Scheduler
+// Import: import { scheduleAfter, scheduleEvery, isScheduled } from "stdlib/scheduler.srv"
+//
+// For static scheduling use the `every` and `cron` keywords.
+// This module is for dynamically created schedules at runtime.
+
+// Schedule a named task to run after delayMs milliseconds
+export fn scheduleAfter(name, delayMs) {
+    atomic.new(f"sched_{name}_delay", delayMs)
+    atomic.new(f"sched_{name}_active", 1)
+    log.debug(f"Scheduled '{name}' to run after {delayMs}ms")
+    return name
+}
+
+// Check if a named schedule is active
+export fn isScheduled(name) {
+    let active = atomic.get(f"sched_{name}_active")
+    return active == 1
+}
+
+// Cancel a scheduled task
+export fn cancelSchedule(name) {
+    atomic.set(f"sched_{name}_active", 0)
+    log.debug(f"Cancelled schedule: {name}")
+}
+
+// Get the delay for a scheduled task
+export fn getDelay(name) {
+    return atomic.get(f"sched_{name}_delay")
+}

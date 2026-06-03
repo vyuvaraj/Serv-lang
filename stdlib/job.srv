@@ -1,0 +1,51 @@
+// Serv Standard Library: Background Job Helpers
+// Import: import { createJob, startJob, completeJob, failJob, jobStatus } from "stdlib/job.srv"
+//
+// Track background job lifecycle — useful with spawn/every/cron blocks.
+
+// Job status constants
+enum JobStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed
+}
+
+// Create a new job record
+export fn createJob(name, payload) {
+    let jobId = f"job_{name}_{time.now()}"
+    atomic.new(f"job_{jobId}_status", 0)
+    log.info(f"Job created: {jobId}")
+    return {
+        "id": jobId,
+        "name": name,
+        "payload": payload,
+        "status": Pending,
+        "createdAt": time.now()
+    }
+}
+
+// Mark a job as running
+export fn startJob(jobId) {
+    atomic.set(f"job_{jobId}_status", 1)
+    log.info(f"Job started: {jobId}")
+}
+
+// Mark a job as completed
+export fn completeJob(jobId, result) {
+    atomic.set(f"job_{jobId}_status", 2)
+    log.info(f"Job completed: {jobId}")
+    return { "id": jobId, "status": Completed, "result": result }
+}
+
+// Mark a job as failed
+export fn failJob(jobId, error) {
+    atomic.set(f"job_{jobId}_status", 3)
+    log.error(f"Job failed: {jobId} — {error}")
+    return { "id": jobId, "status": Failed, "error": error }
+}
+
+// Get job status by ID
+export fn jobStatus(jobId) {
+    return atomic.get(f"job_{jobId}_status")
+}

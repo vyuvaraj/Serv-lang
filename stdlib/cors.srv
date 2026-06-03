@@ -1,0 +1,40 @@
+// Serv Standard Library: CORS (Cross-Origin Resource Sharing)
+// Import: import { corsResponse, allowOrigin, preflightResponse } from "stdlib/cors.srv"
+//
+// Helpers for handling CORS in API services.
+
+// Build CORS headers for a specific origin
+export fn allowOrigin(origin) {
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID",
+        "Access-Control-Max-Age": "86400"
+    }
+}
+
+// Build CORS headers allowing all origins
+export fn allowAll() {
+    return allowOrigin("*")
+}
+
+// Build a preflight (OPTIONS) response
+export fn preflightResponse(origin) {
+    return {
+        "status": 204,
+        "headers": allowOrigin(origin)
+    }
+}
+
+// Check if an origin is in the allowed list
+export fn isOriginAllowed(origin, allowedOrigins) {
+    for allowed in allowedOrigins {
+        if allowed == "*" {
+            return true
+        }
+        if allowed == origin {
+            return true
+        }
+    }
+    return false
+}

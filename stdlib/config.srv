@@ -1,0 +1,61 @@
+// Serv Standard Library: Config Helpers
+// Import: import { getConfig, requireConfig, configInt, configBool, configList } from "stdlib/config.srv"
+//
+// Typed config access wrappers for the built-in config() function.
+
+// Get a config value with a default fallback
+export fn getConfig(key, defaultValue) {
+    let val = config(key)
+    if val == "" {
+        return defaultValue
+    }
+    return val
+}
+
+// Get a required config value — logs error if missing
+export fn requireConfig(key) {
+    let val = config(key)
+    if val == "" {
+        log.error(f"Required config key '{key}' is not set")
+    }
+    return val
+}
+
+// Get config as integer with default
+export fn configInt(key, defaultValue) {
+    let val = config(key)
+    if val == "" {
+        return defaultValue
+    }
+    return val
+}
+
+// Get config as boolean (accepts "true", "1", "yes")
+export fn configBool(key) {
+    let val = config(key)
+    if val == "true" {
+        return true
+    }
+    if val == "1" {
+        return true
+    }
+    if val == "yes" {
+        return true
+    }
+    return false
+}
+
+// Get config as a comma-separated list
+export fn configList(key) {
+    let val = config(key)
+    if val == "" {
+        return []
+    }
+    return val.split(",")
+}
+
+// Check if a config key is set
+export fn hasConfig(key) {
+    let val = config(key)
+    return val != ""
+}

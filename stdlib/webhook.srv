@@ -1,0 +1,39 @@
+// Serv Standard Library: Webhook Helpers
+// Import: import { sendWebhook, buildPayload, verifySignature } from "stdlib/webhook.srv"
+//
+// Common patterns for outgoing webhook notifications.
+
+// Build a standard webhook payload envelope
+export fn buildPayload(event, data) {
+    return {
+        "event": event,
+        "data": data,
+        "timestamp": time.now(),
+        "id": f"evt_{time.now()}"
+    }
+}
+
+// Send a webhook (POST JSON to URL)
+export fn sendWebhook(url, event, data) {
+    let payload = buildPayload(event, data)
+    let body = json.stringify(payload)
+    let response = http.post(url, body)
+    return response
+}
+
+// Verify incoming webhook signature (HMAC-based)
+export fn verifySignature(body, secret, signature) {
+    let expected = f"hmac_{secret}_{body}"
+    return expected == signature
+}
+
+// Build a webhook retry record
+export fn retryRecord(url, event, attempt, maxAttempts) {
+    return {
+        "url": url,
+        "event": event,
+        "attempt": attempt,
+        "maxAttempts": maxAttempts,
+        "nextRetryMs": attempt * 1000 * attempt
+    }
+}

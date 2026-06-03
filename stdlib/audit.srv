@@ -1,0 +1,43 @@
+// Serv Standard Library: Audit Logging
+// Import: import { auditLog, auditAction, auditAccess } from "stdlib/audit.srv"
+//
+// Structured audit trail for compliance and security monitoring.
+
+// Create an audit log entry
+export fn auditLog(actor, action, resource, details) {
+    let entry = {
+        "actor": actor,
+        "action": action,
+        "resource": resource,
+        "details": details,
+        "timestamp": time.now(),
+        "id": f"audit_{time.now()}"
+    }
+    log.info(f"[AUDIT] {actor} {action} {resource}")
+    return entry
+}
+
+// Log a data modification action
+export fn auditAction(actor, action, resourceType, resourceId, changes) {
+    return auditLog(actor, action, f"{resourceType}/{resourceId}", changes)
+}
+
+// Log an access event (read/view)
+export fn auditAccess(actor, resource) {
+    return auditLog(actor, "access", resource, nil)
+}
+
+// Log an authentication event
+export fn auditAuth(actor, success, ip) {
+    let action = "login_success"
+    if success == false {
+        action = "login_failure"
+    }
+    return auditLog(actor, action, "auth", { "ip": ip })
+}
+
+// Log a permission denied event
+export fn auditDenied(actor, resource, reason) {
+    log.warn(f"[AUDIT] ACCESS DENIED: {actor} -> {resource} ({reason})")
+    return auditLog(actor, "access_denied", resource, { "reason": reason })
+}

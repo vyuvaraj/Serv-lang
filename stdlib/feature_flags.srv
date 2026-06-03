@@ -1,0 +1,44 @@
+// Serv Standard Library: Feature Flags
+// Import: import { enableFlag, disableFlag, isEnabled, toggleFlag } from "stdlib/feature_flags.srv"
+//
+// Simple in-memory feature flags for gradual rollouts and A/B testing.
+// For distributed feature flags, use a config service or database.
+
+// Enable a feature flag
+export fn enableFlag(name) {
+    atomic.new(f"ff_{name}", 1)
+    log.info(f"Feature flag '{name}' ENABLED")
+}
+
+// Disable a feature flag
+export fn disableFlag(name) {
+    atomic.set(f"ff_{name}", 0)
+    log.info(f"Feature flag '{name}' DISABLED")
+}
+
+// Check if a feature flag is enabled
+export fn isEnabled(name) {
+    let val = atomic.get(f"ff_{name}")
+    return val == 1
+}
+
+// Toggle a feature flag
+export fn toggleFlag(name) {
+    let current = atomic.get(f"ff_{name}")
+    if current == 1 {
+        atomic.set(f"ff_{name}", 0)
+        log.info(f"Feature flag '{name}' toggled OFF")
+    } else {
+        atomic.set(f"ff_{name}", 1)
+        log.info(f"Feature flag '{name}' toggled ON")
+    }
+}
+
+// Initialize a flag with a default state (0 = off, 1 = on)
+export fn initFlag(name, enabled) {
+    if enabled {
+        atomic.new(f"ff_{name}", 1)
+    } else {
+        atomic.new(f"ff_{name}", 0)
+    }
+}

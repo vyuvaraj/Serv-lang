@@ -1,0 +1,35 @@
+// Serv Standard Library: Idempotency Key Pattern
+// Import: import { checkIdempotency, markProcessed, isProcessed } from "stdlib/idempotency.srv"
+//
+// Prevents duplicate processing of requests using idempotency keys.
+// Critical for payment processing, webhook handlers, and job runners.
+
+// Check if a request with this idempotency key was already processed
+export fn isProcessed(key) {
+    let val = cache.get(f"idem_{key}")
+    return val != nil
+}
+
+// Mark a key as processed (with result for replay)
+export fn markProcessed(key, result) {
+    cache.set(f"idem_{key}", json.stringify(result), "3600s")
+    log.debug(f"Idempotency key '{key}' marked as processed")
+}
+
+// Get the cached result for a previously processed key
+export fn getProcessedResult(key) {
+    let val = cache.get(f"idem_{key}")
+    if val == nil {
+        return nil
+    }
+    return json.parse(val)
+}
+
+// Full idempotency check — returns cached result if already processed, nil if new
+export fn checkIdempotency(key) {
+    if isProcessed(key) {
+        log.info(f"Idempotency hit: key={key}")
+        return getProcessedResult(key)
+    }
+    return nil
+}
