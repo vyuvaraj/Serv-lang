@@ -41,7 +41,7 @@ Tracking remaining work to make Serv production-ready and competitive.
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
 | ✅ | Structured logging | JSON log output, log levels, context fields | High |
-| ⬜ | OpenTelemetry | Built-in tracing/metrics export (OTLP) | Medium |
+| ✅ | OpenTelemetry | Built-in tracing/metrics export (OTLP) | Medium |
 | ✅ | Health endpoints | Auto-generated `/health` and `/ready` | High |
 | ✅ | Config validation | Schema validation at startup, fail fast | Medium |
 | ✅ | TLS support | `server "8080" tls "cert.pem" "key.pem"` | Medium |

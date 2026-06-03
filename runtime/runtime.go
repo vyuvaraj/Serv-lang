@@ -723,11 +723,13 @@ func MetricGauge(name string, val float64) {
 
 // HTTP Client
 func HTTPGet(url string) HTTPResponse {
+	endSpan := TraceHTTPClient("GET", url)
 	start := time.Now()
 	MetricInc("http_client_requests_total")
 	resp, err := http.Get(url)
 	if err != nil {
 		MetricInc("http_client_errors_total")
+		endSpan(0)
 		panic(fmt.Sprintf("HTTP GET request failed for %s: %s", url, err.Error()))
 	}
 	defer resp.Body.Close()
@@ -736,10 +738,12 @@ func HTTPGet(url string) HTTPResponse {
 	duration := time.Since(start).Seconds()
 	MetricGauge("http_client_request_duration_seconds", duration)
 
+	endSpan(resp.StatusCode)
 	return HTTPResponse{Status: resp.StatusCode, Body: string(body)}
 }
 
 func HTTPPost(url string, body interface{}) HTTPResponse {
+	endSpan := TraceHTTPClient("POST", url)
 	start := time.Now()
 	MetricInc("http_client_requests_total")
 
@@ -753,6 +757,7 @@ func HTTPPost(url string, body interface{}) HTTPResponse {
 	resp, err := http.Post(url, "application/json", &buf)
 	if err != nil {
 		MetricInc("http_client_errors_total")
+		endSpan(0)
 		panic(fmt.Sprintf("HTTP POST request failed for %s: %s", url, err.Error()))
 	}
 	defer resp.Body.Close()
@@ -761,6 +766,7 @@ func HTTPPost(url string, body interface{}) HTTPResponse {
 	duration := time.Since(start).Seconds()
 	MetricGauge("http_client_request_duration_seconds", duration)
 
+	endSpan(resp.StatusCode)
 	return HTTPResponse{Status: resp.StatusCode, Body: string(bodyBytes)}
 }
 
@@ -781,6 +787,7 @@ func Every(intervalStr string, callback func()) {
 		for range ticker.C {
 			start := time.Now()
 			MetricInc("scheduler_jobs_executed_total")
+			endSpan := TraceScheduler("Every", intervalStr)
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -790,6 +797,7 @@ func Every(intervalStr string, callback func()) {
 				}()
 				callback()
 			}()
+			endSpan()
 			durationSecs := time.Since(start).Seconds()
 			MetricGauge("scheduler_job_duration_seconds", durationSecs)
 		}
@@ -806,6 +814,7 @@ func Cron(cronExpr string, callback func()) {
 	_, err := cronInstance.AddFunc(cronExpr, func() {
 		start := time.Now()
 		MetricInc("scheduler_jobs_executed_total")
+		endSpan := TraceScheduler("Cron", cronExpr)
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -815,6 +824,7 @@ func Cron(cronExpr string, callback func()) {
 			}()
 			callback()
 		}()
+		endSpan()
 		durationSecs := time.Since(start).Seconds()
 		MetricGauge("scheduler_job_duration_seconds", durationSecs)
 	})
@@ -954,6 +964,9 @@ func Subscribe(topic string, callback func(string)) {
 }
 
 func Publish(topic string, msg interface{}) {
+	endSpan := TracePubSub("Publish", topic)
+	defer endSpan()
+
 	MetricInc("broker_messages_published_total")
 	var msgStr string
 	if str, ok := msg.(string); ok {
@@ -1496,6 +1509,7 @@ func StartServer() interface{} {
 	}
 
 	RunMigrations()
+	initOtel()
 
 	if serverPort == "" {
 		serverPort = "2112"
@@ -1549,6 +1563,10 @@ func StartServer() interface{} {
 			Params: params,
 		}
 
+		// OpenTelemetry: start request span
+		parentTrace := r.Header.Get("traceparent")
+		trace := TraceRequest(r.Method, r.URL.Path, parentTrace)
+
 		start := time.Now()
 		MetricInc("http_server_requests_total")
 
@@ -1557,14 +1575,28 @@ func StartServer() interface{} {
 		duration := time.Since(start).Seconds()
 		MetricGauge("http_server_request_duration_seconds", duration)
 
+		statusCode := 200
 		w.Header().Set("Content-Type", "application/json")
+		// Propagate trace context in response
+		if tp := Traceparent(trace); tp != "" {
+			w.Header().Set("traceparent", tp)
+		}
+
 		if resMap, ok := res.(map[string]interface{}); ok {
+			if s, hasStatus := resMap["status"]; hasStatus {
+				if code, ok := s.(int); ok && code >= 400 {
+					statusCode = code
+				}
+			}
 			json.NewEncoder(w).Encode(resMap)
 		} else if resStr, ok := res.(string); ok {
 			w.Write([]byte(resStr))
 		} else {
 			json.NewEncoder(w).Encode(res)
 		}
+
+		// OpenTelemetry: end request span
+		EndTrace(trace, statusCode)
 	})
 
 	srv := &http.Server{
@@ -1737,6 +1769,9 @@ func initPythonDaemonPool() {
 
 // Call Python Script for extern mappings using the persistent daemon pool
 func CallPython(scriptPath string, funcName string, args ...interface{}) interface{} {
+	endSpan := TraceExtern("python:"+scriptPath, funcName)
+	defer endSpan()
+
 	initPythonDaemonPool()
 
 	worker := <-pythonPoolQueue
@@ -2062,6 +2097,9 @@ func AtomicCAS(name interface{}, expected interface{}, newValue interface{}) int
 // DBQueryPage executes a paginated MongoDB find query.
 // Usage: db.queryPage("collection", filter, page, pageSize)
 func DBQueryPage(collection string, args ...interface{}) interface{} {
+	endSpan := TraceDB("queryPage", collection)
+	defer endSpan()
+
 	if mongoDB == nil {
 		panic("MongoDB not initialized for paginated queries")
 	}
@@ -2127,6 +2165,9 @@ func DBQueryPage(collection string, args ...interface{}) interface{} {
 // DBFindOne finds a single document matching the filter.
 // Usage: db.findOne("collection", filter)
 func DBFindOne(collection string, args ...interface{}) interface{} {
+	endSpan := TraceDB("findOne", collection)
+	defer endSpan()
+
 	if mongoDB == nil {
 		panic("MongoDB not initialized")
 	}
@@ -2159,6 +2200,8 @@ func DBFindOne(collection string, args ...interface{}) interface{} {
 // DBCount counts documents matching a filter.
 // Usage: db.count("collection", filter)
 func DBCount(collection string, args ...interface{}) interface{} {
+	endSpan := TraceDB("count", collection)
+	defer endSpan()
 	if mongoDB == nil {
 		panic("MongoDB not initialized")
 	}
@@ -2187,6 +2230,8 @@ func DBCount(collection string, args ...interface{}) interface{} {
 // DBUpsert inserts or updates a document.
 // Usage: db.upsert("collection", filter, update)
 func DBUpsert(collection string, args ...interface{}) interface{} {
+	endSpan := TraceDB("upsert", collection)
+	defer endSpan()
 	if mongoDB == nil {
 		panic("MongoDB not initialized")
 	}
@@ -2609,6 +2654,9 @@ func AddBeforeQueryHook(hook func(interface{}, interface{}) interface{}) {
 }
 
 func DBQuery(query string, args ...interface{}) interface{} {
+	endSpan := TraceDB("query", query)
+	defer endSpan()
+
 	// Trigger beforeQuery hooks
 	beforeQueryHooksMu.RLock()
 	for _, hook := range beforeQueryHooks {
@@ -2867,6 +2915,9 @@ func InitCache(connStr string) {
 }
 
 func CacheSet(key string, value interface{}, durationStr string) {
+	endSpan := TraceCache("SET", key)
+	defer endSpan()
+
 	duration, err := time.ParseDuration(durationStr)
 	if err != nil {
 		duration = 10 * time.Minute // default fallback
@@ -2889,6 +2940,9 @@ func CacheSet(key string, value interface{}, durationStr string) {
 }
 
 func CacheGet(key string) interface{} {
+	endSpan := TraceCache("GET", key)
+	defer endSpan()
+
 	if redisClient != nil {
 		val, err := redisClient.Get(ctx, key).Result()
 		if err == redis.Nil {
