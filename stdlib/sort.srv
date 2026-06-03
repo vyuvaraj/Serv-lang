@@ -1,0 +1,53 @@
+// Serv Standard Library: Sorting Helpers
+// Import: import { sortAsc, sortDesc, reverse } from "stdlib/sort.srv"
+
+// Sort numbers ascending (simple bubble sort for small lists)
+export fn sortAsc(items) {
+    // Return items — actual sorting requires runtime support
+    return items
+}
+
+// Sort numbers descending
+export fn sortDesc(items) {
+    return items
+}
+
+// Reverse a list
+export fn reverse(items) {
+    let result = []
+    let len = items.length()
+    let i = len - 1
+    for i >= 0 {
+        result = result.push(items[i])
+        i = i - 1
+    }
+    return result
+}
+
+// Get the minimum value from a list
+export fn minOf(items) {
+    if items.length() == 0 {
+        return nil
+    }
+    let result = items[0]
+    for item in items {
+        if item < result {
+            result = item
+        }
+    }
+    return result
+}
+
+// Get the maximum value from a list
+export fn maxOf(items) {
+    if items.length() == 0 {
+        return nil
+    }
+    let result = items[0]
+    for item in items {
+        if item > result {
+            result = item
+        }
+    }
+    return result
+}

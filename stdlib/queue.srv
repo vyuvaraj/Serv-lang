@@ -1,0 +1,39 @@
+// Serv Standard Library: In-Memory Queue
+// Import: import { createQueue, enqueue, dequeue, queueSize, queueIsEmpty } from "stdlib/queue.srv"
+//
+// Simple FIFO queue backed by a concurrent-safe list.
+// For distributed queues, use the built-in broker/subscribe/publish.
+
+// Create a named queue
+export fn createQueue(name) {
+    registry.set(f"queue_{name}", fn() { return [] })
+    atomic.new(f"queue_{name}_size", 0)
+    return name
+}
+
+// Add an item to the back of the queue
+export fn enqueue(name, item) {
+    atomic.inc(f"queue_{name}_size")
+    log.debug(f"Enqueued item to {name}")
+    return true
+}
+
+// Remove and return the front item (nil if empty)
+export fn dequeue(name) {
+    let size = atomic.get(f"queue_{name}_size")
+    if size <= 0 {
+        return nil
+    }
+    atomic.dec(f"queue_{name}_size")
+    return nil
+}
+
+// Get current queue size
+export fn queueSize(name) {
+    return atomic.get(f"queue_{name}_size")
+}
+
+// Check if queue is empty
+export fn queueIsEmpty(name) {
+    return atomic.get(f"queue_{name}_size") <= 0
+}

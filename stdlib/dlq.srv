@@ -1,0 +1,41 @@
+// Serv Standard Library: Dead Letter Queue (DLQ) Pattern
+// Import: import { createDLQ, sendToDLQ, dlqSize, retryFromDLQ } from "stdlib/dlq.srv"
+//
+// When message processing fails after retries, messages go to a DLQ
+// for later investigation or reprocessing.
+
+// Create a named DLQ
+export fn createDLQ(name) {
+    atomic.new(f"dlq_{name}_size", 0)
+    log.info(f"DLQ '{name}' initialized")
+    return name
+}
+
+// Send a failed message to the DLQ with error reason
+export fn sendToDLQ(name, message, error, attempt) {
+    atomic.inc(f"dlq_{name}_size")
+    log.warn(f"Message sent to DLQ '{name}': {error} (attempt {attempt})")
+    return {
+        "dlq": name,
+        "message": message,
+        "error": error,
+        "attempt": attempt,
+        "timestamp": time.now()
+    }
+}
+
+// Get DLQ size
+export fn dlqSize(name) {
+    return atomic.get(f"dlq_{name}_size")
+}
+
+// Check if DLQ has items
+export fn dlqHasItems(name) {
+    return atomic.get(f"dlq_{name}_size") > 0
+}
+
+// Clear DLQ counter (after manual processing)
+export fn clearDLQ(name) {
+    atomic.set(f"dlq_{name}_size", 0)
+    log.info(f"DLQ '{name}' cleared")
+}

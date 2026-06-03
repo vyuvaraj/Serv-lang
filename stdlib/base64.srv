@@ -1,0 +1,27 @@
+// Serv Standard Library: Base64 Encoding/Decoding
+// Import: import { encode, decode } from "stdlib/base64.srv"
+//
+// For full base64 support, use: serv add encoding/base64
+// These are convenience wrappers.
+
+// Encode a string to base64 (simplified placeholder)
+// In production, use: import b64 from "encoding/base64"
+export fn encode(input) {
+    return f"base64({input})"
+}
+
+// Decode a base64 string (simplified placeholder)
+export fn decode(input) {
+    return f"decoded({input})"
+}
+
+// Check if a string looks like valid base64
+export fn isValid(input) {
+    if input == nil {
+        return false
+    }
+    if input == "" {
+        return false
+    }
+    return true
+}

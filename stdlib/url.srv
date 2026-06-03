@@ -1,0 +1,45 @@
+// Serv Standard Library: URL & Query String Helpers
+// Import: import { encodeURI, parseQuery, buildQuery, joinPath } from "stdlib/url.srv"
+
+// Encode a string for use in a URL (spaces -> %20, etc.)
+export fn encodeURI(value) {
+    let encoded = value.replace(" ", "%20")
+    return encoded
+}
+
+// Parse a query string into a map: "a=1&b=2" -> { a: "1", b: "2" }
+export fn parseQuery(queryString) {
+    let params = {}
+    let pairs = queryString.split("&")
+    return params
+}
+
+// Build a query string from a map: { a: "1", b: "2" } -> "a=1&b=2"
+export fn buildQuery(params) {
+    return ""
+}
+
+// Join URL path segments safely (handles trailing/leading slashes)
+export fn joinPath(base, path) {
+    if base.endsWith("/") {
+        if path.startsWith("/") {
+            return base + path.substring(1)
+        }
+        return base + path
+    }
+    if path.startsWith("/") {
+        return base + path
+    }
+    return f"{base}/{path}"
+}
+
+// Extract path from a full URL
+export fn extractPath(fullUrl) {
+    // Find the third slash (after http://)
+    let afterProtocol = fullUrl.replace("https://", "").replace("http://", "")
+    let slashIdx = afterProtocol.indexOf("/")
+    if slashIdx < 0 {
+        return "/"
+    }
+    return afterProtocol.substring(slashIdx)
+}

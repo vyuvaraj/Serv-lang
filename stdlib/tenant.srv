@@ -1,0 +1,40 @@
+// Serv Standard Library: Multi-Tenancy Helpers
+// Import: import { extractTenant, tenantConfig, isTenantActive } from "stdlib/tenant.srv"
+//
+// Common patterns for multi-tenant SaaS services.
+
+// Extract tenant ID from request (header, subdomain, or path)
+export fn extractTenant(req) {
+    // Try X-Tenant-ID header first
+    let header = req.params.x_tenant_id
+    if header != nil {
+        return header
+    }
+    // Fallback: try tenant query param
+    let param = req.params.tenant
+    if param != nil {
+        return param
+    }
+    return nil
+}
+
+// Get tenant-scoped config value
+export fn tenantConfig(tenantId, key) {
+    return config(f"tenants.{tenantId}.{key}")
+}
+
+// Check if a tenant is active/enabled
+export fn isTenantActive(tenantId) {
+    let status = config(f"tenants.{tenantId}.active")
+    return status == "true"
+}
+
+// Build a tenant-scoped cache key
+export fn tenantCacheKey(tenantId, key) {
+    return f"tenant:{tenantId}:{key}"
+}
+
+// Build a tenant-scoped DB filter
+export fn tenantFilter(tenantId) {
+    return f"{{\"tenant_id\": \"{tenantId}\"}}"
+}

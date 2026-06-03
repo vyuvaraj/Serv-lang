@@ -1,0 +1,48 @@
+// Serv Standard Library: Semaphore / Concurrency Limiter
+// Import: import { createSemaphore, acquire, release, available } from "stdlib/semaphore.srv"
+//
+// Controls concurrent access to a shared resource.
+// For spawn-level limits, use `spawn(N)` syntax instead.
+
+// Create a named semaphore with max concurrent slots
+export fn createSemaphore(name, maxSlots) {
+    atomic.new(f"sem_{name}_max", maxSlots)
+    atomic.new(f"sem_{name}_used", 0)
+    return name
+}
+
+// Try to acquire a slot (returns true if acquired, false if full)
+export fn tryAcquire(name) {
+    let used = atomic.get(f"sem_{name}_used")
+    let max = atomic.get(f"sem_{name}_max")
+    if used >= max {
+        return false
+    }
+    atomic.inc(f"sem_{name}_used")
+    return true
+}
+
+// Release a slot back to the semaphore
+export fn release(name) {
+    let used = atomic.get(f"sem_{name}_used")
+    if used > 0 {
+        atomic.dec(f"sem_{name}_used")
+    }
+}
+
+// Get number of available slots
+export fn available(name) {
+    let max = atomic.get(f"sem_{name}_max")
+    let used = atomic.get(f"sem_{name}_used")
+    return max - used
+}
+
+// Get current utilization as percentage
+export fn utilization(name) {
+    let max = atomic.get(f"sem_{name}_max")
+    let used = atomic.get(f"sem_{name}_used")
+    if max == 0 {
+        return 0
+    }
+    return (used * 100) / max
+}

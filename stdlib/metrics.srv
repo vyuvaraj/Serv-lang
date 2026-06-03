@@ -1,0 +1,33 @@
+// Serv Standard Library: Metrics Helpers
+// Import: import { counter, gauge, timer, recordLatency } from "stdlib/metrics.srv"
+//
+// Structured wrappers around the built-in metric.inc/metric.gauge.
+
+// Increment a named counter
+export fn counter(name) {
+    metric.inc(name)
+}
+
+// Increment a counter by a label (creates namespaced metric)
+export fn counterWithLabel(name, label, value) {
+    metric.inc(f"{name}_{label}_{value}")
+}
+
+// Set a gauge value
+export fn gauge(name, value) {
+    metric.gauge(name, value)
+}
+
+// Record a latency measurement (wraps gauge with _duration_seconds suffix)
+export fn recordLatency(name, durationMs) {
+    let seconds = durationMs / 1000
+    metric.gauge(f"{name}_duration_seconds", seconds)
+}
+
+// Track request count and error count together
+export fn trackRequest(endpoint, success) {
+    metric.inc(f"requests_total_{endpoint}")
+    if success == false {
+        metric.inc(f"requests_errors_{endpoint}")
+    }
+}

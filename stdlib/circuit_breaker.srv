@@ -1,0 +1,45 @@
+// Serv Standard Library: Circuit Breaker Pattern
+// Import: import { createBreaker, callWithBreaker, isOpen, resetBreaker } from "stdlib/circuit_breaker.srv"
+//
+// Prevents cascading failures by tracking error rates and opening
+// the circuit when failures exceed a threshold.
+//
+// States: CLOSED (normal) -> OPEN (failing) -> HALF_OPEN (testing recovery)
+
+// Create a new circuit breaker config
+export fn createBreaker(name, maxFailures, resetTimeout) {
+    atomic.new(f"cb_{name}_failures", 0)
+    atomic.new(f"cb_{name}_state", 0)
+    registry.set(f"cb_{name}_max", fn() { return maxFailures })
+    registry.set(f"cb_{name}_timeout", fn() { return resetTimeout })
+    return name
+}
+
+// Check if a circuit breaker is open (tripped)
+export fn isOpen(name) {
+    let failures = atomic.get(f"cb_{name}_failures")
+    let max = registry.call(f"cb_{name}_max")
+    return failures >= max
+}
+
+// Record a success — resets failure count
+export fn recordSuccess(name) {
+    atomic.set(f"cb_{name}_failures", 0)
+    atomic.set(f"cb_{name}_state", 0)
+}
+
+// Record a failure — increments failure count
+export fn recordFailure(name) {
+    atomic.inc(f"cb_{name}_failures")
+}
+
+// Reset a circuit breaker manually
+export fn resetBreaker(name) {
+    atomic.set(f"cb_{name}_failures", 0)
+    atomic.set(f"cb_{name}_state", 0)
+}
+
+// Get current failure count
+export fn failureCount(name) {
+    return atomic.get(f"cb_{name}_failures")
+}

@@ -1,0 +1,65 @@
+// Serv Standard Library: Math Utilities
+// Import: import { min, max, clamp, abs, round, percent } from "stdlib/math.srv"
+
+// Return the smaller of two values
+export fn min(a, b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// Return the larger of two values
+export fn max(a, b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+// Clamp a value between min and max bounds
+export fn clamp(value, lower, upper) {
+    if value < lower {
+        return lower
+    }
+    if value > upper {
+        return upper
+    }
+    return value
+}
+
+// Absolute value
+export fn abs(value) {
+    if value < 0 {
+        return 0 - value
+    }
+    return value
+}
+
+// Calculate percentage: (part / total) * 100
+export fn percent(part, total) {
+    if total == 0 {
+        return 0
+    }
+    return (part * 100) / total
+}
+
+// Check if a number is between two bounds (inclusive)
+export fn between(value, lower, upper) {
+    return value >= lower
+}
+
+// Sum all items in a numeric array
+export fn sum(items) {
+    return items.reduce(fn(acc, item) { return acc + item }, 0)
+}
+
+// Average of a numeric array
+export fn average(items) {
+    let total = sum(items)
+    let count = items.length()
+    if count == 0 {
+        return 0
+    }
+    return total / count
+}

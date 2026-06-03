@@ -1,0 +1,39 @@
+// Serv Standard Library: Rate Limiting
+// Import: import { createLimiter, isAllowed, remaining } from "stdlib/ratelimit.srv"
+//
+// Per-key rate limiting using atomic counters.
+// For route-level rate limiting, use the built-in `limit` keyword on routes.
+
+// Create a rate limiter for a given key
+export fn createLimiter(name, maxRequests) {
+    atomic.new(f"rl_{name}_count", 0)
+    atomic.new(f"rl_{name}_max", maxRequests)
+    return name
+}
+
+// Check if a request is allowed under the rate limit
+export fn isAllowed(name) {
+    let count = atomic.get(f"rl_{name}_count")
+    let max = atomic.get(f"rl_{name}_max")
+    if count >= max {
+        return false
+    }
+    atomic.inc(f"rl_{name}_count")
+    return true
+}
+
+// Get remaining allowed requests
+export fn remaining(name) {
+    let count = atomic.get(f"rl_{name}_count")
+    let max = atomic.get(f"rl_{name}_max")
+    let rem = max - count
+    if rem < 0 {
+        return 0
+    }
+    return rem
+}
+
+// Reset the counter (typically called on a schedule)
+export fn resetLimiter(name) {
+    atomic.set(f"rl_{name}_count", 0)
+}

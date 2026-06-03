@@ -1,0 +1,62 @@
+// Serv Standard Library: Input Sanitization
+// Import: import { escapeHTML, stripTags, escapeSQL, sanitizeFilename } from "stdlib/sanitize.srv"
+
+// Escape HTML special characters to prevent XSS
+export fn escapeHTML(input) {
+    if input == nil {
+        return ""
+    }
+    let escaped = input.replace("&", "&amp;")
+    escaped = escaped.replace("<", "&lt;")
+    escaped = escaped.replace(">", "&gt;")
+    escaped = escaped.replace("\"", "&quot;")
+    return escaped
+}
+
+// Strip all HTML tags from a string
+export fn stripTags(input) {
+    if input == nil {
+        return ""
+    }
+    // Simple approach: remove anything between < and >
+    let result = input
+    for result.includes("<") {
+        let start = result.indexOf("<")
+        let end = result.indexOf(">")
+        if end < 0 {
+            return result
+        }
+        let before = result.substring(0, start)
+        let after = result.substring(end + 1)
+        result = before + after
+    }
+    return result
+}
+
+// Escape single quotes for SQL (basic SQL injection prevention)
+// NOTE: Always prefer parameterized queries over string escaping!
+export fn escapeSQL(input) {
+    if input == nil {
+        return ""
+    }
+    return input.replace("'", "''")
+}
+
+// Sanitize a filename (remove path separators and dangerous chars)
+export fn sanitizeFilename(filename) {
+    if filename == nil {
+        return ""
+    }
+    let safe = filename.replace("/", "_")
+    safe = safe.replace("\\", "_")
+    safe = safe.replace("..", "_")
+    return safe
+}
+
+// Trim and normalize whitespace in a string
+export fn normalizeWhitespace(input) {
+    if input == nil {
+        return ""
+    }
+    return input.trim()
+}

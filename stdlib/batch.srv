@@ -1,0 +1,41 @@
+// Serv Standard Library: Batch Processing
+// Import: import { createBatch, addToBatch, processBatch, batchSize } from "stdlib/batch.srv"
+//
+// Accumulate items and process them in batches — common for
+// bulk DB writes, API calls, and event processing.
+
+// Create a named batch with a max size
+export fn createBatch(name, maxSize) {
+    atomic.new(f"batch_{name}_count", 0)
+    atomic.new(f"batch_{name}_max", maxSize)
+    log.debug(f"Batch '{name}' created (max: {maxSize})")
+    return name
+}
+
+// Add an item to the batch, returns true if batch is now full
+export fn addToBatch(name, item) {
+    atomic.inc(f"batch_{name}_count")
+    let count = atomic.get(f"batch_{name}_count")
+    let max = atomic.get(f"batch_{name}_max")
+    return count >= max
+}
+
+// Get current batch size
+export fn batchSize(name) {
+    return atomic.get(f"batch_{name}_count")
+}
+
+// Check if batch is full
+export fn isBatchFull(name) {
+    let count = atomic.get(f"batch_{name}_count")
+    let max = atomic.get(f"batch_{name}_max")
+    return count >= max
+}
+
+// Reset batch counter after processing
+export fn flushBatch(name) {
+    let count = atomic.get(f"batch_{name}_count")
+    atomic.set(f"batch_{name}_count", 0)
+    log.debug(f"Batch '{name}' flushed ({count} items)")
+    return count
+}

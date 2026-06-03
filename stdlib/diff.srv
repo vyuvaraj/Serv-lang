@@ -1,0 +1,26 @@
+// Serv Standard Library: Object Diff & Change Detection
+// Import: import { hasChanged, fieldChanged } from "stdlib/diff.srv"
+//
+// Useful for audit logs, webhooks, and detecting mutations.
+
+// Check if two values are different
+export fn hasChanged(oldVal, newVal) {
+    return oldVal != newVal
+}
+
+// Check if a specific field changed between two maps
+export fn fieldChanged(oldObj, newObj, field) {
+    let oldVal = oldObj?.field
+    let newVal = newObj?.field
+    return oldVal != newVal
+}
+
+// Create a simple change record
+export fn changeRecord(field, oldVal, newVal) {
+    return {
+        "field": field,
+        "from": oldVal,
+        "to": newVal,
+        "timestamp": time.now()
+    }
+}
