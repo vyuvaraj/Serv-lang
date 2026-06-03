@@ -1,0 +1,43 @@
+// Serv Example 45: Using the Standard Library
+// Build: serv build examples/45_stdlib_usage.srv -o stdlib_demo.exe
+//
+// Demonstrates importing reusable modules from stdlib/
+
+import { bearerToken, requireAuth } from "../stdlib/auth.srv"
+import { ok, badRequest, notFound } from "../stdlib/response.srv"
+import { required, isEmail } from "../stdlib/validation.srv"
+
+server "8080"
+
+// Protected route using auth helpers
+route "GET" "/api/profile" (req) {
+    let authError = requireAuth(req)
+    if authError != nil {
+        return authError
+    }
+    
+    let token = bearerToken(req)
+    return ok({ "token": token, "user": "Alice" })
+}
+
+// Validated creation endpoint
+route "POST" "/api/users" (req) {
+    let body = req.body
+    
+    if required(body) == false {
+        return badRequest("Request body is required")
+    }
+    
+    return ok({ "created": true })
+}
+
+// Simple listing with response helpers
+route "GET" "/api/items" (req) {
+    let items = ["item1", "item2", "item3"]
+    return ok({ "items": items, "count": 3 })
+}
+
+// Not found example
+route "GET" "/api/missing" (req) {
+    return notFound("Resource does not exist")
+}

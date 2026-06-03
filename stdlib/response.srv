@@ -1,0 +1,32 @@
+// Serv Standard Library: Response Helpers
+// Import: import { ok, created, badRequest, notFound, serverError } from "stdlib/response.srv"
+
+// 200 OK with data
+export fn ok(data) {
+    return { "status": 200, "data": data }
+}
+
+// 201 Created with data
+export fn created(data) {
+    return { "status": 201, "data": data }
+}
+
+// 400 Bad Request with error message
+export fn badRequest(message) {
+    return { "status": 400, "error": message }
+}
+
+// 404 Not Found with message
+export fn notFound(message) {
+    return { "status": 404, "error": message }
+}
+
+// 500 Internal Server Error
+export fn serverError(message) {
+    return { "status": 500, "error": message }
+}
+
+// Generic error response
+export fn errorResponse(status, message) {
+    return { "status": status, "error": message }
+}

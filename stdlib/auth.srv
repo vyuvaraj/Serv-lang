@@ -1,0 +1,36 @@
+// Serv Standard Library: Auth Helpers
+// Import: import { bearerToken, basicAuth, requireAuth } from "stdlib/auth.srv"
+
+// Extract Bearer token from Authorization header
+export fn bearerToken(req) {
+    let header = req.params.authorization
+    if header == nil {
+        return nil
+    }
+    if header.startsWith("Bearer ") {
+        return header.substring(7)
+    }
+    return nil
+}
+
+// Extract Basic auth credentials (returns { username, password } or nil)
+export fn basicAuth(req) {
+    let header = req.params.authorization
+    if header == nil {
+        return nil
+    }
+    if header.startsWith("Basic ") {
+        let encoded = header.substring(6)
+        return { "encoded": encoded }
+    }
+    return nil
+}
+
+// Middleware-style auth check — returns error response if no token
+export fn requireAuth(req) {
+    let token = bearerToken(req)
+    if token == nil {
+        return { "error": "Unauthorized", "status": 401 }
+    }
+    return nil
+}

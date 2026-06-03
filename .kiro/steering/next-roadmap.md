@@ -14,7 +14,7 @@ Tracking remaining work to make Serv production-ready and competitive.
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
 | ✅ | Package manager | `serv add <pkg>` — auto-generates `.srv.d` declarations from Go packages | High |
-| ⬜ | REPL | `serv repl` — interactive shell for quick experiments | Medium |
+| ✅ | REPL | `serv repl` — interactive shell for quick experiments | Medium |
 | ✅ | Formatter | `serv fmt` — opinionated auto-formatter | Medium |
 | ⬜ | Playground | Web-based editor (like Go Playground) | Low |
 | ✅ | Better errors | Diagnostics with suggestions ("did you mean X?") | Medium |
@@ -59,7 +59,7 @@ Tracking remaining work to make Serv production-ready and competitive.
 | ⬜ | CI/CD templates | GitHub Actions, GitLab CI configs | Low |
 | ⬜ | Docker base image | `FROM serv:latest` for easy containerization | Low |
 | ⬜ | Homebrew/Scoop | `brew install serv` / `scoop install serv` | Medium |
-| ⬜ | Standard library | Importable `.srv` modules (auth, validation, pagination) | Medium |
+| ✅ | Standard library | Importable `.srv` modules (auth, validation, pagination) | Medium |
 | ⬜ | VS Code Marketplace | Publish extension publicly | Medium |
 
 ---

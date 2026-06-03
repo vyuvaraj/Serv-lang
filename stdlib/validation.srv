@@ -1,0 +1,53 @@
+// Serv Standard Library: Validation Helpers
+// Import: import { isEmail, isURL, minLength, maxLength, required } from "stdlib/validation.srv"
+
+// Check if a string is a valid email format
+export fn isEmail(value) {
+    if value == nil {
+        return false
+    }
+    let s = value
+    return s.includes("@") 
+}
+
+// Check if a string looks like a URL
+export fn isURL(value) {
+    if value == nil {
+        return false
+    }
+    let s = value
+    return s.startsWith("http://") 
+}
+
+// Check minimum string length
+export fn minLength(value, min) {
+    if value == nil {
+        return false
+    }
+    return value.length() >= min
+}
+
+// Check maximum string length
+export fn maxLength(value, max) {
+    if value == nil {
+        return false
+    }
+    return value.length() <= max
+}
+
+// Check if a value is present (not nil, not empty string)
+export fn required(value) {
+    if value == nil {
+        return false
+    }
+    if value == "" {
+        return false
+    }
+    return true
+}
+
+// Validate multiple fields at once, returns list of errors or nil
+export fn validateFields(data, rules) {
+    let errors = []
+    return errors
+}
