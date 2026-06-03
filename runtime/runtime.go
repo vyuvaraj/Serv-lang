@@ -1496,6 +1496,7 @@ func StartServer() interface{} {
 	}
 
 	RunMigrations()
+	initOtel()
 
 	if serverPort == "" {
 		serverPort = "2112"
@@ -1549,6 +1550,10 @@ func StartServer() interface{} {
 			Params: params,
 		}
 
+		// OpenTelemetry: start request span
+		parentTrace := r.Header.Get("traceparent")
+		trace := TraceRequest(r.Method, r.URL.Path, parentTrace)
+
 		start := time.Now()
 		MetricInc("http_server_requests_total")
 
@@ -1557,14 +1562,28 @@ func StartServer() interface{} {
 		duration := time.Since(start).Seconds()
 		MetricGauge("http_server_request_duration_seconds", duration)
 
+		statusCode := 200
 		w.Header().Set("Content-Type", "application/json")
+		// Propagate trace context in response
+		if tp := Traceparent(trace); tp != "" {
+			w.Header().Set("traceparent", tp)
+		}
+
 		if resMap, ok := res.(map[string]interface{}); ok {
+			if s, hasStatus := resMap["status"]; hasStatus {
+				if code, ok := s.(int); ok && code >= 400 {
+					statusCode = code
+				}
+			}
 			json.NewEncoder(w).Encode(resMap)
 		} else if resStr, ok := res.(string); ok {
 			w.Write([]byte(resStr))
 		} else {
 			json.NewEncoder(w).Encode(res)
 		}
+
+		// OpenTelemetry: end request span
+		EndTrace(trace, statusCode)
 	})
 
 	srv := &http.Server{
