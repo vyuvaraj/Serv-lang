@@ -73,6 +73,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_SELF, p.parseSelfExpression)
 	p.registerPrefix(TOKEN_AWAIT, p.parseAwaitExpression)
 	p.registerPrefix(TOKEN_FN, p.parseFnLiteral)
+	p.registerPrefix(TOKEN_VALIDATE, p.parseValidateIdentifier)
 
 	p.infixParseFns = make(map[TokenType]infixParseFn)
 	p.registerInfix(TOKEN_PLUS, p.parseInfixExpression)
@@ -199,6 +200,9 @@ func (p *Parser) parseStatement() Statement {
 	case TOKEN_TYPE:
 		return p.parseTypeAliasStatement()
 	case TOKEN_VALIDATE:
+		if p.peekToken.Type == TOKEN_LPAREN {
+			return p.parseExpressionStatement()
+		}
 		return p.parseValidateStatement()
 	case TOKEN_EXPORT:
 		return p.parseExportStatement()
@@ -1356,6 +1360,11 @@ func (p *Parser) parseTypeAliasStatement() Statement {
 	}
 	stmt.BaseType = p.curToken.Literal
 	return stmt
+}
+
+// parseValidateIdentifier treats 'validate' as a function identifier in expression context.
+func (p *Parser) parseValidateIdentifier() Expression {
+	return &Identifier{Token: p.curToken, Value: "validate"}
 }
 
 // parseValidateStatement parses: validate { required "key", optional "key" }

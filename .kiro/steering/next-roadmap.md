@@ -44,10 +44,10 @@ Tracking remaining work to make Serv production-ready and competitive.
 | ⬜ | OpenTelemetry | Built-in tracing/metrics export (OTLP) | Medium |
 | ✅ | Health endpoints | Auto-generated `/health` and `/ready` | High |
 | ✅ | Config validation | Schema validation at startup, fail fast | Medium |
-| ⬜ | TLS support | `server "8080" tls "cert.pem" "key.pem"` | Medium |
+| ✅ | TLS support | `server "8080" tls "cert.pem" "key.pem"` | Medium |
 | ✅ | WebSocket support | `ws "/chat" (conn) { ... }` | High |
 | ⬜ | Graceful hot-reload | Zero-downtime restarts in watch mode | Low |
-| ⬜ | Request validation | Built-in body/param validation with schema | Medium |
+| ✅ | Request validation | Built-in body/param validation with schema | Medium |
 
 ---
 

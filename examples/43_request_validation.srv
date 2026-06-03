@@ -1,0 +1,56 @@
+// Serv Example 43: Request Validation
+// Build: serv build examples/43_request_validation.srv -o validate_demo.exe
+//
+// Built-in request body validation against a schema.
+// Rules: "required", "string", "int", "float", "bool", "email"
+// Combine with commas: "required,email"
+//
+// Test:
+//   curl -X POST http://localhost:8080/api/users -d '{"name":"Alice","email":"alice@test.com","age":30}'
+//   curl -X POST http://localhost:8080/api/users -d '{"name":"","age":"not-a-number"}'
+
+server "8080"
+
+// Validate request body against a schema
+route "POST" "/api/users" (req) {
+    let errors = validate(req.body, {
+        "name": "required,string",
+        "email": "required,email",
+        "age": "int"
+    })
+    
+    if errors != nil {
+        return { "status": "error", "errors": errors }
+    }
+    
+    return { "status": "created", "message": "User created successfully" }
+}
+
+// Validate with minimal schema
+route "POST" "/api/login" (req) {
+    let errors = validate(req.body, {
+        "username": "required",
+        "password": "required"
+    })
+    
+    if errors != nil {
+        return { "status": "error", "errors": errors }
+    }
+    
+    return { "status": "ok", "token": "jwt-token-here" }
+}
+
+// Validate with type checking
+route "POST" "/api/settings" (req) {
+    let errors = validate(req.body, {
+        "theme": "required,string",
+        "notifications": "required,bool",
+        "fontSize": "int"
+    })
+    
+    if errors != nil {
+        return { "status": "error", "errors": errors }
+    }
+    
+    return { "status": "saved" }
+}

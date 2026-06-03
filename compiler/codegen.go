@@ -1374,6 +1374,9 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if funcStr == "config" {
 			return fmt.Sprintf("runtime.Config(%s)", strings.Join(args, ", ")), nil
 		}
+		if funcStr == "validate" {
+			return fmt.Sprintf("runtime.ValidateBody(%s)", strings.Join(args, ", ")), nil
+		}
 
 		// Special case: time.now()
 		if funcStr == "time.now" {

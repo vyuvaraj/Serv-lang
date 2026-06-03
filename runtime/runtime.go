@@ -3050,6 +3050,95 @@ func ValidateConfig(requiredKeys []string) {
 	}
 }
 
+// ValidateBody validates a JSON request body against a schema map.
+// Schema values define rules: "required", "string", "int", "float", "bool", "email", "required,email"
+// Returns nil if valid, or a []interface{} of error message strings.
+// Usage from Serv: let errors = validate(req.body, { name: "required", email: "required,email", age: "int" })
+func ValidateBody(args ...interface{}) interface{} {
+	if len(args) < 2 {
+		return []interface{}{"validate requires (body, schema) arguments"}
+	}
+
+	// Parse body
+	bodyStr := fmt.Sprint(args[0])
+	var body map[string]interface{}
+	if err := json.Unmarshal([]byte(bodyStr), &body); err != nil {
+		return []interface{}{"invalid JSON body: " + err.Error()}
+	}
+
+	// Parse schema
+	schema := make(map[string]string)
+	switch s := args[1].(type) {
+	case map[string]interface{}:
+		for k, v := range s {
+			schema[k] = fmt.Sprint(v)
+		}
+	case *SafeMap:
+		for k, v := range s.All() {
+			schema[k] = fmt.Sprint(v)
+		}
+	default:
+		return []interface{}{"schema must be a map"}
+	}
+
+	var errors []interface{}
+	for field, rules := range schema {
+		ruleList := strings.Split(rules, ",")
+		val, exists := body[field]
+
+		for _, rule := range ruleList {
+			rule = strings.TrimSpace(rule)
+			switch rule {
+			case "required":
+				if !exists || val == nil || val == "" {
+					errors = append(errors, fmt.Sprintf("%s is required", field))
+				}
+			case "string":
+				if exists && val != nil {
+					if _, ok := val.(string); !ok {
+						errors = append(errors, fmt.Sprintf("%s must be a string", field))
+					}
+				}
+			case "int":
+				if exists && val != nil {
+					switch val.(type) {
+					case float64: // JSON numbers are float64
+						// ok
+					case int, int64:
+						// ok
+					default:
+						errors = append(errors, fmt.Sprintf("%s must be an integer", field))
+					}
+				}
+			case "float":
+				if exists && val != nil {
+					if _, ok := val.(float64); !ok {
+						errors = append(errors, fmt.Sprintf("%s must be a number", field))
+					}
+				}
+			case "bool":
+				if exists && val != nil {
+					if _, ok := val.(bool); !ok {
+						errors = append(errors, fmt.Sprintf("%s must be a boolean", field))
+					}
+				}
+			case "email":
+				if exists && val != nil {
+					s := fmt.Sprint(val)
+					if !strings.Contains(s, "@") || !strings.Contains(s, ".") {
+						errors = append(errors, fmt.Sprintf("%s must be a valid email", field))
+					}
+				}
+			}
+		}
+	}
+
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
 func ToSafeValue(val interface{}) interface{} {
 	switch v := val.(type) {
 	case map[string]interface{}:
