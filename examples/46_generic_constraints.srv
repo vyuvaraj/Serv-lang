@@ -7,6 +7,7 @@
 server "8080"
 
 // Constrained to ordered types (supports <, >, <=, >=)
+
 fn maxOf[T: Ordered](a: T, b: T) -> T {
     if a > b {
         return a
@@ -22,6 +23,7 @@ fn minOf[T: Ordered](a: T, b: T) -> T {
 }
 
 // Constrained to numeric types (supports arithmetic)
+
 fn add[T: Numeric](a: T, b: T) -> T {
     return a + b
 }
@@ -31,11 +33,13 @@ fn double[T: Numeric](value: T) -> T {
 }
 
 // Unconstrained (any) still works
+
 fn identity[T](value: T) -> T {
     return value
 }
 
 // Multiple constraints
+
 fn clamp[T: Ordered](value: T, lo: T, hi: T) -> T {
     if value < lo {
         return lo
