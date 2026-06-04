@@ -410,17 +410,27 @@ let sub = text[0:5]          // "hello"
 ## Imports & Modules
 
 ```serv
-// Import a local .srv module
+// Import a local .srv module (relative path)
 import "models/user.srv"
 import { User, Role } from "models/user.srv"
+
+// Import from stdlib (no relative path needed)
+import { ok, notFound } from "stdlib/response"
+import { requireAuth } from "stdlib/auth"
+import { hashPassword } from "stdlib/crypto"
 
 // Import a Go package
 import uuid from "github.com/google/uuid"
 let id = uuid.New()
 
-// Use stdlib modules
-import { ok, notFound } from "../stdlib/response.srv"
+// .srv extension is optional for stdlib imports
+import { maskEmail } from "stdlib/mask.srv"   // also works
 ```
+
+**Import resolution order:**
+1. `stdlib/X` — resolved from project root's `stdlib/` directory
+2. `./path` or `../path` — resolved relative to the importing file
+3. Bare path — resolved relative to the importing file
 
 ## External Function Bindings
 

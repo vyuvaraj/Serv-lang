@@ -180,11 +180,11 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 
 ### Phase 8: Module System Hardening (Low Priority)
 
-| # | Item | Effort | Rationale |
-|---|------|--------|-----------|
-| 8.1 | **Package resolution without relative paths** | Medium | `import { ok } from "stdlib/response"` instead of `"../stdlib/response.srv"`. |
-| 8.2 | **Circular dependency detection** | Small | Walk the import graph and report cycles with file names. |
-| 8.3 | **Module-level visibility enforcement** | Medium | Non-exported symbols shouldn't be accessible from importing modules in the generated code. |
+| # | Item | Effort | Status |
+|---|------|--------|--------|
+| 8.1 | **Package resolution without relative paths** | Medium | ✅ Done — `import { ok } from "stdlib/response"` works |
+| 8.2 | **Circular dependency detection** | Small | ✅ Done — clear error with file name |
+| 8.3 | **Module-level visibility enforcement** | Medium | ⬜ Not started |
 
 ### Phase 9: Distribution & Ecosystem (Low Priority)
 

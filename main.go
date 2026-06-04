@@ -1093,9 +1093,51 @@ func goTypeToServType(goType string) string {
 	}
 }
 
+// resolveImportPath resolves a Serv import path to an absolute file path.
+// Supports:
+//   - Relative paths: "./models/user.srv", "../stdlib/auth.srv"
+//   - Stdlib shorthand: "stdlib/auth.srv" or "stdlib/auth" (resolved from project root)
+//   - Absolute-looking paths with .srv extension get resolved relative to the importer
+func resolveImportPath(importerPath, importStr string) string {
+	// Strip .srv extension if missing (allow "stdlib/auth" as shorthand for "stdlib/auth.srv")
+	if !strings.HasSuffix(importStr, ".srv") && !strings.HasSuffix(importStr, ".srv.d") {
+		importStr = importStr + ".srv"
+	}
+
+	// If path starts with "stdlib/" — resolve from project root (walk up to find stdlib dir)
+	if strings.HasPrefix(importStr, "stdlib/") {
+		// Try relative to the working directory first
+		if _, err := os.Stat(importStr); err == nil {
+			abs, _ := filepath.Abs(importStr)
+			return abs
+		}
+		// Try from project root (same directory as go.mod)
+		dir := filepath.Dir(importerPath)
+		for i := 0; i < 10; i++ {
+			candidate := filepath.Join(dir, importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+			// Check if we found the project root (has go.mod or stdlib/)
+			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+				return filepath.Join(dir, importStr)
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	// Default: resolve relative to the importing file's directory
+	return filepath.Join(filepath.Dir(importerPath), importStr)
+}
+
 func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.Program, error) {
 	if visited[filePath] {
-		return &compiler.Program{}, nil // Prevent circular imports
+		// Circular dependency detected — build the cycle path for the error message
+		return nil, fmt.Errorf("circular import detected: %s is already being imported (import cycle)", filepath.Base(filePath))
 	}
 	visited[filePath] = true
 
@@ -1139,7 +1181,7 @@ func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.
 			continue
 		}
 		if imp, ok := stmt.(*compiler.ImportStmt); ok {
-			importPath := filepath.Join(filepath.Dir(filePath), imp.Path)
+			importPath := resolveImportPath(filePath, imp.Path)
 			subProgram, err := parseWithDependencies(importPath, visited)
 			if err != nil {
 				return nil, err
