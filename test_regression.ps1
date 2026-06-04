@@ -157,7 +157,7 @@ foreach ($test in $serverTests) {
 
     # Start the server in background
     $proc = Start-Process -FilePath (Resolve-Path $binPath) -PassThru -WindowStyle Hidden
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 3
 
     if ($proc.HasExited) {
         $skip++
@@ -181,7 +181,7 @@ foreach ($test in $serverTests) {
 
     # Stop the server
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 2
     Remove-Item $binPath -ErrorAction SilentlyContinue
 
     if ($allPassed) {
