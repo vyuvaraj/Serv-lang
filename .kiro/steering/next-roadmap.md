@@ -55,7 +55,7 @@ Tracking remaining work to make Serv production-ready and competitive.
 
 | Status | Item | Description | Priority |
 |--------|------|-------------|----------|
-| ⬜ | Documentation site | Auto-generated docs from `.srv` source | Medium |
+| ✅ | Documentation site | Auto-generated docs from `.srv` source | Medium |
 | ✅ | CI/CD templates | GitHub Actions, GitLab CI configs | Low |
 | ⬜ | Docker base image | `FROM serv:latest` for easy containerization | Low |
 | ⬜ | Homebrew/Scoop | `brew install serv` / `scoop install serv` | Medium |
