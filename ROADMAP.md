@@ -159,14 +159,14 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 
 ### Phase 6: LSP & Tooling (Medium Priority)
 
-| # | Item | Effort | Rationale |
-|---|------|--------|-----------|
-| 6.1 | **Cross-file go-to-definition** | Medium | Resolve imports and find definitions across modules. |
-| 6.2 | **Semantic hover** (on usage, not just definition) | Medium | Look up what symbol the cursor is on, find its type/definition anywhere in the file. |
-| 6.3 | **Signature help** | Medium | Show parameter hints when typing function calls. |
-| 6.4 | **Find references / rename** | Large | Requires a project-wide symbol table. |
-| 6.5 | **Semantic diagnostics** | Medium | Surface type errors and warnings from Phase 5 in real time. |
-| 6.6 | **`serv fmt` integration** | Small | Format-on-save via LSP. |
+| # | Item | Effort | Status |
+|---|------|--------|--------|
+| 6.1 | **Cross-file go-to-definition** | Medium | ✅ Done — searches all open documents |
+| 6.2 | **Semantic hover** (on usage, not just definition) | Medium | ✅ Done — looks up word under cursor in symbol table |
+| 6.3 | **Signature help** | Medium | ✅ Done — shows params on `(` and `,` triggers |
+| 6.4 | **Find references / rename** | Large | ⬜ Not started |
+| 6.5 | **Semantic diagnostics** | Medium | ✅ Done — static analysis warnings shown in real time |
+| 6.6 | **`serv fmt` integration** | Small | ⬜ Not started |
 
 ### Phase 7: Testing Framework (Medium Priority)
 
