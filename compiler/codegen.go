@@ -24,6 +24,8 @@ type Codegen struct {
 	goPackageAliases    map[string]string // alias -> Go package name (e.g. "uuid" -> "uuid")
 	declaredGoFuncs     map[string]string // "pkg:FuncName" -> "pkgname.FuncName"
 	goMultiReturnFuncs  map[string]bool   // "pkgname.FuncName" -> true (multi-return)
+	beforeEachBlocks    []string          // collected beforeEach bodies for tests
+	afterEachBlocks     []string          // collected afterEach bodies for tests
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -244,6 +246,10 @@ case *BreakStmt:
 return "break\n", nil
 case *ContinueStmt:
 return "continue\n", nil
+case *BeforeEachStmt:
+return c.genBeforeEachStmt(s)
+case *AfterEachStmt:
+return c.genAfterEachStmt(s)
 case *ExprStmt:
 return c.genExprStmt(s)
 default:

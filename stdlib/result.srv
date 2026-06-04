@@ -1,0 +1,84 @@
+// Result utilities for error handling.
+// Use with the ? operator for clean error propagation.
+//
+// Usage:
+//   import { ok, err, isOk, isErr, unwrap, unwrapOr } from "stdlib/result"
+//
+//   let result = ok(42)
+//   assert isOk(result) == true
+//   assert unwrap(result) == 42
+//
+//   let failed = err("something went wrong")
+//   assert isErr(failed) == true
+//   assert unwrapOr(failed, 0) == 0
+
+// Create a successful result wrapping a value.
+export fn ok(value) {
+    return { "ok": true, "value": value, "error": nil }
+}
+
+// Create a failed result wrapping an error message.
+export fn err(message) {
+    return { "ok": false, "value": nil, "error": message }
+}
+
+// Check if a result is successful.
+export fn isOk(result) {
+    if result == nil { return false }
+    return result.ok == true
+}
+
+// Check if a result is an error.
+export fn isErr(result) {
+    if result == nil { return true }
+    return result.ok == false
+}
+
+// Extract the value from a successful result.
+// Returns nil if the result is an error.
+export fn unwrap(result) {
+    if result == nil { return nil }
+    if result.ok == true {
+        return result.value
+    }
+    return nil
+}
+
+// Extract the value from a result, or return a default if it's an error.
+export fn unwrapOr(result, defaultValue) {
+    if result == nil { return defaultValue }
+    if result.ok == true {
+        return result.value
+    }
+    return defaultValue
+}
+
+// Extract the error message from a failed result.
+// Returns nil if the result is successful.
+export fn unwrapErr(result) {
+    if result == nil { return "nil result" }
+    if result.ok == false {
+        return result.error
+    }
+    return nil
+}
+
+// Transform the value inside a successful result.
+// If the result is an error, returns it unchanged.
+export fn mapResult(result, transform) {
+    if result == nil { return err("nil result") }
+    if result.ok == true {
+        return ok(transform(result.value))
+    }
+    return result
+}
+
+// Chain a function that returns a Result onto a successful result.
+// If the result is an error, returns it unchanged.
+export fn flatMap(result, fn) {
+    if result == nil { return err("nil result") }
+    if result.ok == true {
+        return fn(result.value)
+    }
+    return result
+}

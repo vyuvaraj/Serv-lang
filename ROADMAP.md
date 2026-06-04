@@ -145,7 +145,7 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 |---|------|--------|--------|
 | 4.1 | **Replace panic/recover with error returns** | Large | ✅ Done — DBQuery, HTTPGet, HTTPPost, JSONParse, CacheGet/Set, MongoDB ops all return error tuples |
 | 4.2 | **`?` operator for error propagation** | Medium | ✅ Done — `let data = fetchData()?` returns early on error |
-| 4.3 | **Result type in stdlib** | Small | ⬜ Not started |
+| 4.3 | **Result type in stdlib** | Small | ✅ Done — `stdlib/result.srv` with ok/err/unwrap/unwrapOr/mapResult/flatMap |
 
 ### Phase 5: Compile-Time Analysis (Medium Priority)
 
@@ -175,8 +175,8 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 | 7.1 | **Structured assertions** | Small | ✅ Done — `assert x == 5` prints "got 3, want 5" |
 | 7.2 | **Test isolation** | Medium | ✅ Done — each test is its own `func Test_X(t *testing.T)` scope |
 | 7.3 | **Test coverage** | Medium | ✅ Done — `serv test --cover` reports statement coverage % |
-| 7.4 | **Setup/teardown** | Small | ⬜ Not started |
-| 7.5 | **Test timeout** | Small | ⬜ Not started |
+| 7.4 | **Setup/teardown** | Small | ✅ Done — `beforeEach { }` / `afterEach { }` blocks |
+| 7.5 | **Test timeout** | Small | ✅ Done — `test "name" timeout 5s { }` |
 
 ### Phase 8: Module System Hardening (Low Priority)
 

@@ -511,7 +511,90 @@ func (c *Codegen) genTestStmt(s *TestStmt) (string, error) {
 	}
 	c.inFunction = false
 	c.inConcurrentContext = oldConcurrent
-	c.testFuncs = append(c.testFuncs, fmt.Sprintf("func %s(t *testing.T) %s\n", funcName, bodyStr))
+
+	// Build the test function body: beforeEach + body + afterEach
+	// Strip outer braces from bodyStr to get the inner content
+	inner := ""
+	if len(bodyStr) > 2 {
+		inner = bodyStr[2 : len(bodyStr)-1] // strip "{\n" and "}"
+	}
+
+	var finalBody strings.Builder
+	finalBody.WriteString("{\n")
+
+	// BeforeEach blocks
+	for _, before := range c.beforeEachBlocks {
+		finalBody.WriteString(before)
+	}
+
+	// Test body
+	finalBody.WriteString(inner)
+
+	// AfterEach blocks
+	for _, after := range c.afterEachBlocks {
+		finalBody.WriteString(after)
+	}
+
+	finalBody.WriteString("}")
+
+	if s.Timeout != "" {
+		// Wrap in timeout
+		c.imports[`"time"`] = true
+		var wrapped strings.Builder
+		wrapped.WriteString("{\n")
+		wrapped.WriteString(fmt.Sprintf("\t_timeout, _ := time.ParseDuration(%q)\n", s.Timeout))
+		wrapped.WriteString("\t_done := make(chan struct{})\n")
+		wrapped.WriteString("\tgo func() {\n")
+		wrapped.WriteString("\t\tdefer close(_done)\n")
+		// Indent the inner body content
+		for _, line := range strings.Split(finalBody.String()[2:len(finalBody.String())-1], "\n") {
+			if strings.TrimSpace(line) != "" {
+				wrapped.WriteString("\t\t" + strings.TrimPrefix(line, "\t") + "\n")
+			}
+		}
+		wrapped.WriteString("\t}()\n")
+		wrapped.WriteString("\tselect {\n")
+		wrapped.WriteString("\tcase <-_done:\n")
+		wrapped.WriteString("\tcase <-time.After(_timeout):\n")
+		wrapped.WriteString("\t\tt.Fatalf(\"test timed out after %s\", _timeout)\n")
+		wrapped.WriteString("\t}\n")
+		wrapped.WriteString("}")
+
+		c.testFuncs = append(c.testFuncs, fmt.Sprintf("func %s(t *testing.T) %s\n", funcName, wrapped.String()))
+	} else {
+		c.testFuncs = append(c.testFuncs, fmt.Sprintf("func %s(t *testing.T) %s\n", funcName, finalBody.String()))
+	}
+	return "", nil
+}
+
+func (c *Codegen) genBeforeEachStmt(s *BeforeEachStmt) (string, error) {
+	c.inFunction = true
+	bodyStr, err := c.genBlockStatement(s.Body)
+	if err != nil {
+		return "", err
+	}
+	c.inFunction = false
+	// Store the inner content (without the outer braces) for injection into tests
+	inner := ""
+	if len(bodyStr) > 2 {
+		inner = bodyStr[2 : len(bodyStr)-1]
+	}
+	c.beforeEachBlocks = append(c.beforeEachBlocks, inner)
+	return "", nil
+}
+
+func (c *Codegen) genAfterEachStmt(s *AfterEachStmt) (string, error) {
+	c.inFunction = true
+	bodyStr, err := c.genBlockStatement(s.Body)
+	if err != nil {
+		return "", err
+	}
+	c.inFunction = false
+	inner := ""
+	if len(bodyStr) > 2 {
+		inner = bodyStr[2 : len(bodyStr)-1]
+	}
+	c.afterEachBlocks = append(c.afterEachBlocks, inner)
 	return "", nil
 }
 

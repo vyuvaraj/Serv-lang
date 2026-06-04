@@ -233,6 +233,10 @@ func (p *Parser) parseStatement() Statement {
 		return &BreakStmt{Token: p.curToken}
 	case TOKEN_CONTINUE:
 		return &ContinueStmt{Token: p.curToken}
+	case TOKEN_BEFORE_EACH:
+		return p.parseBeforeEachStatement()
+	case TOKEN_AFTER_EACH:
+		return p.parseAfterEachStatement()
 	default:
 		return p.parseExpressionStatement()
 	}

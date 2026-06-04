@@ -244,9 +244,10 @@ type MatchStmt struct {
 
 // Test Statement
 type TestStmt struct {
-	Token Token
-	Name  string // test name
-	Body  *BlockStmt
+	Token   Token
+	Name    string // test name
+	Timeout string // optional timeout duration (e.g. "5s"), empty if none
+	Body    *BlockStmt
 }
 
 func (t *TestStmt) statementNode() {}
@@ -270,6 +271,26 @@ func (a *AssertExpr) TokenLiteral() string { return a.Token.Literal }
 func (a *AssertExpr) String() string {
     return "assert " + a.Cond.String()
 }
+
+// BeforeEachStmt: beforeEach { ... } — runs before each test
+type BeforeEachStmt struct {
+	Token Token
+	Body  *BlockStmt
+}
+
+func (b *BeforeEachStmt) statementNode()       {}
+func (b *BeforeEachStmt) TokenLiteral() string { return b.Token.Literal }
+func (b *BeforeEachStmt) String() string       { return "beforeEach " + b.Body.String() + "\n" }
+
+// AfterEachStmt: afterEach { ... } — runs after each test
+type AfterEachStmt struct {
+	Token Token
+	Body  *BlockStmt
+}
+
+func (a *AfterEachStmt) statementNode()       {}
+func (a *AfterEachStmt) TokenLiteral() string { return a.Token.Literal }
+func (a *AfterEachStmt) String() string       { return "afterEach " + a.Body.String() + "\n" }
 
 func (m *MatchStmt) statementNode()       {}
 func (m *MatchStmt) TokenLiteral() string { return m.Token.Literal }

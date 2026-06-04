@@ -164,6 +164,7 @@ func (p *Parser) parseReturnStatement() Statement {
 }
 
 // parseTestStatement parses a test block: test name { ... } or test "description" { ... }
+// Also supports: test "name" timeout 5s { ... }
 func (p *Parser) parseTestStatement() Statement {
 	stmt := &TestStmt{Token: p.curToken}
 
@@ -174,6 +175,22 @@ func (p *Parser) parseTestStatement() Statement {
 	} else {
 		p.peekError(TOKEN_IDENT)
 		return nil
+	}
+
+	// Optional timeout: test "name" timeout 5s { ... }
+	if p.peekToken.Type == TOKEN_TIMEOUT {
+		p.nextToken() // consume 'timeout'
+		if p.peekToken.Type == TOKEN_DURATION {
+			p.nextToken()
+			stmt.Timeout = p.curToken.Literal
+		} else if p.peekToken.Type == TOKEN_INT {
+			p.nextToken()
+			// Assume seconds if just a number
+			stmt.Timeout = p.curToken.Literal + "s"
+		} else {
+			p.nextToken()
+			stmt.Timeout = p.curToken.Literal
+		}
 	}
 
 	if !p.expectPeek(TOKEN_LBRACE) {
@@ -206,5 +223,23 @@ func (p *Parser) parseSpawnStatement() Statement {
 	}
 	p.nextToken()
 	stmt.Call = p.parseExpression(LOWEST)
+	return stmt
+}
+
+func (p *Parser) parseBeforeEachStatement() Statement {
+	stmt := &BeforeEachStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+
+func (p *Parser) parseAfterEachStatement() Statement {
+	stmt := &AfterEachStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
 	return stmt
 }

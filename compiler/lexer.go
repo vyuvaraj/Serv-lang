@@ -110,6 +110,9 @@ const (
 	// Keywords
 	TOKEN_BREAK      TokenType = "BREAK"
 	TOKEN_CONTINUE   TokenType = "CONTINUE"
+	TOKEN_BEFORE_EACH TokenType = "BEFORE_EACH"
+	TOKEN_AFTER_EACH  TokenType = "AFTER_EACH"
+	TOKEN_TIMEOUT    TokenType = "TIMEOUT"
 )
 
 type Token struct {
@@ -539,6 +542,9 @@ var keywords = map[string]TokenType{
 	"validate":  TOKEN_VALIDATE,
 	"break":     TOKEN_BREAK,
 	"continue":  TOKEN_CONTINUE,
+	"beforeEach": TOKEN_BEFORE_EACH,
+	"afterEach":  TOKEN_AFTER_EACH,
+	"timeout":   TOKEN_TIMEOUT,
 }
 
 func lookupIdent(ident string) TokenType {
