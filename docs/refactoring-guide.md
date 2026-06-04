@@ -342,3 +342,303 @@ Lexer → Parser → AST → Analyze → TypeCheck → Codegen → Go Source
 ```
 
 This is a separate effort from the file split and should be its own branch.
+
+
+---
+
+## Runtime Split
+
+### Overview
+
+Split `runtime/runtime.go` (3512 lines, 153 functions) into focused files. Same principle as the compiler split — all files stay `package runtime` in the `runtime/` directory.
+
+### Target Structure
+
+```
+runtime/
+├── core.go            — Server startup, config loading, env, init, CLI flags (~350 lines)
+├── http.go            — HTTP server, routing, trie, request handling, middleware (~500 lines)
+├── db.go              — Database init, queries, MongoDB, prepared stmt cache (~600 lines)
+├── cache.go           — Redis/in-memory cache operations (~100 lines)
+├── broker.go          — Pub/sub (NATS, Kafka, RabbitMQ, MQTT, STOMP, in-memory) (~400 lines)
+├── scheduler.go       — Every, Cron, Sleep (~100 lines)
+├── logging.go         — All logging functions, ContextLogger (~200 lines)
+├── collections.go     — SafeMap, Filter, Map, Find, Reduce, Push, Contains, Length (~250 lines)
+├── strings.go         — String methods (Split, Trim, Replace, StartsWith, etc.) (~100 lines)
+├── concurrency.go     — Spawn, Await, AwaitAll, channels, atomics, semaphores (~350 lines)
+├── python.go          — Python daemon pool, CallPython, worker management (~200 lines)
+├── helpers.go         — HTTP client, JSON parse/stringify, metrics, registry (~250 lines)
+├── mcp.go             — MCP tool server, JSON-RPC handling (~200 lines)
+├── perf.go            — Equal, Compare, Arith, MemberAccess, GetField, MergeMaps (~200 lines)
+├── validation.go      — ValidateConfig, ValidateBody (~100 lines)
+├── otel.go            — (already exists — OpenTelemetry tracing)
+```
+
+---
+
+### Function-to-File Mapping
+
+#### `core.go` — Server lifecycle & config
+| Function | Line |
+|----------|------|
+| `init` (config/log) | 371, 509 |
+| `loadYAMLConfig` | 396 |
+| `flattenMap` | 445 |
+| `Env` | 486 |
+| `Config` | 490 |
+| `Noop` | 131 |
+| `getCliFlag` | 135 |
+| `InitServer` | 1066 |
+| `InitServerTLS` | 1076 |
+| `StartServer` | 1521 |
+| `handleMetrics` | 1714 |
+| `handleHealth` | 1730 |
+| `handleReady` | 1740 |
+
+Also keep: all `var` blocks for config, serverPort, etc., and the `Request`/`HTTPResponse` structs.
+
+#### `http.go` — Routing & request handling
+| Function | Line |
+|----------|------|
+| `newRouteRateLimiter` | 1091 |
+| `(*routeRateLimiter).allow` | 1111 |
+| `AddRoute` | 1132 |
+| `AddRouteWithMiddleware` | 1200 |
+| `RegisterMiddleware` | 1156 |
+| `insertRoute` (trie) | 3449 |
+| `matchRoute` (trie) | 3486 |
+| `newTrieNode` | 3445 |
+
+Also move: `trieNode` struct, `routeRateLimiter` struct, middleware registry vars.
+
+#### `db.go` — Database layer
+| Function | Line |
+|----------|------|
+| `InitDB` | 2590 |
+| `configureDBPool` | 2563 |
+| `getCachedStmt` | 2643 |
+| `AddBeforeQueryHook` | 2688 |
+| `DBQuery` | 2694 |
+| `DBQueryPage` | 2126 |
+| `DBFindOne` | 2194 |
+| `DBCount` | 2229 |
+| `DBUpsert` | 2259 |
+| `DBQuerySafe` | 2885 |
+| `runMongoQuery` | 2778 |
+| `RegisterMigration` | 1472 |
+| `RunMigrations` | 1478 |
+
+Also move: `dbInstance`, `mongoDB`, `stmtCache`, `beforeQueryHooks` vars, MongoDB connection logic.
+
+#### `cache.go` — Caching
+| Function | Line |
+|----------|------|
+| `InitCache` | 2942 |
+| `CacheSet` | 2955 |
+| `CacheGet` | 2980 |
+
+Also move: `redisClient`, `localCache`, `localCacheEntry` vars/structs.
+
+#### `broker.go` — Pub/sub messaging
+| Function | Line |
+|----------|------|
+| `InitBroker` | 855 |
+| `Subscribe` | 906 |
+| `Publish` | 984 |
+| `startPubSubWorkers` | 3415 |
+| `executeCallbackSafe` | 3427 |
+
+Also move: all broker connection vars (natsConn, kafkaWriter, amqpChannel, etc.), subscriber maps.
+
+#### `scheduler.go` — Timers & cron
+| Function | Line |
+|----------|------|
+| `Every` | 792 |
+| `Cron` | 826 |
+| `Sleep` | 1444 |
+| `CronNext` | 2400 |
+| `CronSleepUntilNext` | 2426 |
+| `SpawnWithTimeout` | 2460 |
+
+Also move: `cronInstance`, `cronOnce` vars.
+
+#### `logging.go` — Structured logging
+| Function | Line |
+|----------|------|
+| `shouldLog` | 521 |
+| `logStructured` | 528 |
+| `logStructuredWithFields` | 532 |
+| `LogInfo` | 561 |
+| `LogWarn` | 565 |
+| `LogError` | 569 |
+| `LogDebug` | 573 |
+| `(*ContextLogger).Info` | 585 |
+| `(*ContextLogger).Warn` | 591 |
+| `(*ContextLogger).Error` | 597 |
+| `(*ContextLogger).Debug` | 603 |
+| `(*ContextLogger).With` | 609 |
+| `LogWith` | 625 |
+| `LogFields` | 643 |
+| `LogSetLevel` | 660 |
+| `LogGetLevel` | 676 |
+| `ContextLoggerInfo` | 684 |
+| `ContextLoggerWarn` | 694 |
+| `ContextLoggerError` | 703 |
+| `ContextLoggerDebug` | 712 |
+| `ContextLoggerWith` | 721 |
+
+Also move: `logJSON`, `logLevel`, `logLevelMu` vars, `ContextLogger` struct.
+
+#### `collections.go` — Data structures & collection methods
+| Function | Line |
+|----------|------|
+| `Filter` | 154 |
+| `Map` | 167 |
+| `Find` | 177 |
+| `Reduce` | 189 |
+| `ForEach` | 199 |
+| `Length` | 208 |
+| `Push` | 226 |
+| `Contains` | 232 |
+| `toInterfaceSlice` | 243 |
+| `isTruthyVal` | 253 |
+| `NewSafeMap` | 3020 |
+| `NewSafeMapFromMap` | 3024 |
+| `(*SafeMap).Set` | 3031 |
+| `(*SafeMap).Get` | 3037 |
+| `(*SafeMap).Delete` | 3043 |
+| `(*SafeMap).MarshalJSON` | 3049 |
+| `(*SafeMap).All` | 3056 |
+| `ToSafeValue` | 3391 |
+
+Also move: `SafeMap` struct, `localCacheEntry` if not in cache.go.
+
+#### `strings.go` — String method implementations
+| Function | Line |
+|----------|------|
+| `StringSplit` | 275 |
+| `StringTrim` | 286 |
+| `StringReplace` | 290 |
+| `StringStartsWith` | 294 |
+| `StringEndsWith` | 298 |
+| `StringIncludes` | 302 |
+| `StringToUpper` | 306 |
+| `StringToLower` | 310 |
+| `StringSubstring` | 314 |
+| `StringIndexOf` | 336 |
+| `StringRepeat` | 340 |
+| `toInt` | 344 |
+
+#### `concurrency.go` — Goroutines, channels, atomics
+| Function | Line |
+|----------|------|
+| `Await` | 1164 |
+| `AwaitAll` | 1178 |
+| `AcquireSemaphore` | 1998 |
+| `ReleaseSemaphore` | 2010 |
+| `getOrCreateAtomic` | 2031 |
+| `AtomicNew` | 2043 |
+| `AtomicInc` | 2053 |
+| `AtomicDec` | 2072 |
+| `AtomicGet` | 2091 |
+| `AtomicSet` | 2100 |
+| `AtomicCAS` | 2110 |
+| `ChannelNew` | 2483 |
+| `ChannelSend` | 2493 |
+| `ChannelReceive` | 2502 |
+| `ChannelTryReceive` | 2515 |
+| `ChannelTrySend` | 2532 |
+| `ChannelClose` | 2546 |
+| `ChannelLen` | 2555 |
+
+Also move: `AtomicValue` struct, `atomicStore`, semaphore maps, channel registry.
+
+#### `python.go` — Python interop
+| Function | Line |
+|----------|------|
+| `initPythonDaemonPool` | 1776 |
+| `CallPython` | 1798 |
+| `isProcessAlive` | 1884 |
+| `spawnPythonWorker` | 1897 |
+| `shutdownPythonWorkers` | 1957 |
+
+Also move: `pythonWorker` struct, `pythonPoolQueue`, pool vars.
+
+#### `helpers.go` — HTTP client, JSON, metrics, registry
+| Function | Line |
+|----------|------|
+| `MetricInc` | 730 |
+| `MetricGauge` | 736 |
+| `HTTPGet` | 743 |
+| `HTTPPost` | 763 |
+| `HTTPGetSafe` | 2899 |
+| `HTTPPostSafe` | 2913 |
+| `JSONParse` | 1979 |
+| `JSONStringify` | 1989 |
+| `JSONParseSafe` | 2927 |
+| `RegistrySet` | 2319 |
+| `RegistryCall` | 2330 |
+| `RegistryList` | 2377 |
+| `RegistryHas` | 2389 |
+
+Also move: metrics vars (`metricsCounters`, `metricsGauges`), registry map.
+
+#### `mcp.go` — MCP tool server
+| Function | Line |
+|----------|------|
+| `AddMCPTool` | 1282 |
+| `InvokeMCPToolForTesting` | 1292 |
+| `startMCPServer` | 1316 |
+| `sendRPCError` | 1332 |
+| `handleMCPRequest` | 1345 |
+
+Also move: `mcpTools` map, `jsonRPCRequest`/`jsonRPCResponse` structs.
+
+#### `perf.go` — Performance helpers
+| Function | Line |
+|----------|------|
+| `Equal` | 3107 |
+| `Compare` | 3135 |
+| `Arith` | 3178 |
+| `MemberAccess` | 3233 |
+| `GetField` | 3069 |
+| `MergeMaps` | 3263 |
+
+#### `validation.go` — Config & request validation
+| Function | Line |
+|----------|------|
+| `ValidateConfig` | 3283 |
+| `ValidateBody` | 3306 |
+
+#### `websocket.go` — WebSocket support
+| Function | Line |
+|----------|------|
+| `(*WSConn).Send` | 1232 |
+| `(*WSConn).Receive` | 1244 |
+| `(*WSConn).Close` | 1252 |
+| `AddWebSocket` | 1264 |
+
+Also move: `WSConn` struct, `wsHandlers` map, `upgrader` var.
+
+---
+
+### Execution Order (by independence)
+
+1. **strings.go** — zero dependencies, pure functions
+2. **perf.go** — only depends on `GetField` (uses reflect)
+3. **validation.go** — uses `Config`, `json`, `SafeMap`
+4. **logging.go** — self-contained with own vars
+5. **collections.go** — SafeMap + collection methods
+6. **concurrency.go** — atomics, channels, semaphores
+7. **scheduler.go** — Every, Cron, uses logging
+8. **cache.go** — Redis/in-memory
+9. **python.go** — daemon pool (self-contained)
+10. **mcp.go** — tool server
+11. **helpers.go** — metrics, HTTP client, JSON, registry
+12. **broker.go** — pub/sub (uses logging, metrics)
+13. **websocket.go** — uses gorilla/websocket
+14. **db.go** — database (largest, uses mongo/sql drivers)
+15. **http.go** — routing (uses everything above)
+16. **core.go** — startup (orchestrates all)
+
+Build after each: `go build ./runtime`
