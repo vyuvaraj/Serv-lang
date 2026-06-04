@@ -127,7 +127,7 @@ $needsExternal = @(
 foreach ($test in $serverTests) {
     $file = "examples\$($test.File)"
     $port = $test.Port
-    $binName = "smoke_test.exe"
+    $binName = "smoke_$($test.File -replace '\.srv$', '.exe')"
     $binPath = "examples\$binName"
 
     # Clean previous
