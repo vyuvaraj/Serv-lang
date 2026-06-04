@@ -81,7 +81,8 @@ Write-Host "--------------------------------"
 $testFiles = @(
     "12_static_types.srv",
     "14_phase3_features.srv",
-    "20_raw_strings.srv"
+    "20_raw_strings.srv",
+    "50_new_features.srv"
 )
 
 foreach ($name in $testFiles) {
