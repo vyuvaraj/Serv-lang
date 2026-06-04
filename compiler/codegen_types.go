@@ -106,6 +106,29 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 				}
 			}
 		}
+		// Infer return type from collection/string method calls
+		if memExpr, ok := e.Function.(*MemberExpr); ok {
+			switch memExpr.Field {
+			case "filter", "map":
+				return "[]interface{}"
+			case "find":
+				return "interface{}"
+			case "reduce":
+				return "interface{}"
+			case "length":
+				return "int"
+			case "contains", "startsWith", "endsWith", "includes":
+				return "bool"
+			case "split":
+				return "[]interface{}"
+			case "trim", "replace", "toUpper", "toLower", "substring", "repeat":
+				return "string"
+			case "indexOf":
+				return "int"
+			case "push":
+				return "[]interface{}"
+			}
+		}
 		return "interface{}"
 	case *MemberExpr:
 		// Known struct field access
@@ -115,6 +138,10 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 					return "interface{}" // struct fields are dynamic for now
 				}
 			}
+		}
+		// Built-in property types
+		if e.Field == "length" {
+			return "int"
 		}
 		return "interface{}"
 	case *InfixExpr:
@@ -133,8 +160,28 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 			if rt == "interface{}" && (lt == "int" || lt == "float64" || lt == "string") {
 				return lt
 			}
+			// Mixed numeric: int + float64 = float64
+			if (lt == "int" && rt == "float64") || (lt == "float64" && rt == "int") {
+				return "float64"
+			}
 			return "interface{}"
 		}
+	case *IndexExpr:
+		// If indexing a known typed slice, return the element type
+		if ident, ok := e.Left.(*Identifier); ok {
+			if varType, exists := c.varTypes[ident.Value]; exists {
+				if strings.HasPrefix(varType, "[]") && varType != "[]interface{}" {
+					return strings.TrimPrefix(varType, "[]")
+				}
+			}
+		}
+		return "interface{}"
+	case *AssertExpr:
+		return "interface{}"
+	case *AwaitExpr:
+		return "interface{}"
+	case *FnLiteral:
+		return "interface{}"
 	default:
 		return "interface{}"
 	}

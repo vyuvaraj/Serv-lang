@@ -2645,11 +2645,22 @@ func getCachedStmt(query string) (*sql.Stmt, error) {
 	stmt, exists := stmtCache[query]
 	stmtCacheMu.RUnlock()
 	if exists {
+		// Promote to most-recently-used (move to end of keys list)
+		stmtCacheMu.Lock()
+		for i, k := range stmtCacheKeys {
+			if k == query {
+				stmtCacheKeys = append(stmtCacheKeys[:i], stmtCacheKeys[i+1:]...)
+				stmtCacheKeys = append(stmtCacheKeys, query)
+				break
+			}
+		}
+		stmtCacheMu.Unlock()
 		return stmt, nil
 	}
 
 	stmtCacheMu.Lock()
 	defer stmtCacheMu.Unlock()
+	// Double-check after acquiring write lock
 	if stmt, exists = stmtCache[query]; exists {
 		return stmt, nil
 	}
@@ -2659,7 +2670,7 @@ func getCachedStmt(query string) (*sql.Stmt, error) {
 		return nil, err
 	}
 
-	// LRU eviction: if cache is full, close and remove the oldest entry
+	// LRU eviction: if cache is full, close and remove the least-recently-used entry
 	if len(stmtCacheKeys) >= stmtCacheMax {
 		oldest := stmtCacheKeys[0]
 		stmtCacheKeys = stmtCacheKeys[1:]
