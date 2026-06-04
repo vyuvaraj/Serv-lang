@@ -1,7 +1,13 @@
 # Serv Regression Test Suite
 # Runs all examples: compilation check, test execution, and server smoke tests.
 #
-# Usage: powershell -ExecutionPolicy Bypass -File test_regression.ps1
+# Usage:
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1              # Run all phases
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1 -Phase 1    # Compilation only
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1 -Phase 2    # Unit tests only
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1 -Phase 3    # Server smoke tests only
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1 -CompileOnly  # Same as -Phase 1
+#   powershell -ExecutionPolicy Bypass -File test_regression.ps1 -Verbose    # Show details
 #
 # Requirements:
 # - serv.exe built (go build -o serv.exe main.go)
@@ -9,8 +15,12 @@
 
 param(
     [switch]$Verbose,
-    [switch]$CompileOnly
+    [switch]$CompileOnly,
+    [int]$Phase = 0  # 0 = all, 1 = compile, 2 = unit tests, 3 = smoke tests
 )
+
+# -CompileOnly is shorthand for -Phase 1
+if ($CompileOnly) { $Phase = 1 }
 
 $ErrorActionPreference = "Continue"
 $pass = 0
@@ -44,6 +54,7 @@ Write-Host "=== Serv Regression Tests ===" -ForegroundColor Cyan
 Write-Host ""
 
 # --- Phase 1: Compilation ---
+if ($Phase -eq 0 -or $Phase -eq 1) {
 Write-Host "Phase 1: Compilation" -ForegroundColor White
 Write-Host "--------------------"
 
@@ -60,15 +71,10 @@ foreach ($file in $examples) {
 }
 Remove-Item examples\regression_test.exe -ErrorAction SilentlyContinue
 Write-Host ""
-
-if ($CompileOnly) {
-    Write-Host "=== Results (compile only) ===" -ForegroundColor Cyan
-    Write-Host "  Pass: $pass | Fail: $fail | Skip: $skip"
-    if ($fail -gt 0) { exit 1 }
-    exit 0
-}
+} # end Phase 1
 
 # --- Phase 2: Unit Tests (test-only files) ---
+if ($Phase -eq 0 -or $Phase -eq 2) {
 Write-Host "Phase 2: Unit Tests (serv test)" -ForegroundColor White
 Write-Host "--------------------------------"
 
@@ -93,8 +99,10 @@ foreach ($name in $testFiles) {
     }
 }
 Write-Host ""
+} # end Phase 2
 
 # --- Phase 3: Server Smoke Tests ---
+if ($Phase -eq 0 -or $Phase -eq 3) {
 Write-Host "Phase 3: Server Smoke Tests (start → /health → stop)" -ForegroundColor White
 Write-Host "------------------------------------------------------"
 
@@ -186,6 +194,7 @@ foreach ($test in $serverTests) {
 }
 
 Write-Host ""
+} # end Phase 3
 
 # --- Summary ---
 Write-Host "=== Summary ===" -ForegroundColor Cyan
