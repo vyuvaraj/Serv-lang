@@ -682,6 +682,16 @@ func (a *AwaitExpr) expressionNode()      {}
 func (a *AwaitExpr) TokenLiteral() string { return a.Token.Literal }
 func (a *AwaitExpr) String() string       { return "await " + a.Value.String() }
 
+// ErrorPropExpr: expr? — if the expression returns an error, propagate it (return early)
+type ErrorPropExpr struct {
+	Token Token
+	Value Expression
+}
+
+func (e *ErrorPropExpr) expressionNode()      {}
+func (e *ErrorPropExpr) TokenLiteral() string { return e.Token.Literal }
+func (e *ErrorPropExpr) String() string       { return e.Value.String() + "?" }
+
 // Function Literal Expression: fn(x, y) { body } or x => expr
 type FnLiteral struct {
 	Token      Token

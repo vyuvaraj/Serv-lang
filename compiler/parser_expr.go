@@ -417,6 +417,10 @@ func (p *Parser) parseCompoundAssignExpression(left Expression) Expression {
 	}
 }
 
+func (p *Parser) parseErrorPropExpression(left Expression) Expression {
+	return &ErrorPropExpr{Token: p.curToken, Value: left}
+}
+
 func (p *Parser) parseFStringLiteral() Expression {
 	return &FStringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }

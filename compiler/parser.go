@@ -45,6 +45,7 @@ var precedences = map[TokenType]int{
 	TOKEN_DOT:             MEMBER,
 	TOKEN_QUESTION_DOT:    MEMBER,
 	TOKEN_LBRACKET:        INDEX,
+	TOKEN_QUESTION:        CALL,
 }
 
 type Parser struct {
@@ -113,6 +114,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_SLASH_ASSIGN, p.parseCompoundAssignExpression)
 	p.registerInfix(TOKEN_PERCENT_ASSIGN, p.parseCompoundAssignExpression)
 	p.registerInfix(TOKEN_ARROW, p.parseArrowFunction)
+	p.registerInfix(TOKEN_QUESTION, p.parseErrorPropExpression)
 
 	// Read two tokens so curToken and peekToken are both set
 	p.nextToken()

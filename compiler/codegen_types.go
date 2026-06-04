@@ -279,6 +279,8 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 		return "interface{}"
 	case *AwaitExpr:
 		return "interface{}"
+	case *ErrorPropExpr:
+		return c.getExpressionType(e.Value)
 	case *FnLiteral:
 		return "interface{}"
 	default:

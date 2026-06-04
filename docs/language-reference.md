@@ -301,6 +301,7 @@ let all = await all([task1(), task2(), task3()])
 ## Error Handling
 
 ```serv
+// Try/catch (traditional)
 try {
     let result = http.get("http://api.example.com/data")
     log.info(result.body)
@@ -313,7 +314,18 @@ let data, err = riskyCall()
 if err != nil {
     log.error(err)
 }
+
+// ? operator — early return on error (recommended)
+fn loadUser(id: int) -> User? {
+    let row = db.query("SELECT * FROM users WHERE id = ?", id)?
+    let parsed = json.parse(row)?
+    return User { name: parsed.name }
+}
 ```
+
+The `?` operator calls the expression and:
+- If it returns `nil` or an error, returns `nil` from the enclosing function
+- If it succeeds, unwraps the value and continues
 
 ## Middleware
 

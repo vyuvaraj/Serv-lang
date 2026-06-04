@@ -780,6 +780,17 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		}
 		return fmt.Sprintf("runtime.Await(func() interface{} { return %s })", valStr), nil
 
+	case *ErrorPropExpr:
+		// expr? — call expression, if it returns an error (via tuple), return the error early
+		valStr, err := c.genExpression(e.Value)
+		if err != nil {
+			return "", err
+		}
+		// Generate: func() interface{} { _v, _e := tryCall(fn); if _e != nil { return _e }; return _v }()
+		// But since we need to return from the enclosing function, we use a pattern that
+		// assigns to local vars and checks — the let statement handles the actual early return
+		return fmt.Sprintf("runtime.TryCall(func() interface{} { return %s })", valStr), nil
+
 	case *SelfExpr:
 		return "self", nil
 

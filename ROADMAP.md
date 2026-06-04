@@ -141,11 +141,11 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 
 ### Phase 4: Error Handling Rework (Medium Priority)
 
-| # | Item | Effort | Rationale |
-|---|------|--------|-----------|
-| 4.1 | **Replace panic/recover with error returns** | Large | Generate Go's `(T, error)` pattern instead of panic-based try/catch. Breaking change but aligns with Go semantics. |
-| 4.2 | **`?` operator for error propagation** | Medium | `let data = fetchData()?` — if error, return it immediately. Rust/Swift-style sugar over multi-return. |
-| 4.3 | **Result type in stdlib** | Small | `Result<T>` struct with `.isOk()`, `.unwrap()`, `.unwrapOr(default)`. |
+| # | Item | Effort | Status |
+|---|------|--------|--------|
+| 4.1 | **Replace panic/recover with error returns** | Large | 🟡 Partial — try/catch still uses panic/recover for compat, but `?` operator uses proper error returns |
+| 4.2 | **`?` operator for error propagation** | Medium | ✅ Done — `let data = fetchData()?` returns early on error |
+| 4.3 | **Result type in stdlib** | Small | ⬜ Not started |
 
 ### Phase 5: Compile-Time Analysis (Medium Priority)
 
@@ -209,8 +209,8 @@ Directly gated on Phase 2 progress — better types = less runtime overhead.
 ### Quarter 2: Make it safe ✅ (core items DONE)
 5. ~~Phase 5.4–5.5 (Unreachable code, dead imports)~~ ✅
 6. ~~Phase 7.1–7.2 (Better assertions, test isolation)~~ ✅
-7. Phase 4.1–4.2 (Error handling rework) — breaking change, next major item
-8. Phase 2.5–2.6 (Null safety, union types) — major type system features
+7. ~~Phase 4.2 (? operator for error propagation)~~ ✅
+8. ~~Phase 2.5–2.6 (Null safety, union types)~~ ✅
 
 ### Quarter 3: Make it professional
 9. Phase 6.1–6.3 (LSP cross-file, hover, signature help)

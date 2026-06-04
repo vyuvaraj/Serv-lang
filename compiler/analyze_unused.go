@@ -308,6 +308,8 @@ func collectExprRefs(expr Expression, referenced map[string]bool) {
 		collectExprRefs(e.Value, referenced)
 	case *AssertExpr:
 		collectExprRefs(e.Cond, referenced)
+	case *ErrorPropExpr:
+		collectExprRefs(e.Value, referenced)
 	case *FStringLiteral:
 		collectFStringRefs(e.Value, referenced)
 	case *SelfExpr:
@@ -521,5 +523,7 @@ func collectExprIdentifiers(expr Expression, refs map[string]bool) {
 		collectExprIdentifiers(e.Value, refs)
 	case *AssertExpr:
 		collectExprIdentifiers(e.Cond, refs)
+	case *ErrorPropExpr:
+		collectExprIdentifiers(e.Value, refs)
 	}
 }

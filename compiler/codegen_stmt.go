@@ -539,6 +539,20 @@ func (c *Codegen) genDestructureLetStmt(s *DestructureLetStmt) (string, error) {
 }
 
 func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
+	// Special case: let x = expr? — error propagation
+	if errProp, ok := s.Value.(*ErrorPropExpr); ok {
+		innerVal, err := c.genExpression(errProp.Value)
+		if err != nil {
+			return "", err
+		}
+		c.declaredVars[s.Name] = true
+		// Generate: _val, _err := TryCallWithError(fn); if _err != nil { return nil, _err }; x = _val
+		tmpVal := fmt.Sprintf("_prop_val_%d", errProp.Token.Line)
+		tmpErr := fmt.Sprintf("_prop_err_%d", errProp.Token.Line)
+		return fmt.Sprintf("%s, %s := runtime.TryCallWithError(func() interface{} { return %s })\nif %s != nil {\n\treturn nil\n}\nvar %s interface{} = %s\n_ = %s\n",
+			tmpVal, tmpErr, innerVal, tmpErr, s.Name, tmpVal, s.Name), nil
+	}
+
 	val, err := c.genExpression(s.Value)
 	if err != nil {
 		return "", err

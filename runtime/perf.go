@@ -288,3 +288,48 @@ func MergeMaps(maps ...interface{}) map[string]interface{} {
 	}
 	return result
 }
+
+// TryCall executes a function and returns its result.
+// If the function panics, returns nil (error is swallowed).
+// If the function returns a [2]interface{} tuple, returns only the first value
+// (the error can be extracted separately by the caller).
+// Used by the ? operator for error propagation.
+func TryCall(fn func() interface{}) interface{} {
+	var result interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				result = nil
+			}
+		}()
+		result = fn()
+	}()
+	// If result is a tuple, extract value
+	if tuple, ok := result.([2]interface{}); ok {
+		return tuple[0]
+	}
+	return result
+}
+
+// TryCallWithError executes a function and returns (value, error).
+// Used internally for the ? operator to detect and propagate errors.
+func TryCallWithError(fn func() interface{}) (interface{}, interface{}) {
+	var result interface{}
+	var errVal interface{}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errVal = fmt.Sprint(r)
+			}
+		}()
+		result = fn()
+	}()
+	if errVal != nil {
+		return nil, errVal
+	}
+	// If result is a tuple [value, error], unpack
+	if tuple, ok := result.([2]interface{}); ok {
+		return tuple[0], tuple[1]
+	}
+	return result, nil
+}
