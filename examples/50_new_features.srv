@@ -6,11 +6,13 @@ server "8080"
 // --- Phase 1: Language Foundations ---
 
 // Modulo operator
+
 fn isEven(n: int) -> bool {
     return n % 2 == 0
 }
 
 // Compound assignment
+
 fn countdown(start: int) -> int {
     let count = start
     for count > 0 {
@@ -20,6 +22,7 @@ fn countdown(start: int) -> int {
 }
 
 // Bitwise operators
+
 fn flags() -> int {
     let read = 1
     let write = 2
@@ -32,6 +35,7 @@ fn flags() -> int {
 }
 
 // Break and continue
+
 fn findFirst(items, target) {
     let found = nil
     for item in items {
@@ -45,6 +49,7 @@ fn findFirst(items, target) {
 }
 
 // Map iteration (for key, value in map)
+
 fn countKeys(data) {
     let count = 0
     for key, val in data {
@@ -54,6 +59,7 @@ fn countKeys(data) {
 }
 
 // Slice expressions
+
 fn middle(items) {
     let len = items.length()
     if len < 3 { return items }
@@ -63,6 +69,7 @@ fn middle(items) {
 // --- Phase 2: Type System ---
 
 // Type inference (typed operations emit native Go ops)
+
 fn typedMath(a: int, b: int) -> int {
     let sum = a + b
     let product = a * b
@@ -71,6 +78,7 @@ fn typedMath(a: int, b: int) -> int {
 }
 
 // Struct with field type tracking
+
 struct User {
     name: string,
     email: string?,
@@ -83,12 +91,14 @@ fn User.displayName() -> string {
 }
 
 // Null safety: optional types
+
 fn findUser(id: int) -> User? {
     if id == 0 { return nil }
     return User { name: "Alice", email: nil, age: 30, active: true }
 }
 
 // Union types
+
 fn divide(a: int, b: int) -> int | error {
     if b == 0 {
         return "division by zero"
@@ -99,12 +109,14 @@ fn divide(a: int, b: int) -> int | error {
 // --- Phase 4: Error Handling ---
 
 // ? operator for error propagation
+
 fn loadProfile(id: int) -> User? {
     let user = findUser(id)?
     return user
 }
 
 // Multi-return error handling (still works)
+
 fn safeDiv(a: int, b: int) {
     let result, err = divide(a, b)
     if err != nil {
@@ -141,6 +153,7 @@ afterEach {
 }
 
 // Structured assertions (got X, want Y messages)
+
 test "addition" {
     assert add(2, 3) == 5
     assert add(0, 1) == 1
