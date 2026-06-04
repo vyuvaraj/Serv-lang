@@ -275,6 +275,12 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 			return varType
 		}
 		return "interface{}"
+	case *PrefixExpr:
+		if e.Operator == "!" {
+			return "bool"
+		}
+		// Negation preserves the type
+		return c.getExpressionType(e.Right)
 	case *AssertExpr:
 		return "interface{}"
 	case *AwaitExpr:

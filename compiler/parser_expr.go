@@ -26,6 +26,16 @@ func (p *Parser) parseExpression(precedence int) Expression {
 	return leftExp
 }
 
+func (p *Parser) parsePrefixExpression() Expression {
+	expr := &PrefixExpr{
+		Token:    p.curToken,
+		Operator: p.curToken.Literal,
+	}
+	p.nextToken()
+	expr.Right = p.parseExpression(PRODUCT) // high precedence so -x binds tightly
+	return expr
+}
+
 func (p *Parser) parseIdentifier() Expression {
 	ident := &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 

@@ -232,6 +232,18 @@ test "timeout works" timeout 10s {
     assert result == 2
 }
 
+test "unary minus" {
+    let x = 5
+    assert -x == -5
+    assert -10 + 3 == -7
+}
+
+test "unary not" {
+    assert !false == true
+    assert !true == false
+    assert !(1 == 2) == true
+}
+
 // --- Phase 8: Module System ---
 // stdlib imports work without relative paths (tested via build, not runtime)
 

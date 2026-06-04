@@ -333,3 +333,17 @@ func TryCallWithError(fn func() interface{}) (interface{}, interface{}) {
 	}
 	return result, nil
 }
+
+// Negate negates a numeric value (unary minus on interface{}).
+func Negate(v interface{}) interface{} {
+	switch val := v.(type) {
+	case int:
+		return -val
+	case int64:
+		return -val
+	case float64:
+		return -val
+	default:
+		return 0
+	}
+}

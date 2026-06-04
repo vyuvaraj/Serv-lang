@@ -683,6 +683,27 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 
 
+	case *PrefixExpr:
+		rightStr, err := c.genExpression(e.Right)
+		if err != nil {
+			return "", err
+		}
+		rt := c.getExpressionType(e.Right)
+		switch e.Operator {
+		case "-":
+			if rt == "int" || rt == "float64" {
+				return fmt.Sprintf("(-%s)", rightStr), nil
+			}
+			// For interface{}, negate at runtime
+			return fmt.Sprintf("runtime.Negate(%s)", rightStr), nil
+		case "!":
+			if rt == "bool" {
+				return fmt.Sprintf("(!%s)", rightStr), nil
+			}
+			return fmt.Sprintf("(!isTruthy(%s))", rightStr), nil
+		}
+		return fmt.Sprintf("(%s%s)", e.Operator, rightStr), nil
+
 	case *AssignExpr:
 		valStr, err := c.genExpression(e.Value)
 		if err != nil {

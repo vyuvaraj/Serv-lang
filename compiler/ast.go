@@ -556,6 +556,17 @@ func (i *InfixExpr) expressionNode()      {}
 func (i *InfixExpr) TokenLiteral() string { return i.Token.Literal }
 func (i *InfixExpr) String() string       { return "(" + i.Left.String() + " " + i.Operator + " " + i.Right.String() + ")" }
 
+// PrefixExpr: -x, !x
+type PrefixExpr struct {
+	Token    Token
+	Operator string
+	Right    Expression
+}
+
+func (p *PrefixExpr) expressionNode()      {}
+func (p *PrefixExpr) TokenLiteral() string { return p.Token.Literal }
+func (p *PrefixExpr) String() string       { return "(" + p.Operator + p.Right.String() + ")" }
+
 type IndexExpr struct {
 	Token Token // The '[' token
 	Left  Expression
