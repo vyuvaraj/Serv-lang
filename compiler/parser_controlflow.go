@@ -38,20 +38,42 @@ func (p *Parser) parseIfStatement() Statement {
 }
 
 // parseForStatement parses: for <var> in <expr> { ... } or for <condition> { ... }
+// Also: for key, value in map { ... }
 func (p *Parser) parseForStatement() Statement {
 	stmt := &ForStmt{Token: p.curToken}
 
 	p.nextToken()
 
-	// Check if this is "for x in collection" pattern
-	if p.curToken.Type == TOKEN_IDENT && p.peekToken.Type == TOKEN_IN {
-		stmt.Variable = p.curToken.Literal
-		stmt.IsRange = true
-		p.nextToken() // skip 'in'
-		p.nextToken() // move to iterable expression
-		stmt.Iterable = p.parseExpression(LOWEST)
+	// Check if this is "for x in collection" or "for k, v in collection" pattern
+	if p.curToken.Type == TOKEN_IDENT {
+		if p.peekToken.Type == TOKEN_IN {
+			// for x in collection
+			stmt.Variable = p.curToken.Literal
+			stmt.IsRange = true
+			p.nextToken() // skip 'in'
+			p.nextToken() // move to iterable expression
+			stmt.Iterable = p.parseExpression(LOWEST)
+		} else if p.peekToken.Type == TOKEN_COMMA {
+			// for key, value in collection
+			stmt.KeyVar = p.curToken.Literal
+			p.nextToken() // skip ','
+			if !p.expectPeek(TOKEN_IDENT) {
+				return nil
+			}
+			stmt.Variable = p.curToken.Literal
+			stmt.IsRange = true
+			if !p.expectPeek(TOKEN_IN) {
+				return nil
+			}
+			p.nextToken() // move to iterable expression
+			stmt.Iterable = p.parseExpression(LOWEST)
+		} else {
+			// Condition-based loop: for <condition> { ... }
+			stmt.IsRange = false
+			stmt.Iterable = p.parseExpression(LOWEST)
+		}
 	} else {
-		// Condition-based loop: for <condition> { ... }
+		// Condition-based loop starting with non-identifier
 		stmt.IsRange = false
 		stmt.Iterable = p.parseExpression(LOWEST)
 	}

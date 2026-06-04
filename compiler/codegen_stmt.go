@@ -166,11 +166,22 @@ func (c *Codegen) genForStmt(s *ForStmt) (string, error) {
 			return "", err
 		}
 		c.declaredVars[s.Variable] = true
+		if s.KeyVar != "" {
+			c.declaredVars[s.KeyVar] = true
+			c.varTypes[s.KeyVar] = "interface{}"
+		}
 		bodyStr, err := c.genBlockStatement(s.Body)
 		if err != nil {
 			return "", err
 		}
 		iterType := c.getExpressionType(s.Iterable)
+
+		// Map iteration: for key, value in map
+		if s.KeyVar != "" {
+			c.varTypes[s.KeyVar] = "string"
+			return fmt.Sprintf("for %s, %s := range runtime.ToMap(%s) %s\n", s.KeyVar, s.Variable, iterStr, bodyStr), nil
+		}
+
 		if iterType == "[]interface{}" || strings.HasPrefix(iterType, "[]") {
 			return fmt.Sprintf("for _, %s := range %s %s\n", s.Variable, iterStr, bodyStr), nil
 		}
@@ -543,6 +554,11 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 	}
 
 	if c.declaredVars[s.Name] {
+		// Re-assignment: update type tracking
+		inferred := c.getExpressionType(s.Value)
+		if inferred != "interface{}" {
+			c.varTypes[s.Name] = inferred
+		}
 		return fmt.Sprintf("%s = %s\n_ = %s\n", s.Name, val, s.Name), nil
 	}
 	c.declaredVars[s.Name] = true
@@ -558,16 +574,30 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 		c.varTypes[s.Name] = structLit.TypeName
 	} else if callExpr, ok := s.Value.(*CallExpr); ok {
 		if ident, ok := callExpr.Function.(*Identifier); ok {
-			if retType, exists := c.funcReturnTypes[ident.Value]; exists && c.structTypes[retType] {
-				goType = "*" + retType
-				c.varTypes[s.Name] = retType
+			if retType, exists := c.funcReturnTypes[ident.Value]; exists {
+				if c.structTypes[retType] {
+					goType = "*" + retType
+					c.varTypes[s.Name] = retType
+				} else {
+					gt := toGoType(retType)
+					if gt != "interface{}" {
+						goType = gt
+						c.varTypes[s.Name] = gt
+					}
+				}
 			}
 		}
 	} else {
 		inferred := c.getExpressionType(s.Value)
 		if inferred != "interface{}" {
-			goType = inferred
-			c.varTypes[s.Name] = goType
+			// Don't emit typed slices for arrays — they need []interface{} for collection methods
+			if strings.HasPrefix(inferred, "[]") {
+				goType = "[]interface{}"
+				c.varTypes[s.Name] = "[]interface{}"
+			} else {
+				goType = inferred
+				c.varTypes[s.Name] = goType
+			}
 		}
 	}
 	if c.inFunction {

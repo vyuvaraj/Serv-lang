@@ -360,13 +360,61 @@ func (p *Parser) parseAssignmentExpression(left Expression) Expression {
 }
 
 func (p *Parser) parseIndexExpression(left Expression) Expression {
-	expr := &IndexExpr{Token: p.curToken, Left: left}
+	tok := p.curToken
 	p.nextToken() // skip '['
-	expr.Index = p.parseExpression(LOWEST)
+
+	// Check for slice expression: arr[start:end], arr[:end], arr[start:]
+	if p.curToken.Type == TOKEN_COLON {
+		// arr[:end]
+		p.nextToken()
+		var endExpr Expression
+		if p.curToken.Type != TOKEN_RBRACKET {
+			endExpr = p.parseExpression(LOWEST)
+		}
+		if !p.expectPeek(TOKEN_RBRACKET) {
+			return nil
+		}
+		return &SliceExpr{Token: tok, Left: left, Start: nil, End: endExpr}
+	}
+
+	startOrIndex := p.parseExpression(LOWEST)
+
+	// Check if this is a slice expression
+	if p.peekToken.Type == TOKEN_COLON {
+		p.nextToken() // consume ':'
+		p.nextToken() // move past ':'
+		var endExpr Expression
+		if p.curToken.Type != TOKEN_RBRACKET {
+			endExpr = p.parseExpression(LOWEST)
+			if !p.expectPeek(TOKEN_RBRACKET) {
+				return nil
+			}
+		} else {
+			// arr[start:] — curToken is already ']'
+			// Don't expectPeek, we're already on ']'
+		}
+		return &SliceExpr{Token: tok, Left: left, Start: startOrIndex, End: endExpr}
+	}
+
+	// Regular index expression
+	expr := &IndexExpr{Token: tok, Left: left, Index: startOrIndex}
 	if !p.expectPeek(TOKEN_RBRACKET) {
 		return nil
 	}
 	return expr
+}
+
+func (p *Parser) parseCompoundAssignExpression(left Expression) Expression {
+	switch l := left.(type) {
+	case *Identifier:
+		expr := &CompoundAssignExpr{Token: p.curToken, Name: l.Value, Operator: p.curToken.Literal}
+		p.nextToken()
+		expr.Value = p.parseExpression(LOWEST)
+		return expr
+	default:
+		p.addError("left side of compound assignment must be an identifier")
+		return nil
+	}
 }
 
 func (p *Parser) parseFStringLiteral() Expression {

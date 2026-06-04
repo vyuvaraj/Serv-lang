@@ -33,6 +33,13 @@ Tracking remaining work to make Serv production-ready and competitive.
 | ✅ | Enums with values | `enum Status { Active = 1, Inactive = 2 }` | Low |
 | ✅ | Type aliases | `type UserID = int` | Low |
 | ✅ | Generic constraints | `fn sort[T: Comparable](items: []T)` | Low |
+| ✅ | Modulo operator | `a % b` — remainder operator | High |
+| ✅ | Break / continue | Loop control flow keywords | High |
+| ✅ | Compound assignment | `+=`, `-=`, `*=`, `/=`, `%=` operators | High |
+| ✅ | Bitwise operators | `&`, `\|`, `^`, `<<`, `>>` | Medium |
+| ✅ | Map iteration | `for key, value in map { ... }` | High |
+| ✅ | Slice expressions | `arr[1:3]`, `arr[:5]`, `arr[2:]` | Medium |
+| ✅ | Type inference | Tracks types through assignments, function returns, struct fields | High |
 
 ---
 
@@ -48,6 +55,20 @@ Tracking remaining work to make Serv production-ready and competitive.
 | ✅ | WebSocket support | `ws "/chat" (conn) { ... }` | High |
 | ⬜ | Graceful hot-reload | Zero-downtime restarts in watch mode | Low |
 | ✅ | Request validation | Built-in body/param validation with schema | Medium |
+
+---
+
+## Compiler Analysis & Safety
+
+| Status | Item | Description | Priority |
+|--------|------|-------------|----------|
+| ✅ | Unused variable warnings | `let x = 5` warns if `x` is never referenced | High |
+| ✅ | Missing return detection | Functions with return type warn if not all paths return | High |
+| ✅ | Type mismatch errors | `add("hello", true)` when `add(a: int, b: int)` → compile error | High |
+| ✅ | Argument count checking | Calling a function with wrong number of args → compile error | High |
+| ✅ | Unreachable code detection | Warn on code after `return` / `break` / `continue` | Medium |
+| ✅ | Dead import detection | Warn on unused Go package imports | Medium |
+| ⬜ | Interface satisfaction checking | Verify structs implement declared interfaces | Low |
 
 ---
 

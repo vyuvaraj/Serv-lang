@@ -66,6 +66,7 @@ const (
 	TOKEN_MINUS      TokenType = "-"
 	TOKEN_ASTERISK   TokenType = "*"
 	TOKEN_SLASH      TokenType = "/"
+	TOKEN_PERCENT    TokenType = "%"
 	TOKEN_COMMA      TokenType = ","
 	TOKEN_LPAREN     TokenType = "("
 	TOKEN_RPAREN     TokenType = ")"
@@ -77,6 +78,20 @@ const (
 	TOKEN_COLON      TokenType = ":"
 	TOKEN_TEST       TokenType = "TEST"
 	TOKEN_ASSERT     TokenType = "ASSERT"
+
+	// Compound assignment operators
+	TOKEN_PLUS_ASSIGN    TokenType = "+="
+	TOKEN_MINUS_ASSIGN   TokenType = "-="
+	TOKEN_ASTERISK_ASSIGN TokenType = "*="
+	TOKEN_SLASH_ASSIGN   TokenType = "/="
+	TOKEN_PERCENT_ASSIGN TokenType = "%="
+
+	// Bitwise operators
+	TOKEN_AMPERSAND  TokenType = "&"
+	TOKEN_PIPE       TokenType = "|"
+	TOKEN_CARET      TokenType = "^"
+	TOKEN_SHIFT_LEFT TokenType = "<<"
+	TOKEN_SHIFT_RIGHT TokenType = ">>"
 
 	// Comparison operators
 	TOKEN_EQ         TokenType = "=="
@@ -90,6 +105,10 @@ const (
 	TOKEN_SPREAD     TokenType = "..."
 	TOKEN_TYPE       TokenType = "TYPE"
 	TOKEN_VALIDATE   TokenType = "VALIDATE"
+
+	// Keywords
+	TOKEN_BREAK      TokenType = "BREAK"
+	TOKEN_CONTINUE   TokenType = "CONTINUE"
 )
 
 type Token struct {
@@ -141,6 +160,13 @@ func (l *Lexer) NextToken() Token {
 
 	switch l.ch {
 	case '+':
+		if l.peekChar() == '=' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_PLUS_ASSIGN
+			tok.Literal = "+="
+			return tok
+		}
 		tok.Type = TOKEN_PLUS
 		tok.Literal = string(l.ch)
 	case '-':
@@ -149,6 +175,13 @@ func (l *Lexer) NextToken() Token {
 			l.readChar() // skip '>'
 			tok.Type = TOKEN_RET_ARROW
 			tok.Literal = "->"
+			return tok
+		}
+		if l.peekChar() == '=' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_MINUS_ASSIGN
+			tok.Literal = "-="
 			return tok
 		}
 		tok.Type = TOKEN_MINUS
@@ -170,6 +203,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = TOKEN_ASSIGN
 		tok.Literal = string(l.ch)
 	case '*':
+		if l.peekChar() == '=' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_ASTERISK_ASSIGN
+			tok.Literal = "*="
+			return tok
+		}
 		tok.Type = TOKEN_ASTERISK
 		tok.Literal = string(l.ch)
 	case '/':
@@ -177,7 +217,33 @@ func (l *Lexer) NextToken() Token {
 			l.skipComment()
 			return l.NextToken()
 		}
+		if l.peekChar() == '=' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_SLASH_ASSIGN
+			tok.Literal = "/="
+			return tok
+		}
 		tok.Type = TOKEN_SLASH
+		tok.Literal = string(l.ch)
+	case '%':
+		if l.peekChar() == '=' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_PERCENT_ASSIGN
+			tok.Literal = "%="
+			return tok
+		}
+		tok.Type = TOKEN_PERCENT
+		tok.Literal = string(l.ch)
+	case '&':
+		tok.Type = TOKEN_AMPERSAND
+		tok.Literal = string(l.ch)
+	case '|':
+		tok.Type = TOKEN_PIPE
+		tok.Literal = string(l.ch)
+	case '^':
+		tok.Type = TOKEN_CARET
 		tok.Literal = string(l.ch)
 	case ',':
 		tok.Type = TOKEN_COMMA
@@ -278,6 +344,13 @@ func (l *Lexer) NextToken() Token {
 					tok.Literal = "<="
 					return tok
 				}
+				if l.peekChar() == '<' {
+					l.readChar()
+					l.readChar()
+					tok.Type = TOKEN_SHIFT_LEFT
+					tok.Literal = "<<"
+					return tok
+				}
 				tok.Type = TOKEN_LT
 				tok.Literal = "<"
 			case '>':
@@ -286,6 +359,13 @@ func (l *Lexer) NextToken() Token {
 					l.readChar()
 					tok.Type = TOKEN_GTE
 					tok.Literal = ">="
+					return tok
+				}
+				if l.peekChar() == '>' {
+					l.readChar()
+					l.readChar()
+					tok.Type = TOKEN_SHIFT_RIGHT
+					tok.Literal = ">>"
 					return tok
 				}
 				tok.Type = TOKEN_GT
@@ -456,6 +536,8 @@ var keywords = map[string]TokenType{
 	"ws":        TOKEN_WS,
 	"type":      TOKEN_TYPE,
 	"validate":  TOKEN_VALIDATE,
+	"break":     TOKEN_BREAK,
+	"continue":  TOKEN_CONTINUE,
 }
 
 func lookupIdent(ident string) TokenType {

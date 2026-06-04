@@ -577,9 +577,11 @@ func (i *IfStmt) String() string {
 }
 
 // For Statement: for item in collection { ... } or for condition { ... }
+// Also supports: for key, value in map { ... }
 type ForStmt struct {
 	Token      Token
 	Variable   string     // loop variable name (empty for condition-based)
+	KeyVar     string     // key variable name (for map iteration: for k, v in map)
 	Iterable   Expression // collection to iterate, or condition expression
 	IsRange    bool       // true = for x in collection, false = for condition
 	Body       *BlockStmt
@@ -589,9 +591,66 @@ func (f *ForStmt) statementNode()       {}
 func (f *ForStmt) TokenLiteral() string { return f.Token.Literal }
 func (f *ForStmt) String() string {
 	if f.IsRange {
+		if f.KeyVar != "" {
+			return "for " + f.KeyVar + ", " + f.Variable + " in " + f.Iterable.String() + " " + f.Body.String() + "\n"
+		}
 		return "for " + f.Variable + " in " + f.Iterable.String() + " " + f.Body.String() + "\n"
 	}
 	return "for " + f.Iterable.String() + " " + f.Body.String() + "\n"
+}
+
+// Break Statement
+type BreakStmt struct {
+	Token Token
+}
+
+func (b *BreakStmt) statementNode()       {}
+func (b *BreakStmt) TokenLiteral() string { return b.Token.Literal }
+func (b *BreakStmt) String() string       { return "break\n" }
+
+// Continue Statement
+type ContinueStmt struct {
+	Token Token
+}
+
+func (co *ContinueStmt) statementNode()       {}
+func (co *ContinueStmt) TokenLiteral() string { return co.Token.Literal }
+func (co *ContinueStmt) String() string       { return "continue\n" }
+
+// CompoundAssignExpr: x += 1, x -= 2, etc.
+type CompoundAssignExpr struct {
+	Token    Token
+	Name     string
+	Operator string // "+=", "-=", "*=", "/=", "%="
+	Value    Expression
+}
+
+func (c *CompoundAssignExpr) expressionNode()      {}
+func (c *CompoundAssignExpr) TokenLiteral() string { return c.Token.Literal }
+func (c *CompoundAssignExpr) String() string {
+	return c.Name + " " + c.Operator + " " + c.Value.String()
+}
+
+// SliceExpr: arr[start:end]
+type SliceExpr struct {
+	Token Token
+	Left  Expression
+	Start Expression // nil means from beginning
+	End   Expression // nil means to end
+}
+
+func (s *SliceExpr) expressionNode()      {}
+func (s *SliceExpr) TokenLiteral() string { return s.Token.Literal }
+func (s *SliceExpr) String() string {
+	startStr := ""
+	if s.Start != nil {
+		startStr = s.Start.String()
+	}
+	endStr := ""
+	if s.End != nil {
+		endStr = s.End.String()
+	}
+	return s.Left.String() + "[" + startStr + ":" + endStr + "]"
 }
 
 // Boolean Literal

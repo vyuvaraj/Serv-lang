@@ -18,22 +18,33 @@ const (
 )
 
 var precedences = map[TokenType]int{
-	TOKEN_ARROW:        ASSIGN,
-	TOKEN_ASSIGN:       ASSIGN,
-	TOKEN_EQ:           COMPARE,
-	TOKEN_NEQ:          COMPARE,
-	TOKEN_LT:           COMPARE,
-	TOKEN_GT:           COMPARE,
-	TOKEN_LTE:          COMPARE,
-	TOKEN_GTE:          COMPARE,
-	TOKEN_PLUS:         SUM,
-	TOKEN_MINUS:        SUM,
-	TOKEN_ASTERISK:     PRODUCT,
-	TOKEN_SLASH:        PRODUCT,
-	TOKEN_LPAREN:       CALL,
-	TOKEN_DOT:          MEMBER,
-	TOKEN_QUESTION_DOT: MEMBER,
-	TOKEN_LBRACKET:     INDEX,
+	TOKEN_ARROW:           ASSIGN,
+	TOKEN_ASSIGN:          ASSIGN,
+	TOKEN_PLUS_ASSIGN:     ASSIGN,
+	TOKEN_MINUS_ASSIGN:    ASSIGN,
+	TOKEN_ASTERISK_ASSIGN: ASSIGN,
+	TOKEN_SLASH_ASSIGN:    ASSIGN,
+	TOKEN_PERCENT_ASSIGN:  ASSIGN,
+	TOKEN_EQ:              COMPARE,
+	TOKEN_NEQ:             COMPARE,
+	TOKEN_LT:              COMPARE,
+	TOKEN_GT:              COMPARE,
+	TOKEN_LTE:             COMPARE,
+	TOKEN_GTE:             COMPARE,
+	TOKEN_PIPE:            SUM,
+	TOKEN_CARET:           SUM,
+	TOKEN_PLUS:            SUM,
+	TOKEN_MINUS:           SUM,
+	TOKEN_AMPERSAND:       PRODUCT,
+	TOKEN_SHIFT_LEFT:      PRODUCT,
+	TOKEN_SHIFT_RIGHT:     PRODUCT,
+	TOKEN_ASTERISK:        PRODUCT,
+	TOKEN_SLASH:           PRODUCT,
+	TOKEN_PERCENT:         PRODUCT,
+	TOKEN_LPAREN:          CALL,
+	TOKEN_DOT:             MEMBER,
+	TOKEN_QUESTION_DOT:    MEMBER,
+	TOKEN_LBRACKET:        INDEX,
 }
 
 type Parser struct {
@@ -79,6 +90,12 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_MINUS, p.parseInfixExpression)
 	p.registerInfix(TOKEN_ASTERISK, p.parseInfixExpression)
 	p.registerInfix(TOKEN_SLASH, p.parseInfixExpression)
+	p.registerInfix(TOKEN_PERCENT, p.parseInfixExpression)
+	p.registerInfix(TOKEN_AMPERSAND, p.parseInfixExpression)
+	p.registerInfix(TOKEN_PIPE, p.parseInfixExpression)
+	p.registerInfix(TOKEN_CARET, p.parseInfixExpression)
+	p.registerInfix(TOKEN_SHIFT_LEFT, p.parseInfixExpression)
+	p.registerInfix(TOKEN_SHIFT_RIGHT, p.parseInfixExpression)
 	p.registerInfix(TOKEN_EQ, p.parseInfixExpression)
 	p.registerInfix(TOKEN_NEQ, p.parseInfixExpression)
 	p.registerInfix(TOKEN_LT, p.parseInfixExpression)
@@ -90,6 +107,11 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_QUESTION_DOT, p.parseOptionalMemberExpression)
 	p.registerInfix(TOKEN_LBRACKET, p.parseIndexExpression)
 	p.registerInfix(TOKEN_ASSIGN, p.parseAssignmentExpression)
+	p.registerInfix(TOKEN_PLUS_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(TOKEN_MINUS_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(TOKEN_ASTERISK_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(TOKEN_SLASH_ASSIGN, p.parseCompoundAssignExpression)
+	p.registerInfix(TOKEN_PERCENT_ASSIGN, p.parseCompoundAssignExpression)
 	p.registerInfix(TOKEN_ARROW, p.parseArrowFunction)
 
 	// Read two tokens so curToken and peekToken are both set
@@ -205,6 +227,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseValidateStatement()
 	case TOKEN_EXPORT:
 		return p.parseExportStatement()
+	case TOKEN_BREAK:
+		return &BreakStmt{Token: p.curToken}
+	case TOKEN_CONTINUE:
+		return &ContinueStmt{Token: p.curToken}
 	default:
 		return p.parseExpressionStatement()
 	}

@@ -21,33 +21,33 @@ every 5s {
         log.info(f"SQLite works! First row: {rows}")
     } catch (err) {
     log.error(f"SQLite test failed: {err}")
-}
+    }
 
-// Postgres mock/query (expected to fail if offline, but caught gracefully)
-try {
-    log.info("Testing Postgres query execution...")
-    let pgRows = db.query("SELECT 1 as val")
-    log.info(f"Postgres query succeeded: {pgRows}")
-} catch (err) {
-log.warn(f"Postgres query failed (as expected if offline): {err}")
-}
+    // Postgres mock/query (expected to fail if offline, but caught gracefully)
+    try {
+        log.info("Testing Postgres query execution...")
+        let pgRows = db.query("SELECT 1 as val")
+        log.info(f"Postgres query succeeded: {pgRows}")
+    } catch (err) {
+    log.warn(f"Postgres query failed (as expected if offline): {err}")
+    }
 
-// Oracle mock/query (expected to fail if offline, but caught gracefully)
-try {
-    log.info("Testing Oracle query execution...")
-    let oraRows = db.query("SELECT 1 FROM dual")
-    log.info(f"Oracle query succeeded: {oraRows}")
-} catch (err) {
-log.warn(f"Oracle query failed (as expected if offline): {err}")
-}
+    // Oracle mock/query (expected to fail if offline, but caught gracefully)
+    try {
+        log.info("Testing Oracle query execution...")
+        let oraRows = db.query("SELECT 1 FROM dual")
+        log.info(f"Oracle query succeeded: {oraRows}")
+    } catch (err) {
+    log.warn(f"Oracle query failed (as expected if offline): {err}")
+    }
 
-// MongoDB mock/query (expected to fail if offline, but caught gracefully)
-try {
-    log.info("Testing MongoDB operation execution...")
-    // mongoDB is globally initialized, so this will route to runMongoQuery
-    let insertResult = db.query("insert", "logs", "{\"service\": \"Serv\", \"action\": \"db_test\"}")
-    log.info(f"MongoDB Insert Result: {insertResult}")
-} catch (err) {
-log.warn(f"MongoDB operation failed (as expected if offline): {err}")
-}
+    // MongoDB mock/query (expected to fail if offline, but caught gracefully)
+    try {
+        log.info("Testing MongoDB operation execution...")
+        // mongoDB is globally initialized, so this will route to runMongoQuery
+        let insertResult = db.query("insert", "logs", "{\"service\": \"Serv\", \"action\": \"db_test\"}")
+        log.info(f"MongoDB Insert Result: {insertResult}")
+    } catch (err) {
+    log.warn(f"MongoDB operation failed (as expected if offline): {err}")
+    }
 }

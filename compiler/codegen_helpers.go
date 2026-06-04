@@ -195,6 +195,10 @@ func stmtToken(stmt Statement) Token {
 		return s.Token
 	case *ValidateStmt:
 		return s.Token
+	case *BreakStmt:
+		return s.Token
+	case *ContinueStmt:
+		return s.Token
 	default:
 		return Token{}
 	}

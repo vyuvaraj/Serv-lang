@@ -18,7 +18,9 @@ type Codegen struct {
 	testFuncs           []string          // collected test functions
 	regexDecls          []string          // collected compiled regex variables
 	structTypes         map[string]bool   // known struct type names
+	structFields        map[string][]StructField // structName -> fields (for type tracking)
 	funcReturnTypes     map[string]string // fnName -> return type
+	funcParamTypes      map[string][]string // fnName -> param types
 	goPackageAliases    map[string]string // alias -> Go package name (e.g. "uuid" -> "uuid")
 	declaredGoFuncs     map[string]string // "pkg:FuncName" -> "pkgname.FuncName"
 	goMultiReturnFuncs  map[string]bool   // "pkgname.FuncName" -> true (multi-return)
@@ -33,7 +35,9 @@ func NewCodegen(program *Program) *Codegen {
 		goExterns:    make(map[string]string),
 		regexDecls:   []string{},
 		structTypes:  make(map[string]bool),
+		structFields: make(map[string][]StructField),
 		funcReturnTypes: make(map[string]string),
+		funcParamTypes:  make(map[string][]string),
 		goPackageAliases: make(map[string]string),
 		declaredGoFuncs:  make(map[string]string),
 		goMultiReturnFuncs: make(map[string]bool),
@@ -67,17 +71,25 @@ func (c *Codegen) Generate() (string, error) {
 		switch s := stmt.(type) {
 		case *StructDecl:
 			c.structTypes[s.Name] = true
+			c.structFields[s.Name] = s.Fields
 		case *FnDecl:
 			if s.ReturnType != "" {
 				c.funcReturnTypes[s.Name] = s.ReturnType
+			}
+			if len(s.ParamTypes) > 0 {
+				c.funcParamTypes[s.Name] = s.ParamTypes
 			}
 		case *ExportStmt:
 			switch inner := s.Inner.(type) {
 			case *StructDecl:
 				c.structTypes[inner.Name] = true
+				c.structFields[inner.Name] = inner.Fields
 			case *FnDecl:
 				if inner.ReturnType != "" {
 					c.funcReturnTypes[inner.Name] = inner.ReturnType
+				}
+				if len(inner.ParamTypes) > 0 {
+					c.funcParamTypes[inner.Name] = inner.ParamTypes
 				}
 			}
 		}
@@ -228,6 +240,10 @@ case *FnDecl:
 return c.genFnDecl(s)
 case *TryCatchStmt:
 return c.genTryCatchStmt(s)
+case *BreakStmt:
+return "break\n", nil
+case *ContinueStmt:
+return "continue\n", nil
 case *ExprStmt:
 return c.genExprStmt(s)
 default:
@@ -245,7 +261,16 @@ c.declaredVars = make(map[string]bool)
 for k, v := range oldDeclared {
 c.declaredVars[k] = v
 }
-defer func() { c.declaredVars = oldDeclared }()
+
+oldVarTypes := c.varTypes
+c.varTypes = make(map[string]string)
+for k, v := range oldVarTypes {
+c.varTypes[k] = v
+}
+defer func() {
+	c.declaredVars = oldDeclared
+	c.varTypes = oldVarTypes
+}()
 
 var out bytes.Buffer
 out.WriteString("{\n")

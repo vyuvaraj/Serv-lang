@@ -10,7 +10,7 @@ Serv aims to be to Go what TypeScript is to JavaScript — same runtime, better 
 - **Readable output**: Generated Go should be clean enough to debug directly.
 - **Full Go interop**: Any Go package should be callable via declarations.
 
-## Phase 1: Structs & Methods ✅ (current)
+## Phase 1: Structs & Methods ✅
 
 ```srv
 struct User {
@@ -28,7 +28,7 @@ let u = User { id: 1, name: "Alice", email: "alice@example.com", active: true }
 log.info(u.fullName())
 ```
 
-## Phase 2: Error Handling & Multi-Return
+## Phase 2: Error Handling & Multi-Return ✅
 
 ```srv
 fn fetchUser(id: int) -> User | error {
@@ -40,14 +40,14 @@ fn fetchUser(id: int) -> User | error {
 }
 ```
 
-## Phase 3: Module System
+## Phase 3: Module System ✅
 
 ```srv
 export struct User { ... }
 import { User } from "./models/user.srv"
 ```
 
-## Phase 4: Interfaces
+## Phase 4: Interfaces ✅
 
 ```srv
 interface Serializable {
@@ -60,20 +60,20 @@ fn User.serialize() -> string {
 }
 ```
 
-## Phase 5: Generics
+## Phase 5: Generics ✅
 
 ```srv
 fn filter<T>(items: []T, pred: fn(T) -> bool) -> []T { ... }
 fn map<T, U>(items: []T, transform: fn(T) -> U) -> []U { ... }
 ```
 
-## Phase 6: Collection Methods & Arrow Functions
+## Phase 6: Collection Methods & Arrow Functions ✅
 
 ```srv
 let active = users.filter(u => u.active).map(u => u.name)
 ```
 
-## Phase 7: Go Package Declarations
+## Phase 7: Go Package Declarations ✅
 
 ```srv
 // uuid.srv.d
@@ -82,7 +82,7 @@ declare module "github.com/google/uuid" {
 }
 ```
 
-## Phase 8: Async/Await
+## Phase 8: Async/Await ✅
 
 ```srv
 async fn loadDashboard(id: int) -> Dashboard {
@@ -91,16 +91,35 @@ async fn loadDashboard(id: int) -> Dashboard {
 }
 ```
 
-## Phase 9: Middleware & Decorators
+## Phase 9: Middleware & Decorators ✅
 
 ```srv
 middleware auth(req) { ... }
 route "GET" "/admin" (req) use [auth] { ... }
 ```
 
-## Phase 10: LSP Server
+## Phase 10: LSP Server ✅ (basic)
 
-Full IDE support: autocomplete, go-to-definition, inline errors, refactoring.
+Implemented: diagnostics, autocomplete, hover, go-to-definition, document symbols.
+Remaining: cross-file navigation, rename, find references, signature help.
+
+## Phase 11: Type Inference & Codegen Optimization ✅ (current)
+
+Improved type tracking through the compiler:
+- Variable types inferred from literals, function returns, and struct constructors
+- Struct field types tracked via `structFields` map
+- Typed arithmetic/comparison emits native Go ops (no runtime dispatch)
+- Function return type propagation to callers
+
+```srv
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+let x = 5           // codegen knows x is int
+let y = add(x, 3)  // codegen knows y is int
+let z = x + y      // emits native (x + y), no runtime.Arith
+```
 
 ## Key Decisions
 

@@ -169,10 +169,33 @@ func runLint(srvFile string) {
 		os.Exit(1)
 	}
 
-	_, err = parseWithDependencies(absPath, make(map[string]bool))
+	program, err := parseWithDependencies(absPath, make(map[string]bool))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+
+	// Run static analysis
+	source, _ := os.ReadFile(absPath)
+	diags := compiler.Analyze(program)
+	if len(diags) > 0 {
+		fmt.Print(compiler.FormatAnalysisDiagnostics(diags, string(source)))
+		// Count errors vs warnings
+		errors := 0
+		warnings := 0
+		for _, d := range diags {
+			if d.Severity == "error" {
+				errors++
+			} else {
+				warnings++
+			}
+		}
+		if errors > 0 {
+			fmt.Printf("%d error(s), %d warning(s)\n", errors, warnings)
+			os.Exit(1)
+		}
+		fmt.Printf("OK (%d warning(s))\n", warnings)
+		return
 	}
 	fmt.Println("OK")
 }
@@ -196,6 +219,22 @@ func buildServNoExit(srvFile, outputBinary string) (string, error) {
 	program, err := parseWithDependencies(absPath, make(map[string]bool))
 	if err != nil {
 		return "", err
+	}
+
+	// Run static analysis — show warnings but don't fail build
+	source, _ := os.ReadFile(absPath)
+	diags := compiler.Analyze(program)
+	hasErrors := false
+	if len(diags) > 0 {
+		fmt.Print(compiler.FormatAnalysisDiagnostics(diags, string(source)))
+		for _, d := range diags {
+			if d.Severity == "error" {
+				hasErrors = true
+			}
+		}
+	}
+	if hasErrors {
+		return "", fmt.Errorf("compilation failed due to type errors")
 	}
 
 	codegen := compiler.NewCodegen(program)

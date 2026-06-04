@@ -634,10 +634,23 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return fmt.Sprintf("(%s %s %s)", leftStr, e.Operator, rightStr), nil
 		}
 
+		// If one side is typed and the other is interface{}, but we know the native op is valid
+		if e.Operator == "%" && (lt == "int" || rt == "int") && (lt == "int" || lt == "interface{}") && (rt == "int" || rt == "interface{}") {
+			if lt == "int" && rt == "int" {
+				return fmt.Sprintf("(%s %s %s)", leftStr, e.Operator, rightStr), nil
+			}
+		}
+
 		// Generic type params: if both sides have the same type param (e.g., T),
 		// the Go compiler can handle direct operations since constraints enforce it
 		if lt == rt && lt != "interface{}" && lt != "" && len(lt) <= 2 && lt[0] >= 'A' && lt[0] <= 'Z' {
 			return fmt.Sprintf("(%s %s %s)", leftStr, e.Operator, rightStr), nil
+		}
+
+		// Bitwise and shift operators — use runtime helpers for untyped values
+		switch e.Operator {
+		case "&", "|", "^", "<<", ">>":
+			return fmt.Sprintf("runtime.Bitwise(%s, %s, %q)", leftStr, rightStr, e.Operator), nil
 		}
 
 		// Since operands are interface{} in Serv, we add a utility to add/concatenate/compare if needed.
@@ -664,7 +677,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		case "<", ">", "<=", ">=":
 			return fmt.Sprintf("runtime.Compare(%s, %s, %q)", leftStr, rightStr, e.Operator), nil
 		default:
-			// Arithmetic operators — use runtime helper instead of inline closure
+			// Arithmetic operators (including %) — use runtime helper instead of inline closure
 			return fmt.Sprintf("runtime.Arith(%s, %s, %q)", leftStr, rightStr, e.Operator), nil
 		}
 
@@ -676,6 +689,60 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("%s = %s", e.Name, valStr), nil
+
+	case *CompoundAssignExpr:
+		valStr, err := c.genExpression(e.Value)
+		if err != nil {
+			return "", err
+		}
+		// If variable has a known numeric type, emit direct Go compound assignment
+		if varType, ok := c.varTypes[e.Name]; ok && (varType == "int" || varType == "float64") {
+			return fmt.Sprintf("%s %s %s", e.Name, e.Operator, valStr), nil
+		}
+		// For interface{} variables, compute and reassign
+		op := string(e.Operator[0]) // extract arithmetic op from +=, -=, etc.
+		return fmt.Sprintf("%s = runtime.Arith(%s, %s, %q)", e.Name, e.Name, valStr, op), nil
+
+	case *SliceExpr:
+		leftStr, err := c.genExpression(e.Left)
+		if err != nil {
+			return "", err
+		}
+		startStr := ""
+		if e.Start != nil {
+			s, err := c.genExpression(e.Start)
+			if err != nil {
+				return "", err
+			}
+			startStr = s
+		}
+		endStr := ""
+		if e.End != nil {
+			s, err := c.genExpression(e.End)
+			if err != nil {
+				return "", err
+			}
+			endStr = s
+		}
+		// If the left side has a known typed slice, use direct Go slicing
+		if ident, ok := e.Left.(*Identifier); ok {
+			if varType, exists := c.varTypes[ident.Value]; exists {
+				if strings.HasPrefix(varType, "[]") {
+					if e.Start == nil && e.End != nil {
+						return fmt.Sprintf("%s[:%s]", leftStr, endStr), nil
+					} else if e.Start != nil && e.End == nil {
+						return fmt.Sprintf("%s[%s:]", leftStr, startStr), nil
+					} else if e.Start != nil && e.End != nil {
+						return fmt.Sprintf("%s[%s:%s]", leftStr, startStr, endStr), nil
+					}
+					return fmt.Sprintf("%s[:]", leftStr), nil
+				}
+			}
+		}
+		// Dynamic slicing for interface{} values
+		return fmt.Sprintf("runtime.Slice(%s, %s, %s)", leftStr,
+			func() string { if startStr == "" { return "nil" }; return startStr }(),
+			func() string { if endStr == "" { return "nil" }; return endStr }()), nil
 
 	case *BooleanLiteral:
 		if e.Value {
@@ -757,12 +824,37 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		return fmt.Sprintf("&%s{\n\t\t%s,\n\t}", e.TypeName, strings.Join(fields, ",\n\t\t")), nil
 
 	case *AssertExpr:
+		// Generate structured assertion messages based on the condition type
+		if infix, ok := e.Cond.(*InfixExpr); ok {
+			leftStr, err := c.genExpression(infix.Left)
+			if err != nil {
+				return "", err
+			}
+			rightStr, err := c.genExpression(infix.Right)
+			if err != nil {
+				return "", err
+			}
+			switch infix.Operator {
+			case "==":
+				return fmt.Sprintf("func() {\n\t\tgot := interface{}(%s)\n\t\twant := interface{}(%s)\n\t\tif !runtime.Equal(got, want) {\n\t\t\tt.Fatalf(\"assertion failed: got %%v, want %%v\", got, want)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			case "!=":
+				return fmt.Sprintf("func() {\n\t\tgot := interface{}(%s)\n\t\tunwanted := interface{}(%s)\n\t\tif runtime.Equal(got, unwanted) {\n\t\t\tt.Fatalf(\"assertion failed: expected value to not equal %%v\", unwanted)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			case "<":
+				return fmt.Sprintf("func() {\n\t\tleft := interface{}(%s)\n\t\tright := interface{}(%s)\n\t\tif !runtime.Compare(left, right, \"<\") {\n\t\t\tt.Fatalf(\"assertion failed: %%v is not < %%v\", left, right)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			case ">":
+				return fmt.Sprintf("func() {\n\t\tleft := interface{}(%s)\n\t\tright := interface{}(%s)\n\t\tif !runtime.Compare(left, right, \">\") {\n\t\t\tt.Fatalf(\"assertion failed: %%v is not > %%v\", left, right)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			case "<=":
+				return fmt.Sprintf("func() {\n\t\tleft := interface{}(%s)\n\t\tright := interface{}(%s)\n\t\tif !runtime.Compare(left, right, \"<=\") {\n\t\t\tt.Fatalf(\"assertion failed: %%v is not <= %%v\", left, right)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			case ">=":
+				return fmt.Sprintf("func() {\n\t\tleft := interface{}(%s)\n\t\tright := interface{}(%s)\n\t\tif !runtime.Compare(left, right, \">=\") {\n\t\t\tt.Fatalf(\"assertion failed: %%v is not >= %%v\", left, right)\n\t\t}\n\t}()", leftStr, rightStr), nil
+			}
+		}
+		// Fallback for non-comparison assertions (truthiness check)
 		condStr, err := c.genExpression(e.Cond)
 		if err != nil {
 			return "", err
 		}
-		// Generate: if !(cond) { t.Fatalf("assertion failed: %v", cond) }
-		return fmt.Sprintf("func() {\n\t\tvar v interface{} = %s\n\t\tif v == nil || v == false {\n\t\t\tt.Fatalf(\"assertion failed: %%v\", v)\n\t\t}\n\t}()", condStr), nil
+		return fmt.Sprintf("func() {\n\t\tvar v interface{} = %s\n\t\tif v == nil || v == false {\n\t\t\tt.Fatalf(\"assertion failed: expected truthy value, got %%v\", v)\n\t\t}\n\t}()", condStr), nil
 
 	default:
 		return "", fmt.Errorf("unknown expression type: %T", expr)

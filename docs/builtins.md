@@ -183,4 +183,9 @@ items.forEach(x => log.info(x))
 items.contains(3)                // true
 items.push(6)                    // [1, 2, 3, 4, 5, 6]
 items.length()                   // 5
+
+// Slice expressions
+let first3 = items[0:3]          // [1, 2, 3]
+let rest = items[2:]             // [3, 4, 5]
+let head = items[:2]             // [1, 2]
 ```

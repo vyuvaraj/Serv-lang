@@ -37,10 +37,33 @@ Runs all `test "name" { ... }` blocks and reports results.
 
 ## serv lint
 
-Check syntax without building.
+Check syntax and perform static analysis without building.
 
 ```bash
 serv lint <file.srv>
+```
+
+**Analysis includes:**
+- Parse error detection with "did you mean?" suggestions
+- Unused variable warnings
+- Missing return detection for typed functions
+- Type mismatch errors (wrong argument types/count)
+
+**Exit codes:**
+- `0` — No errors (may have warnings)
+- `1` — Has parse errors or type errors
+
+**Example output:**
+```
+  warning: variable 'unused' is declared but never used
+   7 |     let unused = 42
+            ^
+
+  error: argument 1 of 'add' expects type 'int', got 'string'
+   6 |     let result = add("hello", true)
+                           ^
+
+2 error(s), 1 warning(s)
 ```
 
 ## serv fmt

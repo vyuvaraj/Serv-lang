@@ -102,9 +102,24 @@ for item in items {
     log.info(item)
 }
 
+// Key-value iteration (maps)
+for key, value in config {
+    log.info(f"{key} = {value}")
+}
+
 // Condition-based
 for count < 10 {
-    count = count + 1
+    count += 1
+}
+```
+
+### Break & Continue
+
+```serv
+for item in items {
+    if item == nil { continue }
+    if item == "stop" { break }
+    log.info(item)
 }
 ```
 
@@ -289,6 +304,70 @@ let defaults = { "timeout": 30, "retries": 3 }
 let config = { ...defaults, "timeout": 60 }
 ```
 
+## Operators
+
+### Arithmetic
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `+` | Addition / concatenation | `a + b` |
+| `-` | Subtraction | `a - b` |
+| `*` | Multiplication | `a * b` |
+| `/` | Division | `a / b` |
+| `%` | Modulo (remainder) | `a % b` |
+
+### Compound Assignment
+
+```serv
+let count = 0
+count += 1       // count = count + 1
+count -= 1       // count = count - 1
+count *= 2       // count = count * 2
+count /= 2       // count = count / 2
+count %= 3       // count = count % 3
+```
+
+### Bitwise Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `&` | Bitwise AND | `a & b` |
+| `\|` | Bitwise OR | `a \| b` |
+| `^` | Bitwise XOR | `a ^ b` |
+| `<<` | Left shift | `a << 2` |
+| `>>` | Right shift | `a >> 1` |
+
+### Comparison
+
+| Operator | Description |
+|----------|-------------|
+| `==` | Equal |
+| `!=` | Not equal |
+| `<` | Less than |
+| `>` | Greater than |
+| `<=` | Less than or equal |
+| `>=` | Greater than or equal |
+
+### Logical
+
+| Operator | Description |
+|----------|-------------|
+| `and` | Logical AND |
+| `or` | Logical OR |
+| `!` | Logical NOT |
+
+## Slice Expressions
+
+```serv
+let items = [1, 2, 3, 4, 5]
+let first3 = items[0:3]     // [1, 2, 3]
+let rest = items[2:]         // [3, 4, 5]
+let head = items[:2]         // [1, 2]
+
+let text = "hello world"
+let sub = text[0:5]          // "hello"
+```
+
 ## Imports & Modules
 
 ```serv
@@ -319,7 +398,12 @@ extern fn analyze(data) from "python:./scripts/analyzer.py:analyze"
 ```serv
 test "math works" {
     let result = add(2, 3)
-    assert result == 5
+    assert result == 5          // "got X, want 5" on failure
+}
+
+test "comparisons" {
+    assert 10 > 5               // "10 is not > 5" on failure
+    assert "hello" != "world"   // "expected value to not equal world" on failure
 }
 
 test "string methods" {
@@ -327,6 +411,12 @@ test "string methods" {
     assert "  hi  ".trim() == "hi"
 }
 ```
+
+**Assertion messages:**
+- `assert x == 5` → `assertion failed: got 3, want 5`
+- `assert x != 0` → `assertion failed: expected value to not equal 0`
+- `assert x > 10` → `assertion failed: 5 is not > 10`
+- `assert valid` → `assertion failed: expected truthy value, got false`
 
 ## Config Validation
 
