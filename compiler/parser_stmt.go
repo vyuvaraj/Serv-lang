@@ -144,7 +144,7 @@ func (p *Parser) parseLetStatement() Statement {
 	if p.peekToken.Type == TOKEN_COLON && len(stmt.Names) == 1 {
 		p.nextToken() // skip ':'
 		p.nextToken() // type identifier
-		stmt.Type = p.curToken.Literal
+		stmt.Type = p.parseTypeAnnotation()
 	}
 
 	if !p.expectPeek(TOKEN_ASSIGN) {

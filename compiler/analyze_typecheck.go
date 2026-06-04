@@ -1,6 +1,9 @@
 package compiler
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // analyzeTypeMismatches performs basic type checking on function calls within a function body.
 func analyzeTypeMismatches(fn *FnDecl, program *Program) []Diagnostic {
@@ -19,9 +22,10 @@ func analyzeTypeMismatches(fn *FnDecl, program *Program) []Diagnostic {
 		}
 	}
 
-	// Walk the function body looking for call expressions
+	// Walk the function body looking for call expressions and null safety violations
 	for _, stmt := range fn.Body.Statements {
 		diags = append(diags, checkCallTypes(stmt, funcSigs, fn)...)
+		diags = append(diags, checkNullSafety(stmt)...)
 	}
 
 	return diags
@@ -136,9 +140,39 @@ func typesCompatible(actual, expected string) bool {
 	if actual == expected {
 		return true
 	}
-	// nil is compatible with any type
+	// nil is compatible with optional types (T?)
 	if actual == "nil" {
+		if strings.HasSuffix(expected, "?") {
+			return true
+		}
+		// nil is compatible with union types that include nil-like behavior
+		if strings.Contains(expected, "|") {
+			return true
+		}
+		// nil is NOT compatible with non-optional concrete types
+		if expected == "int" || expected == "float" || expected == "string" || expected == "bool" {
+			return false
+		}
+		// For untyped params, allow nil
 		return true
+	}
+	// Optional types accept their base type: string? accepts string
+	if strings.HasSuffix(expected, "?") {
+		baseExpected := strings.TrimSuffix(expected, "?")
+		if actual == baseExpected {
+			return true
+		}
+	}
+	// Union types: check if actual matches any member
+	if strings.Contains(expected, "|") {
+		members := strings.Split(expected, "|")
+		for _, m := range members {
+			m = strings.TrimSpace(m)
+			if actual == m {
+				return true
+			}
+		}
+		return false
 	}
 	// float accepts int
 	if expected == "float" && actual == "int" {
@@ -149,4 +183,43 @@ func typesCompatible(actual, expected string) bool {
 		return true
 	}
 	return false
+}
+
+// checkNullSafety checks for nil assignments to non-optional typed variables.
+func checkNullSafety(stmt Statement) []Diagnostic {
+	var diags []Diagnostic
+
+	switch s := stmt.(type) {
+	case *LetStmt:
+		// If the variable has an explicit type annotation that is NOT optional, nil is not allowed
+		if s.Type != "" && !strings.HasSuffix(s.Type, "?") && !strings.Contains(s.Type, "|") {
+			if _, isNil := s.Value.(*NilLiteral); isNil {
+				diags = append(diags, Diagnostic{
+					Line:     s.Token.Line,
+					Col:      s.Token.Col,
+					Severity: "error",
+					Message:  fmt.Sprintf("cannot assign nil to non-optional type '%s' (use '%s?' to allow nil)", s.Type, s.Type),
+				})
+			}
+		}
+	case *IfStmt:
+		if s.Body != nil {
+			for _, inner := range s.Body.Statements {
+				diags = append(diags, checkNullSafety(inner)...)
+			}
+		}
+		if s.ElseBody != nil {
+			for _, inner := range s.ElseBody.Statements {
+				diags = append(diags, checkNullSafety(inner)...)
+			}
+		}
+	case *ForStmt:
+		if s.Body != nil {
+			for _, inner := range s.Body.Statements {
+				diags = append(diags, checkNullSafety(inner)...)
+			}
+		}
+	}
+
+	return diags
 }

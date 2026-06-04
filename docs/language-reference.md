@@ -33,12 +33,51 @@ let val, err = riskyFunction()   // Multi-return
 | `nil` | `nil` |
 | `[]T` | `[1, 2, 3]` |
 | `map` | `{ "key": "value" }` |
+| `T?` | Optional (nullable) type |
+| `T \| U` | Union type |
 
 ### Type Aliases
 
 ```serv
 type UserID = int
 type Email = string
+```
+
+### Optional Types (Null Safety)
+
+Types suffixed with `?` allow `nil` values. Without `?`, assigning `nil` is a compile error.
+
+```serv
+let name: string = "Alice"     // Cannot be nil
+let email: string? = nil       // OK — optional type
+
+fn findUser(id: int) -> User? {
+    let row = db.query("SELECT * FROM users WHERE id = ?", id)
+    if row == nil { return nil }
+    return User { name: row.name }
+}
+```
+
+**Compile error example:**
+```serv
+let x: int = nil   // error: cannot assign nil to non-optional type 'int' (use 'int?' to allow nil)
+```
+
+### Union Types
+
+Union types allow a value to be one of several types:
+
+```serv
+fn divide(a: int, b: int) -> int | error {
+    if b == 0 {
+        return "division by zero"
+    }
+    return a / b
+}
+
+fn process(input: string | int) {
+    log.info(input)
+}
 ```
 
 ## Functions

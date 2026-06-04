@@ -210,7 +210,7 @@ func (c *Codegen) genStructDecl(s *StructDecl) (string, error) {
 	out.WriteString(fmt.Sprintf("type %s struct {\n", s.Name))
 	for _, f := range s.Fields {
 		goType := toGoType(f.Type)
-		if goType == "interface{}" {
+		if goType == "interface{}" && !strings.HasSuffix(f.Type, "?") && !strings.Contains(f.Type, "|") {
 			goType = f.Type
 		}
 		out.WriteString(fmt.Sprintf("\t%s %s\n", capitalizeFirst(f.Name), goType))
@@ -255,7 +255,7 @@ func (c *Codegen) genMethodDecl(s *MethodDecl) (string, error) {
 	retType := "interface{}"
 	if s.ReturnType != "" {
 		retType = toGoType(s.ReturnType)
-		if retType == "interface{}" {
+		if retType == "interface{}" && !strings.HasSuffix(s.ReturnType, "?") && !strings.Contains(s.ReturnType, "|") {
 			retType = s.ReturnType
 		}
 	}
@@ -565,7 +565,8 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 	goType := "interface{}"
 	if s.Type != "" {
 		goType = toGoType(s.Type)
-		if goType == "interface{}" {
+		if goType == "interface{}" && !strings.HasSuffix(s.Type, "?") && !strings.Contains(s.Type, "|") {
+			// Only use pointer-to-struct for plain struct type names
 			goType = "*" + s.Type
 		}
 		c.varTypes[s.Name] = s.Type
@@ -670,6 +671,16 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 			retType = toGoType(s.ReturnType)
 			if retType == "interface{}" && c.structTypes[s.ReturnType] {
 				retType = "*" + s.ReturnType
+			}
+		}
+	}
+	// If any parameter has an optional/union type, the function likely returns interface{} values
+	// since those params are interface{} in Go and may be returned directly
+	if retType != "interface{}" {
+		for _, pt := range s.ParamTypes {
+			if strings.HasSuffix(pt, "?") || strings.Contains(pt, "|") {
+				retType = "interface{}"
+				break
 			}
 		}
 	}

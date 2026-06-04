@@ -115,7 +115,7 @@ func (p *Parser) parseMethodDeclaration(fnToken Token, typeName, methodName stri
 		if p.peekToken.Type == TOKEN_COLON {
 			p.nextToken() // skip ':'
 			p.nextToken() // type identifier
-			stmt.ParamTypes = append(stmt.ParamTypes, p.curToken.Literal)
+			stmt.ParamTypes = append(stmt.ParamTypes, p.parseTypeAnnotation())
 		} else {
 			stmt.ParamTypes = append(stmt.ParamTypes, "")
 		}
@@ -127,7 +127,7 @@ func (p *Parser) parseMethodDeclaration(fnToken Token, typeName, methodName stri
 			if p.peekToken.Type == TOKEN_COLON {
 				p.nextToken()
 				p.nextToken()
-				stmt.ParamTypes = append(stmt.ParamTypes, p.curToken.Literal)
+				stmt.ParamTypes = append(stmt.ParamTypes, p.parseTypeAnnotation())
 			} else {
 				stmt.ParamTypes = append(stmt.ParamTypes, "")
 			}
@@ -141,7 +141,7 @@ func (p *Parser) parseMethodDeclaration(fnToken Token, typeName, methodName stri
 	if p.peekToken.Type == TOKEN_RET_ARROW {
 		p.nextToken() // skip '->'
 		p.nextToken() // type identifier
-		stmt.ReturnType = p.curToken.Literal
+		stmt.ReturnType = p.parseTypeAnnotation()
 	}
 
 	if !p.expectPeek(TOKEN_LBRACE) {

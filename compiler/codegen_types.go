@@ -3,6 +3,14 @@ package compiler
 import "strings"
 
 func toGoType(t string) string {
+	// Handle optional types: int? -> interface{} (can be nil)
+	if strings.HasSuffix(t, "?") {
+		return "interface{}"
+	}
+	// Handle union types: int|string -> interface{}
+	if strings.Contains(t, "|") {
+		return "interface{}"
+	}
 	switch t {
 	case "int":
 		return "int"

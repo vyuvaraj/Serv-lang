@@ -102,6 +102,7 @@ const (
 	TOKEN_GTE        TokenType = ">="
 	TOKEN_BANG       TokenType = "!"
 	TOKEN_QUESTION_DOT TokenType = "?."
+	TOKEN_QUESTION     TokenType = "?"
 	TOKEN_SPREAD     TokenType = "..."
 	TOKEN_TYPE       TokenType = "TYPE"
 	TOKEN_VALIDATE   TokenType = "VALIDATE"
@@ -270,8 +271,8 @@ func (l *Lexer) NextToken() Token {
 			tok.Literal = "?."
 			return tok
 		}
-		tok.Type = TOKEN_ILLEGAL
-		tok.Literal = string(l.ch)
+		tok.Type = TOKEN_QUESTION
+		tok.Literal = "?"
 	case ':':
 		tok.Type = TOKEN_COLON
 		tok.Literal = string(l.ch)

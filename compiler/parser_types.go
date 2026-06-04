@@ -28,7 +28,7 @@ func (p *Parser) parseStructDeclaration() Statement {
 			return nil
 		}
 		p.nextToken() // type identifier
-		fieldType := p.curToken.Literal
+		fieldType := p.parseTypeAnnotation()
 
 		stmt.Fields = append(stmt.Fields, StructField{Name: fieldName, Type: fieldType})
 
@@ -208,15 +208,37 @@ func (p *Parser) parseValidateStatement() Statement {
 // parseTypeAnnotation reads a type annotation which can be:
 // - simple: int, string, T
 // - array: []int, []T
-// - pointer: *User (future)
+// - optional: int?, string?, User?
+// - union: int | string, User | error
 func (p *Parser) parseTypeAnnotation() string {
+	var baseType string
+
 	if p.curToken.Type == TOKEN_LBRACKET {
 		// Array type: []T
 		if p.peekToken.Type == TOKEN_RBRACKET {
 			p.nextToken() // consume ']'
 			p.nextToken() // move to element type
-			return "[]" + p.curToken.Literal
+			baseType = "[]" + p.curToken.Literal
+		} else {
+			baseType = p.curToken.Literal
 		}
+	} else {
+		baseType = p.curToken.Literal
 	}
-	return p.curToken.Literal
+
+	// Check for optional: T?
+	if p.peekToken.Type == TOKEN_QUESTION {
+		p.nextToken() // consume '?'
+		baseType = baseType + "?"
+	}
+
+	// Check for union: T | U
+	if p.peekToken.Type == TOKEN_PIPE {
+		p.nextToken() // consume '|'
+		p.nextToken() // move to next type
+		rightType := p.parseTypeAnnotation()
+		baseType = baseType + "|" + rightType
+	}
+
+	return baseType
 }

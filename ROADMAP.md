@@ -122,9 +122,9 @@ This is the highest-impact work. Every improvement here cascades into better cod
 | 2.2 | **Function return type propagation** | Medium | ✅ Done — `let result = add(1, 2)` where `add -> int` tracks `result` as `int` |
 | 2.3 | **Collection element type inference** | Medium | ✅ Done — type inference recognizes homogeneous arrays; runtime still uses `[]interface{}` for collection method compat |
 | 2.4 | **Struct field type tracking** | Medium | ✅ Done — `user.age` on a typed struct resolves to the field's declared type |
-| 2.5 | **Basic type checking** | Large | ⬜ Not started |
-| 2.6 | **Null safety** (`T?` optional types) | Large | ⬜ Not started |
-| 2.7 | **Union types** (`T | error`) | Large | ⬜ Not started |
+| 2.5 | **Basic type checking** | Large | ✅ Done |
+| 2.6 | **Null safety** (`T?` optional types) | Large | ✅ Done — `T?` allows nil, plain `T` errors on nil assignment |
+| 2.7 | **Union types** (`T | error`) | Large | ✅ Done — parsed, codegen emits `interface{}`, type checker validates |
 
 ### Phase 3: Performance (High Priority)
 
