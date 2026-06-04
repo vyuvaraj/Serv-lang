@@ -179,7 +179,9 @@ func (c *Codegen) genForStmt(s *ForStmt) (string, error) {
 		// Map iteration: for key, value in map
 		if s.KeyVar != "" {
 			c.varTypes[s.KeyVar] = "string"
-			return fmt.Sprintf("for %s, %s := range runtime.ToMap(%s) %s\n", s.KeyVar, s.Variable, iterStr, bodyStr), nil
+			// Inject blank-identifier guards to prevent "declared and not used" errors
+			guardedBody := fmt.Sprintf("{\n\t_ = %s\n\t_ = %s\n", s.KeyVar, s.Variable) + bodyStr[2:]
+			return fmt.Sprintf("for %s, %s := range runtime.ToMap(%s) %s\n", s.KeyVar, s.Variable, iterStr, guardedBody), nil
 		}
 
 		if iterType == "[]interface{}" || strings.HasPrefix(iterType, "[]") {

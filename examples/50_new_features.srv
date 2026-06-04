@@ -1,0 +1,254 @@
+// Comprehensive example exercising all features added in this session.
+// Used as a regression test — if this compiles, the new features work.
+
+server "8080"
+
+// --- Phase 1: Language Foundations ---
+
+// Modulo operator
+fn isEven(n: int) -> bool {
+    return n % 2 == 0
+}
+
+// Compound assignment
+fn countdown(start: int) -> int {
+    let count = start
+    for count > 0 {
+        count -= 1
+    }
+    return count
+}
+
+// Bitwise operators
+fn flags() -> int {
+    let read = 1
+    let write = 2
+    let execute = 4
+    let perms = read | write | execute
+    let masked = perms & 3
+    let shifted = perms << 1
+    let xored = perms ^ 255
+    return masked + shifted + xored
+}
+
+// Break and continue
+fn findFirst(items, target) {
+    let found = nil
+    for item in items {
+        if item == nil { continue }
+        if item == target {
+            found = item
+            break
+        }
+    }
+    return found
+}
+
+// Map iteration (for key, value in map)
+fn countKeys(data) {
+    let count = 0
+    for key, val in data {
+        count += 1
+    }
+    return count
+}
+
+// Slice expressions
+fn middle(items) {
+    let len = items.length()
+    if len < 3 { return items }
+    return items[1:len - 1]
+}
+
+// --- Phase 2: Type System ---
+
+// Type inference (typed operations emit native Go ops)
+fn typedMath(a: int, b: int) -> int {
+    let sum = a + b
+    let product = a * b
+    let remainder = a % b
+    return sum + product + remainder
+}
+
+// Struct with field type tracking
+struct User {
+    name: string,
+    email: string?,
+    age: int,
+    active: bool
+}
+
+fn User.displayName() -> string {
+    return f"{self.name} (age {self.age})"
+}
+
+// Null safety: optional types
+fn findUser(id: int) -> User? {
+    if id == 0 { return nil }
+    return User { name: "Alice", email: nil, age: 30, active: true }
+}
+
+// Union types
+fn divide(a: int, b: int) -> int | error {
+    if b == 0 {
+        return "division by zero"
+    }
+    return a / b
+}
+
+// --- Phase 4: Error Handling ---
+
+// ? operator for error propagation
+fn loadProfile(id: int) -> User? {
+    let user = findUser(id)?
+    return user
+}
+
+// Multi-return error handling (still works)
+fn safeDiv(a: int, b: int) {
+    let result, err = divide(a, b)
+    if err != nil {
+        log.error("Division failed: ", err)
+        return nil
+    }
+    return result
+}
+
+// --- Phase 5: Static Analysis Features ---
+// (These are compile-time checks, not runtime features)
+// Unused variables, unreachable code, type mismatches, dead imports
+// are all caught by `serv lint` — this file should compile clean.
+
+// --- Phase 7: Testing ---
+
+fn add(a: int, b: int) -> int {
+    return a + b
+}
+
+fn multiply(a: int, b: int) -> int {
+    return a * b
+}
+
+// Setup/teardown
+let testState = 0
+
+beforeEach {
+    testState = 0
+}
+
+afterEach {
+    testState = 0
+}
+
+// Structured assertions (got X, want Y messages)
+test "addition" {
+    assert add(2, 3) == 5
+    assert add(0, 1) == 1
+}
+
+test "multiplication" {
+    assert multiply(3, 4) == 12
+    assert multiply(0, 100) == 0
+}
+
+test "modulo" {
+    assert isEven(4) == true
+    assert isEven(7) == false
+    assert 10 % 3 == 1
+}
+
+test "compound assignment" {
+    let x = 10
+    x += 5
+    assert x == 15
+    x -= 3
+    assert x == 12
+    x *= 2
+    assert x == 24
+    x /= 4
+    assert x == 6
+    x %= 4
+    assert x == 2
+}
+
+test "bitwise ops" {
+    assert (5 & 3) == 1
+    assert (5 | 3) == 7
+    assert (5 ^ 3) == 6
+    assert (1 << 3) == 8
+    assert (16 >> 2) == 4
+}
+
+test "break and continue" {
+    let items = [1, 2, 3, 4, 5]
+    let result = findFirst(items, 3)
+    assert result == 3
+
+    let missing = findFirst(items, 99)
+    assert missing == nil
+}
+
+test "slice expressions" {
+    let arr = [10, 20, 30, 40, 50]
+    let first2 = arr[0:2]
+    assert first2.length() == 2
+}
+
+test "map iteration" {
+    let data = { "a": 1, "b": 2, "c": 3 }
+    let count = 0
+    for k, v in data {
+        count += 1
+    }
+    assert count == 3
+}
+
+test "optional types" {
+    let user = findUser(1)
+    assert user != nil
+
+    let noUser = findUser(0)
+    assert noUser == nil
+}
+
+test "struct field access" {
+    let u = User { name: "Bob", email: nil, age: 25, active: true }
+    assert u.name == "Bob"
+    assert u.age == 25
+    assert u.active == true
+}
+
+test "beforeEach resets state" {
+    assert testState == 0
+    testState = 42
+}
+
+test "state was reset again" {
+    assert testState == 0
+}
+
+test "timeout works" timeout 10s {
+    let result = add(1, 1)
+    assert result == 2
+}
+
+// --- Phase 8: Module System ---
+// stdlib imports work without relative paths (tested via build, not runtime)
+
+// --- Routes using new features ---
+
+route "GET" "/even" (req) {
+    let n = req.params.n
+    return { "input": n }
+}
+
+route "GET" "/divide" (req) {
+    let a = req.params.a
+    let b = req.params.b
+    return { "a": a, "b": b }
+}
+
+route "GET" "/profile" (req) {
+    let id = req.params.id
+    return { "id": id }
+}
