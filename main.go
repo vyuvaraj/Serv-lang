@@ -180,20 +180,14 @@ func initProject() {
 	}
 
 	// main.srv
-	mainSrv := `import { ok } from "stdlib/response"
-
-server "8080"
-
-route "GET" "/health" (req) {
-    return ok({ "status": "healthy" })
-}
+	mainSrv := `server "8080"
 
 route "GET" "/api/hello" (req) {
     let name = req.params.name
     if name == nil {
-        return ok({ "message": "Hello, world!" })
+        return { "message": "Hello, world!" }
     }
-    return ok({ "message": f"Hello, {name}!" })
+    return { "message": f"Hello, {name}!" }
 }
 `
 	if err := os.WriteFile(filepath.Join(name, "main.srv"), []byte(mainSrv), 0644); err != nil {
