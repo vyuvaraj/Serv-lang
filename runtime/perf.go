@@ -265,6 +265,11 @@ func MemberAccess(obj interface{}, field string) interface{} {
 		return v.Get(field)
 	case map[string]interface{}:
 		return v[field]
+	case map[string]string:
+		if val, ok := v[field]; ok {
+			return val
+		}
+		return nil
 	default:
 		return GetField(obj, field)
 	}
