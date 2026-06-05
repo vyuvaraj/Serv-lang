@@ -16,7 +16,7 @@
 set -e
 
 VERSION=${1:-"dev"}
-OUTDIR="release"
+OUTDIR="dist"
 
 echo "Building Serv $VERSION for all platforms..."
 echo ""
@@ -101,7 +101,7 @@ echo ""
 
 echo "Next steps:"
 echo "  1. Create GitHub release with tag $VERSION"
-echo "  2. Upload archives from release/"
+echo "  2. Upload archives from dist/"
 echo "  3. Copy SHA256 hashes into release-scripts/homebrew/serv.rb"
 echo "  4. Copy SHA256 hash into release-scripts/scoop/serv.json"
 echo "  5. Push Homebrew tap + Scoop bucket repos"
