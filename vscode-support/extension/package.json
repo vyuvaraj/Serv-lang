@@ -11,7 +11,11 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:serv"
+    "onLanguage:serv",
+    "onCommand:serv.run",
+    "onCommand:serv.build",
+    "onCommand:serv.test",
+    "onCommand:serv.watch"
   ],
   "main": "./extension.js",
   "icon": "images/icon.png",
