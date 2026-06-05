@@ -893,9 +893,14 @@ func runREPL() {
 		os.Exit(1)
 	}
 
-	// Build directory for REPL sessions (inside project so go.mod is found)
+	// Build directory for REPL sessions
 	replDir := filepath.Join(".build", "repl")
 	os.MkdirAll(replDir, 0755)
+
+	// Ensure go.mod exists for compilation
+	if err := ensureBuildGoMod(replDir); err != nil {
+		fmt.Printf("Warning: could not setup build module for REPL: %v\n", err)
+	}
 
 	// Accumulated state: variable declarations and function definitions
 	var declarations []string
@@ -1034,8 +1039,9 @@ func compileAndRunREPL(goPath, srvFile, workDir string, printExpr string) (strin
 	binPath := filepath.Join(absWorkDir, "repl_bin.exe")
 	os.Remove(binPath)
 
-	// Build from module root
-	buildCmd := exec.Command(goPath, "build", "-o", binPath, "./"+workDir)
+	// Build from the workDir (which has its own go.mod)
+	buildCmd := exec.Command(goPath, "build", "-o", binPath, ".")
+	buildCmd.Dir = absWorkDir
 	var buildErr bytes.Buffer
 	buildCmd.Stderr = &buildErr
 	if err := buildCmd.Run(); err != nil {
