@@ -1,0 +1,50 @@
+// Order Processing System — Modular showcase
+// Demonstrates: pub/sub, workers, multi-file modules, event-driven architecture
+//
+// Flow: API → publish "orders.new" → Worker processes → publish "notifications.send"
+//
+// Run:   serv run main.srv --watch
+// Build: serv build main.srv -o order-system.exe
+//
+// To switch to a real broker, change "in-memory" to:
+//   broker "nats://localhost:4222"
+//   broker "kafka://localhost:9092"
+//   broker "amqp://guest:guest@localhost:5672"
+
+server "4000"
+database "sqlite://orders.db"
+cache "in-memory"
+broker "in-memory"
+
+// --- Database Migrations ---
+
+migration "create_orders" {
+    db.query("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer TEXT NOT NULL, item TEXT NOT NULL, quantity INTEGER DEFAULT 1, status TEXT DEFAULT 'received', total REAL DEFAULT 0, created_at TEXT DEFAULT (datetime('now')), processed_at TEXT, notified_at TEXT)")
+}
+
+// --- Import Modules ---
+
+import "models/order.srv"
+import "handlers/api.srv"
+import "handlers/worker.srv"
+import "handlers/notifier.srv"
+
+// --- Scheduled Jobs ---
+
+// Retry failed orders every 5 minutes
+every 5m {
+    log.info("[Scheduler] Checking for stuck orders...")
+    let stuck = db.query("SELECT id FROM orders WHERE status = 'processing' AND processed_at < datetime('now', '-5 minutes')")
+    if stuck != nil {
+        for order in stuck {
+            log.warn("[Scheduler] Retrying stuck order: ", order.id)
+            publish "orders.retry" json.stringify({ "order_id": order.id })
+        }
+    }
+}
+
+// Daily summary at midnight
+cron "0 0 * * *" {
+    let stats = db.query("SELECT status, COUNT(*) as count FROM orders GROUP BY status")
+    log.info("[Daily Summary] Order stats: ", stats)
+}

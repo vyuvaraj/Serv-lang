@@ -1,0 +1,12 @@
+server:
+  port: "4000"
+
+log:
+  level: "info"
+  format: "text"
+
+# To switch to a real broker, uncomment one:
+# broker:
+#   url: "nats://localhost:4222"
+#   url: "kafka://localhost:9092"
+#   url: "amqp://guest:guest@localhost:5672"

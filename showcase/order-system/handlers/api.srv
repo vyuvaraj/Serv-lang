@@ -1,0 +1,88 @@
+// API handlers — receives orders and exposes status
+
+// Create a new order
+// POST /api/orders  body: {"customer": "Alice", "item": "widget", "quantity": 2}
+export route "POST" "/api/orders" (req) {
+    let body = json.parse(req.body)
+    let customer = body.customer
+    let item = body.item
+    let quantity = body.quantity
+
+    if customer == nil {
+        return { "error": "customer is required", "status": 400 }
+    }
+    if item == nil {
+        return { "error": "item is required", "status": 400 }
+    }
+    if quantity == nil {
+        quantity = 1
+    }
+
+    // Calculate total
+    let price = getPrice(item)
+    let total = price * quantity
+
+    // Insert order
+    let result = db.query("INSERT INTO orders (customer, item, quantity, total) VALUES (?, ?, ?, ?)", customer, item, quantity, total)
+    let orderId = result.last_insert_id
+
+    // Publish event for async processing
+    publish "orders.new" json.stringify({
+        "order_id": orderId,
+        "customer": customer,
+        "item": item,
+        "quantity": quantity,
+        "total": total
+    })
+
+    log.info(f"[API] Order #{orderId} created: {quantity}x {item} for {customer}")
+
+    return {
+        "created": true,
+        "order_id": orderId,
+        "total": total,
+        "status": "received"
+    }
+}
+
+// Get order status
+// GET /api/orders/:id
+export route "GET" "/api/orders/:id" (req) {
+    let id = req.params.id
+    let rows = db.query("SELECT * FROM orders WHERE id = ?", id)
+
+    if rows == nil {
+        return { "error": "Order not found", "status": 404 }
+    }
+
+    return { "order": rows[0] }
+}
+
+// List recent orders
+// GET /api/orders?limit=20
+export route "GET" "/api/orders" (req) {
+    let cached = cache.get("recent_orders")
+    if cached != nil {
+        return cached
+    }
+
+    let rows = db.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT 20")
+    let result = { "orders": rows, "count": rows.length() }
+
+    cache.set("recent_orders", result, "10s")
+    return result
+}
+
+// Dashboard stats
+// GET /api/dashboard
+export route "GET" "/api/dashboard" (req) {
+    let total = db.query("SELECT COUNT(*) as count FROM orders")
+    let revenue = db.query("SELECT COALESCE(SUM(total), 0) as sum FROM orders WHERE status = 'paid'")
+    let pending = db.query("SELECT COUNT(*) as count FROM orders WHERE status = 'received' OR status = 'processing'")
+
+    return {
+        "total_orders": total[0].count,
+        "total_revenue": revenue[0].sum,
+        "pending_orders": pending[0].count
+    }
+}

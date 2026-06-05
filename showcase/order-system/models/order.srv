@@ -1,0 +1,28 @@
+// Order model and helpers
+
+export struct Order {
+    id: int,
+    customer: string,
+    item: string,
+    quantity: int,
+    status: string,
+    total: float
+}
+
+export fn Order.isPaid() -> bool {
+    return self.status == "paid"
+}
+
+export fn Order.summary() -> string {
+    return f"{self.quantity}x {self.item} for {self.customer} (${self.total})"
+}
+
+// Price catalog (in a real app, this would come from a DB or config)
+export fn getPrice(item) {
+    match item {
+        "widget" => { return 9.99 }
+        "gadget" => { return 24.99 }
+        "doohickey" => { return 4.99 }
+        _ => { return 1.00 }
+    }
+}
