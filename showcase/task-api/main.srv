@@ -1,0 +1,133 @@
+// Task Manager API — A showcase Serv application
+// Demonstrates: routes, database, caching, scheduled jobs, structs, error handling
+//
+// Run:   serv run main.srv --watch
+// Test:  serv test main.srv
+// Build: serv build main.srv -o task-api.exe
+
+server "3000"
+database "sqlite://tasks.db"
+cache "in-memory"
+
+// --- Database Setup ---
+
+migration "create_tasks" {
+    db.query("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, status TEXT DEFAULT 'pending', created_at TEXT DEFAULT (datetime('now')), completed_at TEXT)")
+}
+
+// --- Struct ---
+
+struct Task {
+    id: int,
+    title: string,
+    status: string,
+    created_at: string,
+    completed_at: string?
+}
+
+fn Task.isComplete() -> bool {
+    return self.status == "done"
+}
+
+// --- Routes ---
+
+// List all tasks (with optional status filter)
+// GET /api/tasks?status=pending
+route "GET" "/api/tasks" (req) {
+    let status = req.params.status
+
+    let cached = cache.get("tasks_list")
+    if cached != nil {
+        return cached
+    }
+
+    let rows = db.query("SELECT * FROM tasks ORDER BY created_at DESC")
+    let result = { "tasks": rows, "count": rows.length() }
+
+    cache.set("tasks_list", result, "30s")
+    return result
+}
+
+// Get a single task by ID
+// GET /api/tasks/:id
+route "GET" "/api/tasks/:id" (req) {
+    let id = req.params.id
+    let rows = db.query("SELECT * FROM tasks WHERE id = ?", id)
+    if rows == nil {
+        return { "error": "Task not found", "status": 404 }
+    }
+    if rows.length() == 0 {
+        return { "error": "Task not found", "status": 404 }
+    }
+    return { "task": rows[0] }
+}
+
+// Create a new task
+// POST /api/tasks  body: {"title": "Buy groceries"}
+route "POST" "/api/tasks" (req) {
+    let body = json.parse(req.body)
+    let title = body.title
+
+    if title == nil {
+        return { "error": "title is required", "status": 400 }
+    }
+
+    let result = db.query("INSERT INTO tasks (title) VALUES (?)", title)
+    cache.set("tasks_list", nil, "0s")
+
+    return { "created": true, "id": result.last_insert_id }
+}
+
+// Update task status
+// PUT /api/tasks/:id  body: {"status": "done"}
+route "PUT" "/api/tasks/:id" (req) {
+    let id = req.params.id
+    let body = json.parse(req.body)
+    let status = body.status
+
+    if status == nil {
+        return { "error": "status is required", "status": 400 }
+    }
+
+    let completedAt = nil
+    if status == "done" {
+        completedAt = time.now()
+    }
+
+    db.query("UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?", status, completedAt, id)
+    cache.set("tasks_list", nil, "0s")
+
+    return { "updated": true }
+}
+
+// Delete a task
+// DELETE /api/tasks/:id
+route "DELETE" "/api/tasks/:id" (req) {
+    let id = req.params.id
+    db.query("DELETE FROM tasks WHERE id = ?", id)
+    cache.set("tasks_list", nil, "0s")
+
+    return { "deleted": true }
+}
+
+// --- Scheduled Jobs ---
+
+// Clean up completed tasks older than 7 days (runs every hour)
+every 1h {
+    log.info("Running cleanup: removing old completed tasks...")
+    db.query("DELETE FROM tasks WHERE status = 'done' AND completed_at < datetime('now', '-7 days')")
+}
+
+// --- Stats endpoint ---
+
+route "GET" "/api/stats" (req) {
+    let total = db.query("SELECT COUNT(*) as count FROM tasks")
+    let pending = db.query("SELECT COUNT(*) as count FROM tasks WHERE status = 'pending'")
+    let done = db.query("SELECT COUNT(*) as count FROM tasks WHERE status = 'done'")
+
+    return {
+        "total": total[0].count,
+        "pending": pending[0].count,
+        "done": done[0].count
+    }
+}

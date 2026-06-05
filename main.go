@@ -180,20 +180,21 @@ func initProject() {
 	}
 
 	// main.srv
-	mainSrv := `import { ok } from "stdlib/response"
+	mainSrv := `server "8080"
 
-server "8080"
-
-route "GET" "/health" (req) {
-    return ok({ "status": "healthy" })
+// Path parameter: curl http://localhost:8080/api/hello/Alice
+route "GET" "/api/hello/:name" (req) {
+    let name = req.params.name
+    return { "message": f"Hello, {name}!" }
 }
 
-route "GET" "/api/hello" (req) {
+// Query parameter: curl http://localhost:8080/api/greet?name=Bob
+route "GET" "/api/greet" (req) {
     let name = req.params.name
     if name == nil {
-        return ok({ "message": "Hello, world!" })
+        return { "message": "Hello, world!" }
     }
-    return ok({ "message": f"Hello, {name}!" })
+    return { "message": f"Hello, {name}!" }
 }
 `
 	if err := os.WriteFile(filepath.Join(name, "main.srv"), []byte(mainSrv), 0644); err != nil {
@@ -332,18 +333,22 @@ func buildServNoExit(srvFile, outputBinary string) (string, error) {
 	_ = os.Remove(filepath.Join(buildDir, "service.go"))
 	_ = os.Remove(filepath.Join(buildDir, "serv_test.go"))
 
-
 	genGoFile := filepath.Join(buildDir, "main.go")
 	if err := os.WriteFile(genGoFile, []byte(goCode), 0644); err != nil {
 		return "", err
+	}
+
+	// Ensure the build directory has a go.mod that can find serv/runtime
+	if err := ensureBuildGoMod(buildDir); err != nil {
+		return "", fmt.Errorf("failed to setup build module: %w", err)
 	}
 
 	goPath, err := resolveGoPath()
 	if err != nil {
 		return "", fmt.Errorf("cannot find Go compiler: %w", err)
 	}
-	cmd := exec.Command(goPath, "build", "-o", filepath.Join(filepath.Dir(absPath), outputBinary), genGoFile)
-	cmd.Dir = filepath.Dir(absPath)
+	cmd := exec.Command(goPath, "build", "-o", filepath.Join(filepath.Dir(absPath), outputBinary), ".")
+	cmd.Dir = buildDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -464,6 +469,12 @@ func runTests(srvFile string, withCoverage bool) {
 	buildDir := buildDirFor(absPath)
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		fmt.Printf("Failed to create build dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Ensure the build directory has a go.mod that can find serv/runtime
+	if err := ensureBuildGoMod(buildDir); err != nil {
+		fmt.Printf("Failed to setup build module: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -631,6 +642,103 @@ func buildDirFor(absPath string) string {
 	h := sha256.Sum256([]byte(absPath))
 	short := hex.EncodeToString(h[:4]) // 8 hex chars is enough uniqueness
 	return filepath.Join(filepath.Dir(absPath), ".build", short)
+}
+
+// ensureBuildGoMod creates a go.mod in the build directory that can resolve serv/runtime.
+// It uses a replace directive pointing to the Serv installation directory.
+func ensureBuildGoMod(buildDir string) error {
+	goModPath := filepath.Join(buildDir, "go.mod")
+
+	// Find the Serv installation root (where runtime/ and go.mod live)
+	servRoot := findServRoot()
+	if servRoot == "" {
+		return fmt.Errorf("cannot find Serv installation (runtime/ directory). Set SERV_HOME or ensure serv.exe is next to the runtime/ folder")
+	}
+
+	// Read the Serv project's go.mod to get the Go version and dependencies
+	servGoMod := filepath.Join(servRoot, "go.mod")
+	servGoModContent, err := os.ReadFile(servGoMod)
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %w", servGoMod, err)
+	}
+
+	// Extract go version from Serv's go.mod
+	goVersion := "1.22"
+	for _, line := range strings.Split(string(servGoModContent), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "go ") {
+			goVersion = strings.TrimPrefix(line, "go ")
+			break
+		}
+	}
+
+	// Generate go.mod for the build directory
+	goMod := fmt.Sprintf(`module serv-build
+
+go %s
+
+require serv v0.0.0
+
+replace serv v0.0.0 => %s
+`, goVersion, filepath.ToSlash(servRoot))
+
+	if err := os.WriteFile(goModPath, []byte(goMod), 0644); err != nil {
+		return err
+	}
+
+	// Copy go.sum from Serv root (needed for transitive dependencies)
+	servGoSum := filepath.Join(servRoot, "go.sum")
+	if sumContent, err := os.ReadFile(servGoSum); err == nil {
+		os.WriteFile(filepath.Join(buildDir, "go.sum"), sumContent, 0644)
+	}
+
+	// Run go mod tidy to resolve the require/replace properly
+	goPath, err := resolveGoPath()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(goPath, "mod", "tidy")
+	cmd.Dir = buildDir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// Non-fatal — the build might still work without tidy
+		_ = err
+	}
+
+	return nil
+}
+
+// findServRoot locates the Serv installation directory (where runtime/ and go.mod live).
+func findServRoot() string {
+	// 1. SERV_HOME environment variable
+	if home := os.Getenv("SERV_HOME"); home != "" {
+		if _, err := os.Stat(filepath.Join(home, "runtime")); err == nil {
+			return home
+		}
+	}
+
+	// 2. Next to the running binary
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		if _, err := os.Stat(filepath.Join(exeDir, "runtime")); err == nil {
+			return exeDir
+		}
+		// One level up (for bin/serv layout)
+		parent := filepath.Dir(exeDir)
+		if _, err := os.Stat(filepath.Join(parent, "runtime")); err == nil {
+			return parent
+		}
+	}
+
+	// 3. Current working directory (developer mode)
+	if cwd, err := os.Getwd(); err == nil {
+		if _, err := os.Stat(filepath.Join(cwd, "runtime")); err == nil {
+			return cwd
+		}
+	}
+
+	return ""
 }
 
 // formatFile formats a .srv file with consistent indentation and spacing.
@@ -1208,7 +1316,7 @@ func goTypeToServType(goType string) string {
 // resolveImportPath resolves a Serv import path to an absolute file path.
 // Supports:
 //   - Relative paths: "./models/user.srv", "../stdlib/auth.srv"
-//   - Stdlib shorthand: "stdlib/auth.srv" or "stdlib/auth" (resolved from project root)
+//   - Stdlib shorthand: "stdlib/auth.srv" or "stdlib/auth" (resolved from compiler install dir)
 //   - Absolute-looking paths with .srv extension get resolved relative to the importer
 func resolveImportPath(importerPath, importStr string) string {
 	// Strip .srv extension if missing (allow "stdlib/auth" as shorthand for "stdlib/auth.srv")
@@ -1216,29 +1324,56 @@ func resolveImportPath(importerPath, importStr string) string {
 		importStr = importStr + ".srv"
 	}
 
-	// If path starts with "stdlib/" — resolve from project root (walk up to find stdlib dir)
+	// If path starts with "stdlib/" — resolve from multiple locations
 	if strings.HasPrefix(importStr, "stdlib/") {
-		// Try relative to the working directory first
+		// 1. Try relative to the working directory
 		if _, err := os.Stat(importStr); err == nil {
 			abs, _ := filepath.Abs(importStr)
 			return abs
 		}
-		// Try from project root (same directory as go.mod)
+
+		// 2. Try from the importing file's directory (walk up to find stdlib/)
 		dir := filepath.Dir(importerPath)
 		for i := 0; i < 10; i++ {
 			candidate := filepath.Join(dir, importStr)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate
 			}
-			// Check if we found the project root (has go.mod or stdlib/)
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				return filepath.Join(dir, importStr)
+				candidate = filepath.Join(dir, importStr)
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate
+				}
+				break
 			}
 			parent := filepath.Dir(dir)
 			if parent == dir {
 				break
 			}
 			dir = parent
+		}
+
+		// 3. Try relative to the serv binary location (installed stdlib)
+		exePath, err := os.Executable()
+		if err == nil {
+			exeDir := filepath.Dir(exePath)
+			candidate := filepath.Join(exeDir, importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+			// Also check one level up from binary (e.g. bin/../stdlib/)
+			candidate = filepath.Join(filepath.Dir(exeDir), importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+
+		// 4. Try SERV_HOME environment variable
+		if servHome := os.Getenv("SERV_HOME"); servHome != "" {
+			candidate := filepath.Join(servHome, importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
 		}
 	}
 

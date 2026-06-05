@@ -2,10 +2,6 @@ import { ok, notFound } from "stdlib/response"
 
 server "8080"
 
-route "GET" "/health" (req) {
-    return ok({ "status": "healthy" })
-}
-
 route "GET" "/api/hello" (req) {
     let name = req.params.name
     if name == nil {

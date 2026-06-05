@@ -1,0 +1,21 @@
+// Notification handler — sends confirmations to customers
+
+subscribe "notifications.send" (msg) {
+    let notification = json.parse(msg)
+    let notifKind = notification.kind
+    let orderId = notification.order_id
+    let customer = notification.customer
+    let message = notification.message
+
+    log.info(f"[Notifier] Sending {notifKind} to {customer}: {message}")
+
+    // In a real app: send email, SMS, push notification, webhook, etc.
+    // For demo, we just log and update the DB
+
+    db.query("UPDATE orders SET notified_at = datetime('now') WHERE id = ?", orderId)
+
+    // Could also publish to a webhook:
+    // http.post("https://hooks.slack.com/...", { "text": message })
+
+    log.info(f"[Notifier] ✓ Notification sent for order #{orderId}")
+}

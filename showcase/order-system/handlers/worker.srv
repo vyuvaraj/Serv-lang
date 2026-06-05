@@ -1,0 +1,57 @@
+// Order processing worker — subscribes to events, processes orders
+
+// Process new orders
+subscribe "orders.new" (msg) {
+    let order = json.parse(msg)
+    let orderId = order.order_id
+
+    log.info(f"[Worker] Processing order #{orderId}...")
+
+    // Update status to processing
+    db.query("UPDATE orders SET status = 'processing' WHERE id = ?", orderId)
+
+    // Simulate payment processing (in real app: call payment gateway)
+    time.sleep(500)
+
+    // Mark as paid
+    db.query("UPDATE orders SET status = 'paid', processed_at = datetime('now') WHERE id = ?", orderId)
+
+    log.info(f"[Worker] Order #{orderId} paid successfully")
+
+    // Invalidate cache
+    cache.set("recent_orders", nil, "0s")
+
+    // Publish notification event
+    publish "notifications.send" json.stringify({
+        "kind": "order_confirmed",
+        "order_id": orderId,
+        "customer": order.customer,
+        "message": f"Your order for {order.quantity}x {order.item} has been confirmed! Total: ${order.total}"
+    })
+}
+
+// Retry failed orders
+subscribe "orders.retry" (msg) {
+    let data = json.parse(msg)
+    let orderId = data.order_id
+
+    log.warn(f"[Worker] Retrying order #{orderId}")
+
+    // Reset to received so it gets picked up again
+    db.query("UPDATE orders SET status = 'received', processed_at = NULL WHERE id = ?", orderId)
+
+    // Re-publish for processing
+    let rows = db.query("SELECT * FROM orders WHERE id = ?", orderId)
+    if rows != nil {
+        let order = rows[0]
+        if order != nil {
+            publish "orders.new" json.stringify({
+                "order_id": orderId,
+                "customer": order.customer,
+                "item": order.item,
+                "quantity": order.quantity,
+                "total": order.total
+            })
+        }
+    }
+}

@@ -267,6 +267,21 @@ func StartServer() interface{} {
 			Params: params,
 		}
 
+		// Merge query parameters into params (path params take priority)
+		for key, values := range r.URL.Query() {
+			if _, exists := req.Params[key]; !exists {
+				req.Params[key] = values[0]
+			}
+		}
+
+		// Merge headers into params (lowercase, path/query params take priority)
+		for key, values := range r.Header {
+			lowerKey := strings.ToLower(key)
+			if _, exists := req.Params[lowerKey]; !exists {
+				req.Params[lowerKey] = values[0]
+			}
+		}
+
 		// OpenTelemetry: start request span
 		parentTrace := r.Header.Get("traceparent")
 		trace := TraceRequest(r.Method, r.URL.Path, parentTrace)

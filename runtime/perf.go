@@ -20,6 +20,12 @@ func GetField(obj interface{}, field string) interface{} {
 	if m, ok := obj.(map[string]interface{}); ok {
 		return m[field]
 	}
+	if m, ok := obj.(map[string]string); ok {
+		if val, exists := m[field]; exists {
+			return val
+		}
+		return nil
+	}
 	v := reflect.ValueOf(obj)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
@@ -201,6 +207,12 @@ func ToMap(v interface{}) map[string]interface{} {
 		return m
 	case *SafeMap:
 		return m.All()
+	case map[string]string:
+		result := make(map[string]interface{}, len(m))
+		for k, val := range m {
+			result[k] = val
+		}
+		return result
 	}
 	return nil
 }
@@ -265,6 +277,11 @@ func MemberAccess(obj interface{}, field string) interface{} {
 		return v.Get(field)
 	case map[string]interface{}:
 		return v[field]
+	case map[string]string:
+		if val, ok := v[field]; ok {
+			return val
+		}
+		return nil
 	default:
 		return GetField(obj, field)
 	}

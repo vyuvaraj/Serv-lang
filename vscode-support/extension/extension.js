@@ -73,16 +73,16 @@ function runServCommand(command, extraArgs = []) {
     }
 
     // Build command args
-    let args = [command, filePath, ...extraArgs];
+    let args = [command, `"${filePath}"`, ...extraArgs];
     if (command === 'build') {
         const outputName = path.basename(filePath, '.srv') + '.exe';
-        args = [command, filePath, '-o', outputName];
+        args = [command, `"${filePath}"`, '-o', outputName];
     }
 
-    // Run in integrated terminal
+    // Run in integrated terminal — use & for PowerShell to invoke commands with spaces
     const terminal = vscode.window.createTerminal({ name: `Serv: ${command}` });
     terminal.show();
-    terminal.sendText(`"${servPath}" ${args.join(' ')}`);
+    terminal.sendText(`& "${servPath}" ${args.join(' ')}`);
 }
 
 function findServBinary() {

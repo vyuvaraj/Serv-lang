@@ -4,16 +4,12 @@
     "body": [
       "server \"${1:8080}\"",
       "",
-      "route \"GET\" \"/health\" (req) {",
-      "\treturn { \"status\": \"healthy\" }",
-      "}",
-      "",
       "route \"${2:GET}\" \"${3:/api/endpoint}\" (req) {",
       "\t$0",
       "\treturn { \"ok\": true }",
       "}"
     ],
-    "description": "Scaffold a new Serv service with health check"
+    "description": "Scaffold a new Serv service (/health and /ready are auto-registered)"
   },
   "Function Declaration": {
     "prefix": "fn",
