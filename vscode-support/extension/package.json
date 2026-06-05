@@ -2,7 +2,7 @@
   "name": "serv-vscode",
   "displayName": "Serv Language Support",
   "description": "Full language support for the Serv programming language (.srv files) — diagnostics, autocomplete, hover, go-to-definition.",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "publisher": "serv-lang",
   "engines": {
     "vscode": "^1.75.0"
