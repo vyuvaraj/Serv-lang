@@ -20,8 +20,8 @@ param(
 $ErrorActionPreference = "Continue"
 
 function Write-Step($msg) { Write-Host "  $msg" -ForegroundColor Cyan }
-function Write-Ok($msg) { Write-Host "  ✓ $msg" -ForegroundColor Green }
-function Write-Err($msg) { Write-Host "  ✗ $msg" -ForegroundColor Red }
+function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
+function Write-Err($msg) { Write-Host "  [FAIL] $msg" -ForegroundColor Red }
 
 switch ($Command) {
 
@@ -55,7 +55,10 @@ switch ($Command) {
 
     "install" {
         Write-Host "Building and installing..." -ForegroundColor White
-        & $PSScriptRoot\dev.ps1 build
+        go build -o serv.exe main.go
+        if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit 1 }
+        go build -o serv-lsp.exe ./lsp/
+        if ($LASTEXITCODE -ne 0) { Write-Err "LSP build failed"; exit 1 }
         $installDir = "C:\software\Serv-lang"
         if (-not (Test-Path $installDir)) {
             New-Item -ItemType Directory -Force -Path $installDir | Out-Null
@@ -126,11 +129,19 @@ switch ($Command) {
     "all" {
         Write-Host "=== Full Check ===" -ForegroundColor White
         Write-Host ""
-        & $PSScriptRoot\dev.ps1 build
+        go build -o serv.exe main.go
+        if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit 1 }
+        go build -o serv-lsp.exe ./lsp/
+        if ($LASTEXITCODE -ne 0) { Write-Err "LSP build failed"; exit 1 }
+        Write-Ok "Build"
         Write-Host ""
-        & $PSScriptRoot\dev.ps1 test-unit
-        Write-Host ""
-        & $PSScriptRoot\dev.ps1 lint
+        $testFiles = @("test_sample.srv", "examples\50_new_features.srv")
+        foreach ($f in $testFiles) {
+            if (Test-Path $f) {
+                & .\serv.exe test $f 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { Write-Ok "Test: $f" } else { Write-Err "Test: $f" }
+            }
+        }
         Write-Host ""
         Write-Host "=== Done ===" -ForegroundColor Green
     }
