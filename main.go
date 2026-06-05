@@ -1208,7 +1208,7 @@ func goTypeToServType(goType string) string {
 // resolveImportPath resolves a Serv import path to an absolute file path.
 // Supports:
 //   - Relative paths: "./models/user.srv", "../stdlib/auth.srv"
-//   - Stdlib shorthand: "stdlib/auth.srv" or "stdlib/auth" (resolved from project root)
+//   - Stdlib shorthand: "stdlib/auth.srv" or "stdlib/auth" (resolved from compiler install dir)
 //   - Absolute-looking paths with .srv extension get resolved relative to the importer
 func resolveImportPath(importerPath, importStr string) string {
 	// Strip .srv extension if missing (allow "stdlib/auth" as shorthand for "stdlib/auth.srv")
@@ -1216,29 +1216,56 @@ func resolveImportPath(importerPath, importStr string) string {
 		importStr = importStr + ".srv"
 	}
 
-	// If path starts with "stdlib/" — resolve from project root (walk up to find stdlib dir)
+	// If path starts with "stdlib/" — resolve from multiple locations
 	if strings.HasPrefix(importStr, "stdlib/") {
-		// Try relative to the working directory first
+		// 1. Try relative to the working directory
 		if _, err := os.Stat(importStr); err == nil {
 			abs, _ := filepath.Abs(importStr)
 			return abs
 		}
-		// Try from project root (same directory as go.mod)
+
+		// 2. Try from the importing file's directory (walk up to find stdlib/)
 		dir := filepath.Dir(importerPath)
 		for i := 0; i < 10; i++ {
 			candidate := filepath.Join(dir, importStr)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate
 			}
-			// Check if we found the project root (has go.mod or stdlib/)
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-				return filepath.Join(dir, importStr)
+				candidate = filepath.Join(dir, importStr)
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate
+				}
+				break
 			}
 			parent := filepath.Dir(dir)
 			if parent == dir {
 				break
 			}
 			dir = parent
+		}
+
+		// 3. Try relative to the serv binary location (installed stdlib)
+		exePath, err := os.Executable()
+		if err == nil {
+			exeDir := filepath.Dir(exePath)
+			candidate := filepath.Join(exeDir, importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+			// Also check one level up from binary (e.g. bin/../stdlib/)
+			candidate = filepath.Join(filepath.Dir(exeDir), importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+
+		// 4. Try SERV_HOME environment variable
+		if servHome := os.Getenv("SERV_HOME"); servHome != "" {
+			candidate := filepath.Join(servHome, importStr)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
 		}
 	}
 
