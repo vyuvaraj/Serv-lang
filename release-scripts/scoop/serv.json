@@ -1,11 +1,12 @@
 {
     "version": "1.0.0",
     "description": "Programming language for background services, schedulers, and APIs",
-    "homepage": "https://github.com/user/serv-lang",
+    "homepage": "https://github.com/vyuvaraj/Serv-lang",
     "license": "MIT",
+    "depends": "go",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/user/serv-lang/releases/download/v1.0.0/serv-windows-amd64.zip",
+            "url": "https://github.com/vyuvaraj/Serv-lang/releases/download/v1.0.0/serv-windows-amd64.zip",
             "hash": "REPLACE_WITH_ACTUAL_SHA256"
         }
     },
@@ -13,13 +14,17 @@
         "serv.exe",
         "serv-lsp.exe"
     ],
+    "env_set": {
+        "SERV_HOME": "$dir"
+    },
+    "post_install": "Write-Host 'Serv installed! Run: serv init myapp' -ForegroundColor Green",
     "checkver": {
-        "github": "https://github.com/user/serv-lang"
+        "github": "https://github.com/vyuvaraj/Serv-lang"
     },
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/user/serv-lang/releases/download/v$version/serv-windows-amd64.zip"
+                "url": "https://github.com/vyuvaraj/Serv-lang/releases/download/v$version/serv-windows-amd64.zip"
             }
         }
     }
