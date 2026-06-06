@@ -156,10 +156,12 @@ func flattenMap(prefix string, val interface{}) {
 }
 
 type Request struct {
-	Method string            `json:"method"`
-	Path   string            `json:"path"`
-	Body   string            `json:"body"`
-	Params map[string]string `json:"params"`
+	Method  string            `json:"method"`
+	Path    string            `json:"path"`
+	Body    string            `json:"body"`
+	Params  map[string]string `json:"params"`
+	Headers map[string]string `json:"headers"`
+	Query   map[string]string `json:"query"`
 }
 
 type HTTPResponse struct {
@@ -261,14 +263,17 @@ func StartServer() interface{} {
 
 		bodyBytes, _ := io.ReadAll(r.Body)
 		req := Request{
-			Method: r.Method,
-			Path:   r.URL.Path,
-			Body:   string(bodyBytes),
-			Params: params,
+			Method:  r.Method,
+			Path:    r.URL.Path,
+			Body:    string(bodyBytes),
+			Params:  params,
+			Headers: make(map[string]string),
+			Query:   make(map[string]string),
 		}
 
 		// Merge query parameters into params (path params take priority)
 		for key, values := range r.URL.Query() {
+			req.Query[key] = values[0]
 			if _, exists := req.Params[key]; !exists {
 				req.Params[key] = values[0]
 			}
@@ -276,7 +281,9 @@ func StartServer() interface{} {
 
 		// Merge headers into params (lowercase, path/query params take priority)
 		for key, values := range r.Header {
+			req.Headers[key] = values[0]
 			lowerKey := strings.ToLower(key)
+			req.Headers[lowerKey] = values[0]
 			if _, exists := req.Params[lowerKey]; !exists {
 				req.Params[lowerKey] = values[0]
 			}
