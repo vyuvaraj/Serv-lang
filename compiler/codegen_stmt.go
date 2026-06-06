@@ -655,7 +655,27 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 	if c.declaredVars[s.Name] {
 		// Re-assignment: update type tracking
 		inferred := c.getExpressionType(s.Value)
-		if inferred != "interface{}" {
+		targetType, ok := c.varTypes[s.Name]
+		if ok && inferred == "interface{}" {
+			switch targetType {
+			case "int":
+				val = fmt.Sprintf("toInt(%s)", val)
+			case "float", "float64":
+				val = fmt.Sprintf("toFloat64(%s)", val)
+			case "bool":
+				val = fmt.Sprintf("toBool(%s)", val)
+			case "string":
+				val = fmt.Sprintf("toString(%s)", val)
+			default:
+				if strings.HasPrefix(targetType, "*") || c.structTypes[targetType] {
+					goType := targetType
+					if !strings.HasPrefix(goType, "*") {
+						goType = "*" + goType
+					}
+					val = fmt.Sprintf("interface{}(%s).(%s)", val, goType)
+				}
+			}
+		} else if inferred != "interface{}" {
 			c.varTypes[s.Name] = inferred
 		}
 		return fmt.Sprintf("%s = %s\n_ = %s\n", s.Name, val, s.Name), nil
@@ -669,6 +689,25 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			goType = "*" + s.Type
 		}
 		c.varTypes[s.Name] = s.Type
+
+		// Apply type coercion if the value is dynamic (interface{})
+		inferred := c.getExpressionType(s.Value)
+		if inferred == "interface{}" {
+			switch s.Type {
+			case "int":
+				val = fmt.Sprintf("toInt(%s)", val)
+			case "float", "float64":
+				val = fmt.Sprintf("toFloat64(%s)", val)
+			case "bool":
+				val = fmt.Sprintf("toBool(%s)", val)
+			case "string":
+				val = fmt.Sprintf("toString(%s)", val)
+			default:
+				if c.structTypes[s.Type] {
+					val = fmt.Sprintf("interface{}(%s).(*%s)", val, s.Type)
+				}
+			}
+		}
 	} else if structLit, ok := s.Value.(*StructLiteral); ok {
 		goType = "*" + structLit.TypeName
 		c.varTypes[s.Name] = structLit.TypeName

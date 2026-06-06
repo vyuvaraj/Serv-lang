@@ -18,10 +18,11 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+$env:GOPROXY = "off"
 
 function Write-Step($msg) { Write-Host "  $msg" -ForegroundColor Cyan }
-function Write-Ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
-function Write-Err($msg) { Write-Host "  [FAIL] $msg" -ForegroundColor Red }
+function Write-Ok($msg) { Write-Host "  $([char]0x2713) $msg" -ForegroundColor Green }
+function Write-Err($msg) { Write-Host "  $([char]0x2717) $msg" -ForegroundColor Red }
 
 switch ($Command) {
 

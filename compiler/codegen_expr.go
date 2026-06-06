@@ -41,9 +41,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		field := e.Field
-		capitalField := strings.ToUpper(field[:1]) + field[1:]
-		return fmt.Sprintf("func() interface{} {\n\t\t\tobj := interface{}(%s)\n\t\t\tif obj == nil {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t\tswitch v := obj.(type) {\n\t\t\tcase *runtime.SafeMap:\n\t\t\t\treturn v.Get(%q)\n\t\t\tcase map[string]interface{}:\n\t\t\t\treturn v[%q]\n\t\t\tdefault:\n\t\t\t\treturn runtime.GetField(v, %q)\n\t\t\t}\n\t\t}()", objStr, field, field, capitalField), nil
+		return fmt.Sprintf("runtime.MemberAccess(%s, %q)", objStr, e.Field), nil
 
 	case *MemberExpr:
 		objStr, err := c.genExpression(e.Object)
@@ -612,10 +610,8 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 		}
 
-		c.imports[`"fmt"`] = true
-		c.imports[`"strconv"`] = true
 		c.imports[`"serv/runtime"`] = true
-		return fmt.Sprintf("func() interface{} {\n\t\t\tval := interface{}(%s)\n\t\t\tswitch v := val.(type) {\n\t\t\tcase []interface{}:\n\t\t\t\tidx, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\t\tif idx >= 0 && idx < len(v) {\n\t\t\t\t\treturn v[idx]\n\t\t\t\t}\n\t\t\tcase *runtime.SafeMap:\n\t\t\t\treturn v.Get(fmt.Sprint(%s))\n\t\t\tcase map[string]interface{}:\n\t\t\t\treturn v[fmt.Sprint(%s)]\n\t\t\t}\n\t\t\treturn nil\n\t\t}()", leftStr, indexStr, indexStr, indexStr), nil
+		return fmt.Sprintf("runtime.IndexAccess(%s, %s)", leftStr, indexStr), nil
 
 	case *InfixExpr:
 		leftStr, err := c.genExpression(e.Left)

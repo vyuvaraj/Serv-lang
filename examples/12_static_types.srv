@@ -17,8 +17,26 @@ test "static type math and comparisons" {
 
     let result: int = addInts(15, 25)
     assert result == 40
+
+    // Test runtime dynamic type coercion
+    let dynamicVal = getDynamicVal()
+    let coercedInt: int = dynamicVal
+    assert coercedInt == 42
+
+    let coercedFloat: float = dynamicVal
+    assert coercedFloat == 42.0
+
+    let coercedString: string = dynamicVal
+    assert coercedString == "42"
+
+    let coercedBool: bool = dynamicVal
+    assert coercedBool == true
 }
 
 fn addInts(x: int, y: int) -> int {
     return x + y
+}
+
+fn getDynamicVal() {
+    return 42
 }

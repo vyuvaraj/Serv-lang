@@ -23,6 +23,7 @@ param(
 if ($CompileOnly) { $Phase = 1 }
 
 $ErrorActionPreference = "Continue"
+$env:GOPROXY = "off"
 $pass = 0
 $fail = 0
 $skip = 0
@@ -58,9 +59,12 @@ if ($Phase -eq 0 -or $Phase -eq 1) {
 Write-Host "Phase 1: Compilation" -ForegroundColor White
 Write-Host "--------------------"
 
+# Ensure .build directory exists
+New-Item -ItemType Directory -Force -Path ".build" | Out-Null
+
 $examples = Get-ChildItem examples\*.srv | Sort-Object Name
 foreach ($file in $examples) {
-    $null = & .\serv.exe build $file.FullName -o regression_test.exe 2>&1
+    $null = & .\serv.exe build $file.FullName -o ..\.build\regression_test.exe 2>&1
     if ($LASTEXITCODE -eq 0) {
         $pass++
         Write-Result $file.Name "PASS" "compiled"
@@ -69,7 +73,7 @@ foreach ($file in $examples) {
         Write-Result $file.Name "FAIL" "compilation failed"
     }
 }
-Remove-Item examples\regression_test.exe -ErrorAction SilentlyContinue
+Remove-Item .build\regression_test.exe -ErrorAction SilentlyContinue
 Write-Host ""
 } # end Phase 1
 
@@ -137,8 +141,8 @@ $needsExternal = @(
 foreach ($test in $serverTests) {
     $file = "examples\$($test.File)"
     $port = $test.Port
-    $binName = "smoke_$($test.File -replace '\.srv$', '.exe')"
-    $binPath = "examples\$binName"
+    $binName = "..\.build\smoke_$($test.File -replace '\.srv$', '.exe')"
+    $binPath = ".build\smoke_$($test.File -replace '\.srv$', '.exe')"
 
     # Clean previous
     Remove-Item $binPath -ErrorAction SilentlyContinue
@@ -216,8 +220,8 @@ if ($fail -gt 0) {
 }
 
 # Final cleanup — remove any leftover test binaries
-Remove-Item examples\smoke_*.exe -ErrorAction SilentlyContinue
-Remove-Item examples\regression_test.exe -ErrorAction SilentlyContinue
+Remove-Item .build\smoke_*.exe -ErrorAction SilentlyContinue
+Remove-Item .build\regression_test.exe -ErrorAction SilentlyContinue
 
 if ($fail -gt 0) { exit 1 }
 exit 0

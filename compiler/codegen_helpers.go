@@ -79,6 +79,53 @@ func safeCall(fn func() interface{}) (interface{}, interface{}) {
 	}
 	return result, errVal
 }
+
+// toInt converts an interface{} to int
+func toInt(v interface{}) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case float64:
+		return int(val)
+	case int64:
+		return int(val)
+	default:
+		return 0
+	}
+}
+
+// toFloat64 converts an interface{} to float64
+func toFloat64(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	default:
+		return 0.0
+	}
+}
+
+// toBool converts an interface{} to bool
+func toBool(v interface{}) bool {
+	if val, ok := v.(bool); ok {
+		return val
+	}
+	return isTruthy(v)
+}
+
+// toString converts an interface{} to string
+func toString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	if val, ok := v.(string); ok {
+		return val
+	}
+	return fmt.Sprint(v)
+}
 `
 }
 

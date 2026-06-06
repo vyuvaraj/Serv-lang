@@ -364,3 +364,22 @@ func Negate(v interface{}) interface{} {
 		return 0
 	}
 }
+
+// IndexAccess retrieves an item from a list or map by index/key.
+func IndexAccess(val interface{}, index interface{}) interface{} {
+	if val == nil || index == nil {
+		return nil
+	}
+	switch v := val.(type) {
+	case []interface{}:
+		idx := toInt(index)
+		if idx >= 0 && idx < len(v) {
+			return v[idx]
+		}
+	case *SafeMap:
+		return v.Get(fmt.Sprint(index))
+	case map[string]interface{}:
+		return v[fmt.Sprint(index)]
+	}
+	return nil
+}
