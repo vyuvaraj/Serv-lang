@@ -34,17 +34,27 @@ fn Task.isComplete() -> bool {
 // List all tasks (with optional status filter)
 // GET /api/tasks?status=pending
 route "GET" "/api/tasks" (req) {
-    let status = req.params.status
+    let status = req.query.status
 
-    let cached = cache.get("tasks_list")
+    let cacheKey = "tasks_list_all"
+    if status != nil {
+        cacheKey = f"tasks_list_{status}"
+    }
+
+    let cached = cache.get(cacheKey)
     if cached != nil {
         return cached
     }
 
-    let rows = db.query("SELECT * FROM tasks ORDER BY created_at DESC")
+    let rows = nil
+    if status != nil {
+        rows = db.query("SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC", status)
+    } else {
+        rows = db.query("SELECT * FROM tasks ORDER BY created_at DESC")
+    }
     let result = { "tasks": rows, "count": rows.length() }
 
-    cache.set("tasks_list", result, "30s")
+    cache.set(cacheKey, result, "30s")
     return result
 }
 
@@ -73,7 +83,9 @@ route "POST" "/api/tasks" (req) {
     }
 
     let result = db.query("INSERT INTO tasks (title) VALUES (?)", title)
-    cache.set("tasks_list", nil, "0s")
+    cache.set("tasks_list_all", nil, "0s")
+    cache.set("tasks_list_pending", nil, "0s")
+    cache.set("tasks_list_done", nil, "0s")
 
     return { "created": true, "id": result.last_insert_id }
 }
@@ -95,7 +107,9 @@ route "PUT" "/api/tasks/:id" (req) {
     }
 
     db.query("UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?", status, completedAt, id)
-    cache.set("tasks_list", nil, "0s")
+    cache.set("tasks_list_all", nil, "0s")
+    cache.set("tasks_list_pending", nil, "0s")
+    cache.set("tasks_list_done", nil, "0s")
 
     return { "updated": true }
 }
@@ -105,7 +119,9 @@ route "PUT" "/api/tasks/:id" (req) {
 route "DELETE" "/api/tasks/:id" (req) {
     let id = req.params.id
     db.query("DELETE FROM tasks WHERE id = ?", id)
-    cache.set("tasks_list", nil, "0s")
+    cache.set("tasks_list_all", nil, "0s")
+    cache.set("tasks_list_pending", nil, "0s")
+    cache.set("tasks_list_done", nil, "0s")
 
     return { "deleted": true }
 }

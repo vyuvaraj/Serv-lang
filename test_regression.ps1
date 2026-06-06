@@ -114,7 +114,7 @@ Write-Host "------------------------------------------------------"
 # Files that start a server and have routes we can hit
 # Each uses port 8080, so we override PORT env var to avoid conflicts
 $serverTests = @(
-    @{ File="02_rest_api.srv"; Port="9001"; Endpoints=@("/health") },
+    @{ File="02_rest_api.srv"; Port="9001"; Endpoints=@("/health", "/test-query-headers?name=Antigravity") },
     @{ File="37_structured_logging.srv"; Port="9002"; Endpoints=@("/health", "/api/users") },
     @{ File="38_destructuring.srv"; Port="9003"; Endpoints=@("/health") },
     @{ File="39_optional_chaining.srv"; Port="9004"; Endpoints=@("/health", "/api/user") },
@@ -178,9 +178,18 @@ foreach ($test in $serverTests) {
     $allPassed = $true
     foreach ($endpoint in $test.Endpoints) {
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:$port$endpoint" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+            $headers = @{}
+            if ($endpoint -like "*test-query-headers*") {
+                $headers = @{ "X-Test-Header" = "hello-world" }
+            }
+            $response = Invoke-WebRequest -Uri "http://localhost:$port$endpoint" -Headers $headers -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
             if ($response.StatusCode -ne 200) {
                 $allPassed = $false
+            }
+            if ($endpoint -like "*test-query-headers*") {
+                if ($response.Content -notlike "*Antigravity*" -or $response.Content -notlike "*hello-world*") {
+                    $allPassed = $false
+                }
             }
         } catch {
             $allPassed = $false

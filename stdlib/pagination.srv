@@ -21,15 +21,15 @@ export fn pageResponse(items, page, pageSize, totalCount) {
     }
 }
 
-// Parse page/pageSize from request params with defaults
+// Parse page/pageSize from request query params with defaults
 export fn parsePageParams(req) {
     let page = 1
     let pageSize = 20
-    if req.params.page != nil {
-        page = req.params.page
+    if req.query.page != nil {
+        page = req.query.page
     }
-    if req.params.pageSize != nil {
-        pageSize = req.params.pageSize
+    if req.query.pageSize != nil {
+        pageSize = req.query.pageSize
     }
     return { "page": page, "pageSize": pageSize }
 }

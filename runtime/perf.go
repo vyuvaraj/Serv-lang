@@ -267,6 +267,8 @@ func MemberAccess(obj interface{}, field string) interface{} {
 		case "method", "Method": return v.Method
 		case "path", "Path": return v.Path
 		case "params", "Params": return v.Params
+		case "headers", "Headers": return v.Headers
+		case "query", "Query": return v.Query
 		}
 	case HTTPResponse:
 		switch field {
@@ -380,6 +382,11 @@ func IndexAccess(val interface{}, index interface{}) interface{} {
 		return v.Get(fmt.Sprint(index))
 	case map[string]interface{}:
 		return v[fmt.Sprint(index)]
+	case map[string]string:
+		if val, ok := v[fmt.Sprint(index)]; ok {
+			return val
+		}
+		return nil
 	}
 	return nil
 }

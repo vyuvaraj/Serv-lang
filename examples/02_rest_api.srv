@@ -35,3 +35,11 @@ route "POST" "/orders" (req) {
         "provider_status": postResponse.status
     }
 }
+
+// Expose GET test endpoint for query params and headers
+route "GET" "/test-query-headers" (req) {
+    let q = req.query.name
+    let h = req.headers["x-test-header"]
+    let p = req.params.name
+    return { "query": q, "header": h, "param": p }
+}

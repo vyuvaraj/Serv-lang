@@ -61,15 +61,21 @@ export route "GET" "/api/orders/:id" (req) {
 // List recent orders
 // GET /api/orders?limit=20
 export route "GET" "/api/orders" (req) {
-    let cached = cache.get("recent_orders")
+    let limit = req.query.limit
+    if limit == nil {
+        limit = "20"
+    }
+
+    let cacheKey = f"recent_orders_{limit}"
+    let cached = cache.get(cacheKey)
     if cached != nil {
         return cached
     }
 
-    let rows = db.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT 20")
+    let rows = db.query("SELECT * FROM orders ORDER BY created_at DESC LIMIT ?", limit)
     let result = { "orders": rows, "count": rows.length() }
 
-    cache.set("recent_orders", result, "10s")
+    cache.set(cacheKey, result, "10s")
     return result
 }
 
