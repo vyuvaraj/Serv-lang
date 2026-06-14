@@ -67,6 +67,9 @@ func startMCPServer() {
 		}
 		handleMCPRequest(req)
 	}
+	if err := scanner.Err(); err != nil {
+		LogError("MCP Server scanner error: ", err.Error())
+	}
 }
 
 func sendRPCError(id interface{}, code int, message string) {
