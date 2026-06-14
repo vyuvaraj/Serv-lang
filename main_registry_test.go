@@ -143,9 +143,10 @@ import { Helper, helperFunc } from "mypkg"
 	hasHelperFunc := false
 	for _, stmt := range prog.Statements {
 		name := statementName(stmt)
-		if name == "Helper" {
+		switch name {
+		case "Helper":
 			hasHelper = true
-		} else if name == "helperFunc" {
+		case "helperFunc":
 			hasHelperFunc = true
 		}
 	}

@@ -367,7 +367,14 @@ func buildServNoExit(srvFile, outputBinary string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot find Go compiler: %w", err)
 	}
-	cmd := exec.Command(goPath, "build", "-o", filepath.Join(filepath.Dir(absPath), outputBinary), ".")
+
+	targetOutPath := filepath.Join(filepath.Dir(absPath), outputBinary)
+	relOutPath, err := filepath.Rel(buildDir, targetOutPath)
+	if err != nil {
+		relOutPath = targetOutPath
+	}
+
+	cmd := exec.Command(goPath, "build", "-o", relOutPath, ".")
 	cmd.Dir = buildDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

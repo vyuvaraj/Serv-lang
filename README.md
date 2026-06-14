@@ -321,6 +321,56 @@ try {
 
 ---
 
+## Web Playground & Sandbox (Phase 9.3)
+
+Serv provides an interactive Web Playground where you can write, format, compile, and execute Serv scripts in your web browser.
+
+### Key Features
+- **In-Browser WASM Compiler**: Syntax analysis, warning diagnostics, and formatting (`serv fmt`) run entirely client-side using WebAssembly.
+- **Backend Sandbox Runner**: Compiles the code to a native binary in a sandboxed directory and executes it.
+- **Auto-Termination**: Long-running background services (HTTP servers, cron schedulers) are dynamically stopped after 1.5 seconds to capture initial output logs and release OS socket handles instantly.
+
+### Running Locally
+To launch the Web Playground locally, run:
+```bash
+# Build the playground server binary
+go build -o web_playground/server/server.exe web_playground/server/main.go
+
+# Start the server (default port: 8080)
+./web_playground/server/server.exe
+```
+Then navigate to `http://localhost:8080` in your web browser.
+
+---
+
+## Community Package Registry (Phase 9.5)
+
+Serv includes a built-in package distribution tool to publish modules to the registry and install third-party dependencies locally.
+
+### 1. Publishing a Package
+Bundle a directory containing `.srv` files and upload it to the registry:
+```bash
+serv publish <package-dir>
+```
+
+### 2. Installing a Package
+Download a package from the registry and install it into a local `packages/` directory:
+```bash
+serv install <package-name>
+```
+
+### 3. Importing Packages
+Import installed modules in your code using non-relative imports:
+```serv
+import { Helper, helperFunc } from "mypkg"
+
+let instance = Helper { val: 42 }
+let msg = helperFunc()
+```
+Imports will automatically resolve to `packages/mypkg/index.srv` or `packages/mypkg/main.srv` with strict visibility checks. Only declarations marked with `export` are accessible outside the module.
+
+---
+
 ## Testing Support
 
 Serv includes a native test harness built into the language itself. This makes it trivial to write unit tests alongside your code and verify logic without external framework setups.

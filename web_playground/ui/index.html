@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serv Web Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.39.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-icon">⚡</span>
+                <h1>Serv <span class="accent-text">Playground</span></h1>
+                <span class="badge">v1.0-WASM</span>
+            </div>
+            <div class="toolbar">
+                <button id="btn-format" class="btn btn-secondary" title="Format code (WASM)">
+                    <span class="btn-icon">✨</span> Format
+                </button>
+                <button id="btn-run" class="btn btn-primary" title="Compile and execute (Backend)">
+                    <span class="btn-icon">▶</span> Run
+                </button>
+            </div>
+        </header>
+
+        <main class="main-layout">
+            <section class="editor-section card">
+                <div class="card-header">
+                    <div class="tab active">main.srv</div>
+                    <div class="status-indicator" id="wasm-status">Loading WASM...</div>
+                </div>
+                <div class="editor-wrapper">
+                    <!-- Monaco editor container -->
+                    <div id="monaco-container"></div>
+                    <!-- Fallback textarea -->
+                    <textarea id="fallback-editor" style="display: none;"></textarea>
+                </div>
+            </section>
+
+            <section class="output-section card">
+                <div class="card-header">
+                    <span class="terminal-title">Terminal Output</span>
+                    <button id="btn-clear" class="btn-clear" title="Clear console">✕</button>
+                </div>
+                <div class="terminal-body" id="terminal">
+                    <div class="terminal-line system-msg">Initializing Serv Web Playground...</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- WASM Exec Support -->
+    <script src="wasm_exec.js"></script>
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
