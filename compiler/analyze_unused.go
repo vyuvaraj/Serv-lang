@@ -85,7 +85,7 @@ func analyzeBlock(block *BlockStmt, parentParams []string) []Diagnostic {
 }
 
 // analyzeDeadImports checks for imports whose symbols are never used in the program.
-func analyzeDeadImports(program *Program, definedSymbols map[string]bool) []Diagnostic {
+func analyzeDeadImports(program *Program) []Diagnostic {
 	var diags []Diagnostic
 
 	// Collect all identifier references in the program (outside of import statements)

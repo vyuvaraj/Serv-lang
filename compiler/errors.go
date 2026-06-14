@@ -71,7 +71,7 @@ func parseErrorLocation(err string) (int, int, string) {
 }
 
 // suggestFix analyzes an error message and suggests a fix.
-func suggestFix(errMsg string, source string) string {
+func suggestFix(errMsg string, _ string) string {
 	// "no prefix parse function for X found" — unknown token/keyword
 	if strings.Contains(errMsg, "no prefix parse function for") {
 		token := extractToken(errMsg, "no prefix parse function for ", " found")

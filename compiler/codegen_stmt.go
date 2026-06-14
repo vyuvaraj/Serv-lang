@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func (c *Codegen) genImportStmt(s *ImportStmt) (string, error) {
+func (c *Codegen) genImportStmt(_ *ImportStmt) (string, error) {
 	return "", nil
 }
 
@@ -551,7 +551,9 @@ func (c *Codegen) genTestStmt(s *TestStmt) (string, error) {
 		// Indent the inner body content
 		for _, line := range strings.Split(finalBody.String()[2:len(finalBody.String())-1], "\n") {
 			if strings.TrimSpace(line) != "" {
-				wrapped.WriteString("\t\t" + strings.TrimPrefix(line, "\t") + "\n")
+				wrapped.WriteString("\t\t")
+				wrapped.WriteString(strings.TrimPrefix(line, "\t"))
+				wrapped.WriteString("\n")
 			}
 		}
 		wrapped.WriteString("\t}()\n")
@@ -615,9 +617,9 @@ func (c *Codegen) genDestructureLetStmt(s *DestructureLetStmt) (string, error) {
 		out.WriteString(fmt.Sprintf("\tswitch v := %s.(type) {\n", tmpVar))
 		out.WriteString(fmt.Sprintf("\tcase *runtime.SafeMap:\n\t\treturn v.Get(%q)\n", field))
 		out.WriteString(fmt.Sprintf("\tcase map[string]interface{}:\n\t\treturn v[%q]\n", field))
-		out.WriteString(fmt.Sprintf("\tdefault:\n"))
+		out.WriteString("\tdefault:\n")
 		out.WriteString(fmt.Sprintf("\t\treturn runtime.GetField(v, %q)\n", field))
-		out.WriteString(fmt.Sprintf("\t}\n}()\n"))
+		out.WriteString("\t}\n}()\n")
 		out.WriteString(fmt.Sprintf("_ = %s\n", field))
 	}
 	return out.String(), nil

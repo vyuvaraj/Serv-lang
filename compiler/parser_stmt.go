@@ -180,14 +180,15 @@ func (p *Parser) parseTestStatement() Statement {
 	// Optional timeout: test "name" timeout 5s { ... }
 	if p.peekToken.Type == TOKEN_TIMEOUT {
 		p.nextToken() // consume 'timeout'
-		if p.peekToken.Type == TOKEN_DURATION {
+		switch p.peekToken.Type {
+		case TOKEN_DURATION:
 			p.nextToken()
 			stmt.Timeout = p.curToken.Literal
-		} else if p.peekToken.Type == TOKEN_INT {
+		case TOKEN_INT:
 			p.nextToken()
 			// Assume seconds if just a number
 			stmt.Timeout = p.curToken.Literal + "s"
-		} else {
+		default:
 			p.nextToken()
 			stmt.Timeout = p.curToken.Literal
 		}

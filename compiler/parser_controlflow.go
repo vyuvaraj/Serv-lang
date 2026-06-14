@@ -46,14 +46,15 @@ func (p *Parser) parseForStatement() Statement {
 
 	// Check if this is "for x in collection" or "for k, v in collection" pattern
 	if p.curToken.Type == TOKEN_IDENT {
-		if p.peekToken.Type == TOKEN_IN {
+		switch p.peekToken.Type {
+		case TOKEN_IN:
 			// for x in collection
 			stmt.Variable = p.curToken.Literal
 			stmt.IsRange = true
 			p.nextToken() // skip 'in'
 			p.nextToken() // move to iterable expression
 			stmt.Iterable = p.parseExpression(LOWEST)
-		} else if p.peekToken.Type == TOKEN_COMMA {
+		case TOKEN_COMMA:
 			// for key, value in collection
 			stmt.KeyVar = p.curToken.Literal
 			p.nextToken() // skip ','
@@ -67,7 +68,7 @@ func (p *Parser) parseForStatement() Statement {
 			}
 			p.nextToken() // move to iterable expression
 			stmt.Iterable = p.parseExpression(LOWEST)
-		} else {
+		default:
 			// Condition-based loop: for <condition> { ... }
 			stmt.IsRange = false
 			stmt.Iterable = p.parseExpression(LOWEST)

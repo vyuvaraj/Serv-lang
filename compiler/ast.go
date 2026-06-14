@@ -254,7 +254,9 @@ func (t *TestStmt) statementNode() {}
 func (t *TestStmt) TokenLiteral() string { return t.Token.Literal }
 func (t *TestStmt) String() string {
     var out bytes.Buffer
-    out.WriteString("test " + t.Name + " {")
+    out.WriteString("test ")
+    out.WriteString(t.Name)
+    out.WriteString(" {")
     out.WriteString(t.Body.String())
     out.WriteString("}\n")
     return out.String()
@@ -296,12 +298,19 @@ func (m *MatchStmt) statementNode()       {}
 func (m *MatchStmt) TokenLiteral() string { return m.Token.Literal }
 func (m *MatchStmt) String() string {
 	var out bytes.Buffer
-	out.WriteString("match " + m.Value.String() + " {\n")
+	out.WriteString("match ")
+	out.WriteString(m.Value.String())
+	out.WriteString(" {\n")
 	for _, c := range m.Cases {
 		if c.Value != nil {
-			out.WriteString(c.Value.String() + " => " + c.Body.String() + "\n")
+			out.WriteString(c.Value.String())
+			out.WriteString(" => ")
+			out.WriteString(c.Body.String())
+			out.WriteString("\n")
 		} else {
-			out.WriteString("_ => " + c.Body.String() + "\n")
+			out.WriteString("_ => ")
+			out.WriteString(c.Body.String())
+			out.WriteString("\n")
 		}
 	}
 	out.WriteString("}\n")
@@ -521,10 +530,11 @@ func (c *CallExpr) String() string {
 }
 
 type MapLiteral struct {
-	Token    Token
-	Pairs    map[string]Expression
-	KeyOrder []string // preserves insertion order for deterministic codegen
-	Spreads  []SpreadEntry // spread expressions in order
+	Token         Token
+	Pairs         map[string]Expression
+	KeyOrder      []string // preserves insertion order for deterministic codegen
+	Spreads       []SpreadEntry // spread expressions in order
+	ConcurrentMap bool // true if this map literal escapes or is accessed concurrently
 }
 
 // SpreadEntry represents a ...expr in a map literal.

@@ -66,75 +66,82 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 		// Builtin conversions
 		if objStr == "time" {
-			if e.Field == "now" {
+			switch e.Field {
+			case "now":
 				return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
-			} else if e.Field == "sleep" {
+			case "sleep":
 				return "runtime.Sleep", nil
-			} else if e.Field == "unix" {
+			case "unix":
 				c.imports[`"time"`] = true
 				return "func() int { return int(time.Now().Unix()) }", nil
 			}
 		}
 
 		if objStr == "log" {
-			if e.Field == "info" {
+			switch e.Field {
+			case "info":
 				return "runtime.LogInfo", nil
-			} else if e.Field == "warn" {
+			case "warn":
 				return "runtime.LogWarn", nil
-			} else if e.Field == "error" {
+			case "error":
 				return "runtime.LogError", nil
-			} else if e.Field == "debug" {
+			case "debug":
 				return "runtime.LogDebug", nil
-			} else if e.Field == "with" {
+			case "with":
 				return "runtime.LogWith", nil
-			} else if e.Field == "fields" {
+			case "fields":
 				return "runtime.LogFields", nil
-			} else if e.Field == "setLevel" {
+			case "setLevel":
 				return "runtime.LogSetLevel", nil
-			} else if e.Field == "getLevel" {
+			case "getLevel":
 				return "runtime.LogGetLevel", nil
 			}
 		}
 		if objStr == "metric" {
-			if e.Field == "inc" {
+			switch e.Field {
+			case "inc":
 				return "runtime.MetricInc", nil
-			} else if e.Field == "gauge" {
+			case "gauge":
 				return "runtime.MetricGauge", nil
 			}
 		}
 		if objStr == "http" {
-			if e.Field == "get" {
+			switch e.Field {
+			case "get":
 				return "runtime.HTTPGet", nil
-			} else if e.Field == "post" {
+			case "post":
 				return "runtime.HTTPPost", nil
 			}
 		}
 		if objStr == "json" {
-			if e.Field == "parse" {
+			switch e.Field {
+			case "parse":
 				return "runtime.JSONParse", nil
-			} else if e.Field == "stringify" {
+			case "stringify":
 				return "runtime.JSONStringify", nil
 			}
 		}
 		if objStr == "db" {
-			if e.Field == "query" {
+			switch e.Field {
+			case "query":
 				return "runtime.DBQuery", nil
-			} else if e.Field == "queryPage" {
+			case "queryPage":
 				return "runtime.DBQueryPage", nil
-			} else if e.Field == "findOne" {
+			case "findOne":
 				return "runtime.DBFindOne", nil
-			} else if e.Field == "count" {
+			case "count":
 				return "runtime.DBCount", nil
-			} else if e.Field == "upsert" {
+			case "upsert":
 				return "runtime.DBUpsert", nil
-			} else if e.Field == "beforeQuery" {
+			case "beforeQuery":
 				return "runtime.AddBeforeQueryHook", nil
 			}
 		}
 		if objStr == "cache" {
-			if e.Field == "set" {
+			switch e.Field {
+			case "set":
 				return "runtime.CacheSet", nil
-			} else if e.Field == "get" {
+			case "get":
 				return "runtime.CacheGet", nil
 			}
 		}
@@ -226,9 +233,10 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		// Direct Go member access e.g. req.body
 		// We'll support .Body and .Status fields (or map them casing)
 		field := e.Field
-		if field == "body" {
+		switch field {
+		case "body":
 			field = "Body"
-		} else if field == "status" {
+		case "status":
 			field = "Status"
 		}
 		// Since objects might be interface{}, use runtime helper for dynamic field access
@@ -585,7 +593,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 			pairs = append(pairs, fmt.Sprintf("%q: %s", k, vStr))
 		}
-		if c.inFunction && !c.inConcurrentContext {
+		if !e.ConcurrentMap {
 			return fmt.Sprintf("map[string]interface{}{\n\t\t%s,\n\t}", strings.Join(pairs, ",\n\t\t")), nil
 		}
 		return fmt.Sprintf("runtime.NewSafeMapFromMap(map[string]interface{}{\n\t\t%s,\n\t})", strings.Join(pairs, ",\n\t\t")), nil

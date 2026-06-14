@@ -312,7 +312,8 @@ func sanitizeTestName(name string) string {
 		if w == "" {
 			continue
 		}
-		out.WriteString(strings.ToUpper(w[:1]) + w[1:])
+		out.WriteString(strings.ToUpper(w[:1]))
+		out.WriteString(w[1:])
 	}
 	result := out.String()
 	if result == "" {

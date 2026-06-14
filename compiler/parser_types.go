@@ -189,9 +189,10 @@ func (p *Parser) parseValidateStatement() Statement {
 				return nil
 			}
 			key := p.curToken.Literal
-			if kind == "required" {
+			switch kind {
+			case "required":
 				stmt.Required = append(stmt.Required, key)
-			} else if kind == "optional" {
+			case "optional":
 				stmt.Optional = append(stmt.Optional, key)
 			}
 		}

@@ -44,7 +44,7 @@ func Analyze(program *Program) []Diagnostic {
 	}
 
 	// Check for dead imports
-	diags = append(diags, analyzeDeadImports(program, definedSymbols)...)
+	diags = append(diags, analyzeDeadImports(program)...)
 
 	for _, stmt := range program.Statements {
 		diags = append(diags, analyzeStatement(stmt, program)...)

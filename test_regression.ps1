@@ -123,20 +123,7 @@ $serverTests = @(
     @{ File="43_request_validation.srv"; Port="9007"; Endpoints=@("/health") }
 )
 
-# Files needing external deps (DB, broker, etc.) — skip server tests
-$needsExternal = @(
-    "03_pubsub_concurrency.srv",
-    "04_python_binding.srv",
-    "05_error_handling.srv",
-    "06_json_support.srv",
-    "07_advanced_features.srv",
-    "08_multi_database.srv",
-    "09_yaml_config.srv",
-    "18_python_pool.srv",
-    "35_primitives.srv",
-    "42_config_validation.srv",
-    "44_package_usage.srv"
-)
+
 
 foreach ($test in $serverTests) {
     $file = "examples\$($test.File)"

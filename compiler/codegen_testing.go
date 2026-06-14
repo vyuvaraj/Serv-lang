@@ -18,7 +18,9 @@ func (c *Codegen) GenerateTests() string {
 	out.WriteString("\t\"testing\"\n")
 	for imp := range c.imports {
 		if imp != `"testing"` && imp != `"fmt"` {
-			out.WriteString("\t" + imp + "\n")
+			out.WriteString("\t")
+			out.WriteString(imp)
+			out.WriteString("\n")
 		}
 	}
 	out.WriteString(")\n\n")

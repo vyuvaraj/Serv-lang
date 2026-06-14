@@ -1,4 +1,4 @@
-﻿package compiler
+package compiler
 
 import (
 	"bytes"
@@ -47,6 +47,9 @@ func NewCodegen(program *Program) *Codegen {
 }
 
 func (c *Codegen) Generate() (string, error) {
+	// Run escape analysis to annotate MapLiteral nodes
+	AnalyzeMapConcurrency(c.program)
+
 	var body bytes.Buffer
 
 	// Check if there are any non-test statements that would use the runtime
@@ -136,7 +139,9 @@ func (c *Codegen) Generate() (string, error) {
 	if len(c.imports) > 0 {
 		out.WriteString("import (\n")
 		for imp := range c.imports {
-			out.WriteString("\t" + imp + "\n")
+			out.WriteString("\t")
+			out.WriteString(imp)
+			out.WriteString("\n")
 		}
 		out.WriteString(")\n\n")
 	}
@@ -161,7 +166,8 @@ func (c *Codegen) Generate() (string, error) {
 	// Pre-compiled regex variables
 	if len(c.regexDecls) > 0 {
 		for _, rDecl := range c.regexDecls {
-			out.WriteString(rDecl + "\n")
+			out.WriteString(rDecl)
+			out.WriteString("\n")
 		}
 		out.WriteString("\n")
 	}
@@ -287,9 +293,11 @@ return "", err
 }
 lines := strings.Split(gen, "\n")
 for _, line := range lines {
-if strings.TrimSpace(line) != "" {
-out.WriteString("\t" + line + "\n")
-}
+			if strings.TrimSpace(line) != "" {
+				out.WriteString("\t")
+				out.WriteString(line)
+				out.WriteString("\n")
+			}
 }
 }
 out.WriteString("}")
