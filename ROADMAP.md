@@ -116,3 +116,31 @@ The roadmap below captures the current status of all features and details the re
 - **Goal**: Establish a central registry where authors can publish Serv modules and consumers can install them using a CLI command (e.g., `serv install <pkg>`).
 - **Approach**: Build a simple registry server index hosting metadata and tarball archives, integrated with local dependency retrieval in the Serv CLI tool.
 - **Effort**: Large
+
+---
+
+## Phase 10: Taking Serv to the Next Level (Future Priorities)
+
+To move Serv beyond a simple microservice tool into a premium, world-class programming language for high-performance distributed systems, we propose the following items for the next phase of evolution:
+
+| # | Item | Effort | Description |
+|---|------|--------|-------------|
+| 10.1 | **Generics (Parametric Polymorphism)** | Large | Introduce type-safe generics (e.g., `fn map[T, U](arr: []T)`) to avoid `interface{}` casting on collections. |
+| 10.2 | **First-Class Actor Model** | Large | Formalize `spawn` with local mailboxes, message routing, and supervisor trees for robust concurrency. |
+| 10.3 | **Database Schema ORM Generation** | Medium | Compile schema files into strongly-typed query methods, ensuring compile-time safe database interaction. |
+| 10.4 | **Distributed Trace Propagation** | Medium | Automatically trace HTTP headers, message brokers, and actor spawns with OpenTelemetry context propagation. |
+| 10.5 | **AOT Optimization Pass** | Medium | Build AST optimizations (inlining, constant folding, loop unrolling) before emitting target Go source. |
+
+### Detail on Next-Level Items
+
+#### 1. Generics (Phase 10.1)
+- **Goal**: Support parametric polymorphism in functions, structs, and interfaces.
+- **Why**: Eliminates manual casting and boxing/unboxing overhead when building reusable utilities (like collections, queues, or functional maps). Emits Go generics (`func Map[T, U any](...)`) directly.
+
+#### 2. First-Class Actor Model (Phase 10.2)
+- **Goal**: Introduce Erlang-style lightweight processes with mailboxes and supervisor trees.
+- **Why**: Background services frequently need to maintain state machines or run long-standing connections. Combining `spawn`, `channel`, and supervisor actors ensures that crashing background workers can be safely restarted without dropping requests.
+
+#### 3. Database Schema ORM Generation (Phase 10.3)
+- **Goal**: Generate strongly-typed data access objects (DAOs) directly from database migration files or schemas.
+- **Why**: Writing raw JSON queries like `db.findOne("users", "{\"active\": true}")` is error-prone. Typing these queries (e.g., `db.Users.findMany(active: true)`) provides compile-time safety and autocompletion.
