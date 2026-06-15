@@ -133,7 +133,7 @@ import { Helper, helperFunc } from "mypkg"
 		t.Fatalf("failed to write importer.srv: %v", err)
 	}
 
-	prog, err := parseWithDependencies(importerPath, make(map[string]bool))
+	prog, err := parseWithDependencies(importerPath, make(map[string]int))
 	if err != nil {
 		t.Fatalf("failed to parse with package dependency: %v", err)
 	}

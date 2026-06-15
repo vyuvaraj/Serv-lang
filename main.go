@@ -32,8 +32,7 @@ func main() {
 			}
 		}
 		if len(buildArgs) < 1 {
-			fmt.Println("Usage: serv build <file.srv> [--target <target>] [-o <output>]")
-			os.Exit(1)
+			buildArgs = []string{"."}
 		}
 		if outputBinary == "" {
 			if target == "wasm" {
@@ -53,8 +52,7 @@ func main() {
 		}
 		args := runCmd.Args()
 		if len(args) < 1 {
-			fmt.Println("Usage: serv run <file.srv> [--watch]")
-			os.Exit(1)
+			args = []string{"."}
 		}
 
 		if *watchFlag {
@@ -71,8 +69,7 @@ func main() {
 		}
 		args := dockerCmd.Args()
 		if len(args) < 1 {
-			fmt.Println("Usage: serv dockerize <file.srv>")
-			os.Exit(1)
+			args = []string{"."}
 		}
 		dockerizeServ(args[0])
 
@@ -85,8 +82,7 @@ func main() {
 		}
 		args := testCmd.Args()
 		if len(args) < 1 {
-			fmt.Println("Usage: serv test [--cover] <file.srv>")
-			os.Exit(1)
+			args = []string{"."}
 		}
 		runTests(args[0], *coverFlag)
 
@@ -98,8 +94,7 @@ func main() {
 		}
 		args := lintCmd.Args()
 		if len(args) < 1 {
-			fmt.Println("Usage: serv lint <file.srv>")
-			os.Exit(1)
+			args = []string{"."}
 		}
 		runLint(args[0])
 
@@ -163,11 +158,11 @@ func main() {
 		initProject()
 
 	case "debug":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: serv debug <file.srv>")
-			os.Exit(1)
+		targetFile := "."
+		if len(os.Args) >= 3 {
+			targetFile = os.Args[2]
 		}
-		debugServ(os.Args[2])
+		debugServ(targetFile)
 
 	default:
 		printUsage()

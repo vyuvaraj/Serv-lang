@@ -21,15 +21,15 @@ import (
 //
 //	go install github.com/go-delve/delve/cmd/dlv@latest
 func debugServ(srvFile string) {
-	absPath, err := filepath.Abs(srvFile)
+	absPath, program, err := parseProject(srvFile)
 	if err != nil {
-		fmt.Printf("debug: resolve path: %v\n", err)
+		fmt.Printf("debug: resolve project: %v\n", err)
 		os.Exit(1)
 	}
 
 	// 1. Compile with debug flags (no inlining, no optimizations).
 	fmt.Printf("[serv debug] Compiling %s...\n", filepath.Base(absPath))
-	buildDir, genGoFile, err := buildServDebug(absPath)
+	buildDir, genGoFile, err := buildServDebug(absPath, program)
 	if err != nil {
 		fmt.Printf("[serv debug] Build failed: %v\n", err)
 		os.Exit(1)
@@ -99,11 +99,7 @@ func debugServ(srvFile string) {
 //     accurately step through every source line.
 //
 // Returns the build directory path and the generated main.go path.
-func buildServDebug(absPath string) (buildDir, genGoFile string, err error) {
-	program, err := parseWithDependencies(absPath, make(map[string]bool))
-	if err != nil {
-		return "", "", err
-	}
+func buildServDebug(absPath string, program *compiler.Program) (buildDir, genGoFile string, err error) {
 
 	// Static analysis (warnings only — don't block debug builds on style issues).
 	source, _ := os.ReadFile(absPath)

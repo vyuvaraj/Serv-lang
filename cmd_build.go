@@ -25,12 +25,7 @@ func buildServ(srvFile, outputBinary, target string) string {
 }
 
 func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
-	absPath, err := filepath.Abs(srvFile)
-	if err != nil {
-		return "", err
-	}
-
-	program, err := parseWithDependencies(absPath, make(map[string]bool))
+	absPath, program, err := parseProject(srvFile)
 	if err != nil {
 		return "", err
 	}
@@ -449,12 +444,16 @@ func resolveImportPath(importerPath, importStr string) string {
 	return filepath.Join(filepath.Dir(importerPath), importStr)
 }
 
-func parseWithDependencies(filePath string, visited map[string]bool) (*compiler.Program, error) {
-	if visited[filePath] {
+func parseWithDependencies(filePath string, visited map[string]int) (*compiler.Program, error) {
+	if visited[filePath] == 1 {
 		// Circular dependency detected — build the cycle path for the error message
 		return nil, fmt.Errorf("circular import detected: %s is already being imported (import cycle)", filepath.Base(filePath))
 	}
-	visited[filePath] = true
+	if visited[filePath] == 2 {
+		return &compiler.Program{}, nil
+	}
+	visited[filePath] = 1
+	defer func() { visited[filePath] = 2 }()
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -651,4 +650,79 @@ func copyFileIfExists(src, dst string) {
 	if err == nil {
 		os.WriteFile(dst, data, 0644)
 	}
+}
+
+func parseProject(srvFile string) (string, *compiler.Program, error) {
+	fi, err := os.Stat(srvFile)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var absPath string
+	var program *compiler.Program
+	visited := make(map[string]int)
+
+	if fi.IsDir() {
+		absDir, err := filepath.Abs(srvFile)
+		if err != nil {
+			return "", nil, err
+		}
+
+		tomlPath := filepath.Join(absDir, "serv.toml")
+		if _, err := os.Stat(tomlPath); err == nil {
+			manifest, err := compiler.ParseManifest(tomlPath)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to parse manifest: %w", err)
+			}
+			entryPath := filepath.Join(absDir, manifest.Entry)
+			if _, err := os.Stat(entryPath); err != nil {
+				return "", nil, fmt.Errorf("entry point '%s' not found", manifest.Entry)
+			}
+			absPath = entryPath
+			program, err = parseWithDependencies(absPath, visited)
+			if err != nil {
+				return "", nil, err
+			}
+		} else {
+			files, err := os.ReadDir(absDir)
+			if err != nil {
+				return "", nil, err
+			}
+			var srvFiles []string
+			for _, file := range files {
+				if !file.IsDir() && strings.HasSuffix(file.Name(), ".srv") {
+					srvFiles = append(srvFiles, filepath.Join(absDir, file.Name()))
+				}
+			}
+			if len(srvFiles) == 0 {
+				return "", nil, fmt.Errorf("no .srv files found in directory %s", srvFile)
+			}
+
+			absPath = srvFiles[0]
+			var mergedProgram *compiler.Program
+			for _, file := range srvFiles {
+				prog, err := parseWithDependencies(file, visited)
+				if err != nil {
+					return "", nil, err
+				}
+				if mergedProgram == nil {
+					mergedProgram = prog
+				} else {
+					mergedProgram.Statements = append(mergedProgram.Statements, prog.Statements...)
+				}
+			}
+			program = mergedProgram
+		}
+	} else {
+		var err error
+		absPath, err = filepath.Abs(srvFile)
+		if err != nil {
+			return "", nil, err
+		}
+		program, err = parseWithDependencies(absPath, visited)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	return absPath, program, nil
 }

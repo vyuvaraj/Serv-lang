@@ -12,13 +12,7 @@ import (
 )
 
 func runTests(srvFile string, withCoverage bool) {
-	absPath, err := filepath.Abs(srvFile)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	program, err := parseWithDependencies(absPath, make(map[string]bool))
+	absPath, program, err := parseProject(srvFile)
 	if err != nil {
 		fmt.Printf("Parse error: %v\n", err)
 		os.Exit(1)

@@ -147,7 +147,7 @@ func runREPL() {
 // compileAndRunREPL compiles a temporary .srv file and runs it briefly to capture output.
 func compileAndRunREPL(goPath, srvFile, workDir string, printExpr string) (string, error) {
 	// Parse and generate
-	program, err := parseWithDependencies(srvFile, make(map[string]bool))
+	program, err := parseWithDependencies(srvFile, make(map[string]int))
 	if err != nil {
 		return "", err
 	}

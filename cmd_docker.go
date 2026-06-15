@@ -7,13 +7,34 @@ import (
 )
 
 func dockerizeServ(srvFile string) {
-	absPath, err := filepath.Abs(srvFile)
+	fi, err := os.Stat(srvFile)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	baseName := filepath.Base(srvFile)
+	var absPath string
+	var targetPath string
+	var buildArg string
+
+	if fi.IsDir() {
+		absPath, err = filepath.Abs(srvFile)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		targetPath = absPath
+		buildArg = "."
+	} else {
+		absPath, err = filepath.Abs(srvFile)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		targetPath = filepath.Dir(absPath)
+		buildArg = filepath.Base(srvFile)
+	}
+
 	dockerfileContent := fmt.Sprintf(`# Stage 1: Build the Serv executable
 FROM golang:1.26.3-alpine AS builder
 RUN apk add --no-cache git
@@ -31,9 +52,9 @@ COPY --from=builder /app/service_bin .
 COPY --from=builder /app/scripts/ ./scripts/
 COPY --from=builder /app/examples/ ./examples/
 CMD ["./service_bin"]
-`, baseName)
+`, buildArg)
 
-	dockerfilePath := filepath.Join(filepath.Dir(absPath), "Dockerfile")
+	dockerfilePath := filepath.Join(targetPath, "Dockerfile")
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfileContent), 0644); err != nil {
 		fmt.Printf("Failed to write Dockerfile: %v\n", err)
 		os.Exit(1)

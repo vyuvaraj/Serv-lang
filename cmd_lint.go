@@ -3,19 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"serv/compiler"
 )
 
 func runLint(srvFile string) {
-	absPath, err := filepath.Abs(srvFile)
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	program, err := parseWithDependencies(absPath, make(map[string]bool))
+	absPath, program, err := parseProject(srvFile)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)

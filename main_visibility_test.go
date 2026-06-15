@@ -54,7 +54,7 @@ import { User, createUser } from "./helper.srv"
 		t.Fatalf("failed to write main1.srv: %v", err)
 	}
 
-	prog1, err := parseWithDependencies(main1Path, make(map[string]bool))
+	prog1, err := parseWithDependencies(main1Path, make(map[string]int))
 	if err != nil {
 		t.Errorf("expected no error for valid selective import, got: %v", err)
 	}
@@ -114,7 +114,7 @@ import { User, privateHelper } from "./helper.srv"
 		t.Fatalf("failed to write main2.srv: %v", err)
 	}
 
-	_, err = parseWithDependencies(main2Path, make(map[string]bool))
+	_, err = parseWithDependencies(main2Path, make(map[string]int))
 	if err == nil {
 		t.Errorf("expected error when importing non-exported symbol 'privateHelper', got nil")
 	} else if !strings.Contains(err.Error(), "cannot import non-exported symbol 'privateHelper'") {
@@ -130,7 +130,7 @@ import { User, fooBar } from "./helper.srv"
 		t.Fatalf("failed to write main3.srv: %v", err)
 	}
 
-	_, err = parseWithDependencies(main3Path, make(map[string]bool))
+	_, err = parseWithDependencies(main3Path, make(map[string]int))
 	if err == nil {
 		t.Errorf("expected error when importing non-existent symbol 'fooBar', got nil")
 	} else if !strings.Contains(err.Error(), "symbol 'fooBar' is not defined") {
@@ -146,7 +146,7 @@ import "./helper.srv"
 		t.Fatalf("failed to write main4.srv: %v", err)
 	}
 
-	prog4, err := parseWithDependencies(main4Path, make(map[string]bool))
+	prog4, err := parseWithDependencies(main4Path, make(map[string]int))
 	if err != nil {
 		t.Errorf("expected no error for wildcard import, got: %v", err)
 	}
