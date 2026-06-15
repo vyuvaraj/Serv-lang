@@ -136,8 +136,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 	if servExePath != "" {
 		compileCmd = exec.Command(servExePath, "build", sourceFile, "-o", binName)
 	} else {
-		mainGo := filepath.Join(repoRoot, "main.go")
-		compileCmd = exec.Command("go", "run", mainGo, "build", sourceFile, "-o", binName)
+		compileCmd = exec.Command("go", "run", ".", "build", sourceFile, "-o", binName)
 		compileCmd.Dir = repoRoot
 	}
 

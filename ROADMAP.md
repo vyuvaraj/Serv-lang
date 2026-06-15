@@ -124,7 +124,7 @@ To move Serv beyond a simple microservice tool into a premium, world-class progr
 | 10.5 | **AOT Optimization Pass** | Medium | Build AST optimizations (inlining, constant folding, loop unrolling) before emitting target Go source. |
 | 10.6 | **WASM Target Compilation** | Large | Compile `.srv` code into WASI-compliant WebAssembly binaries for serverless sandbox execution (e.g. inside ServStore transforms). |
 | 10.7 | **Stateful Workflows** | Large | Introduce native Temporal-like `workflow` blocks with automatic state-checkpointing and resilient task retries. |
-| 10.8 | **LSP Debugger (DAP) Support** | Medium | Build a Debug Adapter Protocol server mapping Go debugger state back to source-level `.srv` code coordinates. |
+| 10.8 | **LSP Debugger (DAP) Support** | Medium | ✅ Done — `serv debug <file.srv>` launches a DAP proxy (stdio) backed by Delve. Translates `.srv` breakpoints ↔ generated Go lines using `// .srv line N` source map comments. Full VS Code support: breakpoints, step, stack frames mapped back to `.srv` source. |
 | 10.9 | **Serv-verse Core Integrations** | Large | Develop unified connectors and drivers targeting ServQueue (distributed event bus) and ServGate (API Gateway). |
 
 ### Detail on Next-Level Items
