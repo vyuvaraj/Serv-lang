@@ -170,11 +170,22 @@ func (c *Codegen) genForStmt(s *ForStmt) (string, error) {
 			c.declaredVars[s.KeyVar] = true
 			c.varTypes[s.KeyVar] = "interface{}"
 		}
+
+		iterType := c.getExpressionType(s.Iterable)
+
+		// Infer loop variable type from the iterable's element type
+		// e.g., for item in []int{} → item is int
+		if strings.HasPrefix(iterType, "[]") && iterType != "[]interface{}" {
+			elemType := strings.TrimPrefix(iterType, "[]")
+			c.varTypes[s.Variable] = elemType
+		} else {
+			c.varTypes[s.Variable] = "interface{}"
+		}
+
 		bodyStr, err := c.genBlockStatement(s.Body)
 		if err != nil {
 			return "", err
 		}
-		iterType := c.getExpressionType(s.Iterable)
 
 		// Map iteration: for key, value in map
 		if s.KeyVar != "" {

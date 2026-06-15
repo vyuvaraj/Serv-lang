@@ -259,6 +259,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 		// Collection property access (no parentheses needed)
 		if e.Field == "length" {
+			// If the object has a known slice or string type, use native len()
+			if ident, ok := e.Object.(*Identifier); ok {
+				if varType, exists := c.varTypes[ident.Value]; exists {
+					if strings.HasPrefix(varType, "[]") || varType == "string" {
+						return fmt.Sprintf("len(%s)", objStr), nil
+					}
+				}
+			}
 			return fmt.Sprintf("runtime.Length(%s)", objStr), nil
 		}
 
@@ -419,6 +427,16 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 						isCollectionMethod = true
 					}
 				case "length":
+					// Use native len() for known slice/string types
+					if ident, ok := memExpr.Object.(*Identifier); ok {
+						if varType, exists := c.varTypes[ident.Value]; exists {
+							if strings.HasPrefix(varType, "[]") || varType == "string" {
+								collectionResult = fmt.Sprintf("len(%s)", objStr)
+								isCollectionMethod = true
+								break
+							}
+						}
+					}
 					collectionResult = fmt.Sprintf("runtime.Length(%s)", objStr)
 					isCollectionMethod = true
 				case "push":
@@ -670,11 +688,77 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return fmt.Sprintf("(%s %s %s)", leftStr, e.Operator, rightStr), nil
 		}
 
-		// If one side is typed and the other is interface{}, but we know the native op is valid
-		if e.Operator == "%" && (lt == "int" || rt == "int") && (lt == "int" || lt == "interface{}") && (rt == "int" || rt == "interface{}") {
-			if lt == "int" && rt == "int" {
-				return fmt.Sprintf("(%s %s %s)", leftStr, e.Operator, rightStr), nil
+		// Mixed typed/untyped: if one side is a known primitive type and the other is interface{},
+		// cast the interface{} side to the known type and emit native Go ops.
+		// This avoids runtime dispatch for common patterns like: total + item (where total is int)
+		if lt != rt {
+			knownType := ""
+			if lt != "interface{}" && rt == "interface{}" && (lt == "int" || lt == "float64" || lt == "string") {
+				knownType = lt
+			} else if rt != "interface{}" && lt == "interface{}" && (rt == "int" || rt == "float64" || rt == "string") {
+				knownType = rt
 			}
+			if knownType != "" {
+				// For arithmetic and comparison ops, cast the interface{} side
+				switch e.Operator {
+				case "+", "-", "*", "/", "%":
+					castLeft := leftStr
+					castRight := rightStr
+					if lt == "interface{}" {
+						switch knownType {
+						case "int":
+							castLeft = fmt.Sprintf("toInt(%s)", leftStr)
+						case "float64":
+							castLeft = fmt.Sprintf("toFloat64(%s)", leftStr)
+						case "string":
+							castLeft = fmt.Sprintf("toString(%s)", leftStr)
+						}
+					}
+					if rt == "interface{}" {
+						switch knownType {
+						case "int":
+							castRight = fmt.Sprintf("toInt(%s)", rightStr)
+						case "float64":
+							castRight = fmt.Sprintf("toFloat64(%s)", rightStr)
+						case "string":
+							castRight = fmt.Sprintf("toString(%s)", rightStr)
+						}
+					}
+					return fmt.Sprintf("(%s %s %s)", castLeft, e.Operator, castRight), nil
+				case "==", "!=", "<", ">", "<=", ">=":
+					castLeft := leftStr
+					castRight := rightStr
+					if lt == "interface{}" {
+						switch knownType {
+						case "int":
+							castLeft = fmt.Sprintf("toInt(%s)", leftStr)
+						case "float64":
+							castLeft = fmt.Sprintf("toFloat64(%s)", leftStr)
+						case "string":
+							castLeft = fmt.Sprintf("toString(%s)", leftStr)
+						}
+					}
+					if rt == "interface{}" {
+						switch knownType {
+						case "int":
+							castRight = fmt.Sprintf("toInt(%s)", rightStr)
+						case "float64":
+							castRight = fmt.Sprintf("toFloat64(%s)", rightStr)
+						case "string":
+							castRight = fmt.Sprintf("toString(%s)", rightStr)
+						}
+					}
+					return fmt.Sprintf("(%s %s %s)", castLeft, e.Operator, castRight), nil
+				}
+			}
+		}
+
+		// Mixed numeric: int + float64 = float64 (native Go handles this with cast)
+		if (lt == "int" && rt == "float64") || (lt == "float64" && rt == "int") {
+			if lt == "int" {
+				return fmt.Sprintf("(float64(%s) %s %s)", leftStr, e.Operator, rightStr), nil
+			}
+			return fmt.Sprintf("(%s %s float64(%s))", leftStr, e.Operator, rightStr), nil
 		}
 
 		// Generic type params: if both sides have the same type param (e.g., T),
@@ -745,6 +829,22 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Type coercion: if target variable has a known type but expression returns interface{}
+		if targetType, ok := c.varTypes[e.Name]; ok {
+			inferred := c.getExpressionType(e.Value)
+			if inferred == "interface{}" && targetType != "interface{}" {
+				switch targetType {
+				case "int":
+					valStr = fmt.Sprintf("toInt(%s)", valStr)
+				case "float64":
+					valStr = fmt.Sprintf("toFloat64(%s)", valStr)
+				case "bool":
+					valStr = fmt.Sprintf("toBool(%s)", valStr)
+				case "string":
+					valStr = fmt.Sprintf("toString(%s)", valStr)
+				}
+			}
+		}
 		return fmt.Sprintf("%s = %s", e.Name, valStr), nil
 
 	case *CompoundAssignExpr:
@@ -754,7 +854,25 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		}
 		// If variable has a known numeric type, emit direct Go compound assignment
 		if varType, ok := c.varTypes[e.Name]; ok && (varType == "int" || varType == "float64") {
+			// If the value is interface{}, cast it to match the variable type
+			valType := c.getExpressionType(e.Value)
+			if valType == "interface{}" {
+				switch varType {
+				case "int":
+					valStr = fmt.Sprintf("toInt(%s)", valStr)
+				case "float64":
+					valStr = fmt.Sprintf("toFloat64(%s)", valStr)
+				}
+			}
 			return fmt.Sprintf("%s %s %s", e.Name, e.Operator, valStr), nil
+		}
+		// String concatenation: if variable is known string type
+		if varType, ok := c.varTypes[e.Name]; ok && varType == "string" && e.Operator == "+=" {
+			valType := c.getExpressionType(e.Value)
+			if valType == "interface{}" {
+				valStr = fmt.Sprintf("toString(%s)", valStr)
+			}
+			return fmt.Sprintf("%s += %s", e.Name, valStr), nil
 		}
 		// For interface{} variables, compute and reassign
 		op := string(e.Operator[0]) // extract arithmetic op from +=, -=, etc.

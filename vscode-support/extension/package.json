@@ -1,15 +1,22 @@
 {
   "name": "serv-vscode",
   "displayName": "Serv Language Support",
-  "description": "Full language support for the Serv programming language (.srv files) — diagnostics, autocomplete, hover, go-to-definition.",
+  "description": "Full language support for the Serv programming language (.srv files) — syntax highlighting, diagnostics, autocomplete, hover, go-to-definition, and LSP.",
   "version": "3.0.0",
-  "publisher": "serv-lang",
+  "publisher": "vyuvaraj",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Snippets",
+    "Linters",
+    "Formatters"
   ],
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onLanguage:serv",
     "onCommand:serv.run",
@@ -22,16 +29,20 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vyuvaraj/Serv-lang.git"
+    "url": "https://github.com/vyuvaraj/Serv-lang"
   },
-  "author": "Serv Language Team",
+  "author": "Yuvaraj",
   "keywords": [
     "serv",
+    "srv",
     "background services",
+    "microservices",
+    "scheduler",
     "dsl",
     "syntax highlighting",
     "snippets",
-    "lsp"
+    "lsp",
+    "go"
   ],
   "homepage": "https://github.com/vyuvaraj/Serv-lang",
   "contributes": {
