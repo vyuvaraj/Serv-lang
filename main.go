@@ -162,6 +162,13 @@ func main() {
 	case "init":
 		initProject()
 
+	case "debug":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: serv debug <file.srv>")
+			os.Exit(1)
+		}
+		debugServ(os.Args[2])
+
 	default:
 		printUsage()
 	}
@@ -180,5 +187,6 @@ func printUsage() {
 	fmt.Println("  serv add <go-package>                      Generate .srv.d declaration for a Go package")
 	fmt.Println("  serv install <package-name>                Install a third-party Serv module")
 	fmt.Println("  serv publish <package-dir>                 Publish a Serv module to the registry")
+	fmt.Println("  serv debug <file.srv>                       Debug a Serv file (requires dlv: go install github.com/go-delve/delve/cmd/dlv@latest)")
 	fmt.Println("  serv dockerize <file.srv>                  Generate a Dockerfile for the Serv service")
 }
