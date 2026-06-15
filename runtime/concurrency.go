@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -252,3 +254,4 @@ func ChannelLen(ch interface{}) interface{} {
 	}
 	return 0
 }
+

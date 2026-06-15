@@ -68,7 +68,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "time" {
 			switch e.Field {
 			case "now":
-				return "func() interface{} { return time.Now().Format(time.RFC3339) }", nil
+				return "func() interface{} { return time.Now().UTC().Format(time.RFC3339) }", nil
 			case "sleep":
 				return "runtime.Sleep", nil
 			case "unix":
@@ -135,6 +135,38 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.DBUpsert", nil
 			case "beforeQuery":
 				return "runtime.AddBeforeQueryHook", nil
+			}
+		}
+		if objStr == "s3" {
+			switch e.Field {
+			case "init":
+				return "runtime.S3Init", nil
+			case "put":
+				return "runtime.S3Put", nil
+			case "get":
+				return "runtime.S3Get", nil
+			case "delete":
+				return "runtime.S3Delete", nil
+			case "list":
+				return "runtime.S3List", nil
+			case "at":
+				return "runtime.S3At", nil
+			case "search":
+				return "runtime.S3Search", nil
+			case "createBucket":
+				return "runtime.S3CreateBucket", nil
+			case "deleteBucket":
+				return "runtime.S3DeleteBucket", nil
+			case "setBucketVersioning":
+				return "runtime.S3SetBucketVersioning", nil
+			}
+		}
+		if objStr == "wasm" {
+			switch e.Field {
+			case "readInput":
+				return "runtime.WasmReadInput", nil
+			case "writeOutput":
+				return "runtime.WasmWriteOutput", nil
 			}
 		}
 		if objStr == "cache" {

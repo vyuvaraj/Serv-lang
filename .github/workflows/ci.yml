@@ -21,7 +21,7 @@ jobs:
           go-version: '1.23'
 
       - name: Build serv compiler
-        run: go build -o serv.exe main.go
+        run: go build -o serv.exe .
 
       - name: Compile all examples
         shell: pwsh
@@ -80,7 +80,7 @@ jobs:
           go-version: '1.23'
 
       - name: Build serv compiler (Linux)
-        run: go build -o serv main.go
+        run: go build -o serv .
 
       - name: Compile examples (Linux)
         run: |
@@ -130,7 +130,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -ldflags="-s -w" -o serv-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} main.go
+          go build -ldflags="-s -w" -o serv-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4

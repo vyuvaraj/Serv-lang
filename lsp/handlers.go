@@ -112,9 +112,11 @@ func builtinHover(word string) string {
 		"atomic":   "Atomic operations\n\nMethods: `.new()`, `.inc()`, `.dec()`, `.get()`, `.set()`, `.cas()`",
 		"channel":  "Go channels\n\nMethods: `.new()`, `.send()`, `.receive()`, `.tryReceive()`, `.close()`",
 		"registry": "Named function registry\n\nMethods: `.set()`, `.call()`, `.has()`, `.list()`",
+		"s3":       "S3 / ServStore Client\n\nMethods: `.init(endpoint, accessKey, secretKey)`, `.createBucket(bucket)`, `.deleteBucket(bucket)`, `.setBucketVersioning(bucket, enabled)`, `.put(bucket, key, body)`, `.get(bucket, key)`, `.delete(bucket, key)`, `.list(bucket, prefix)`, `.at(bucket, key, timestamp)`, `.search(bucket, query, maxResults)`",
 		"env":      "```serv\nfn env(key: string) -> string\n```\nRead environment variable",
 		"config":   "```serv\nfn config(key: string) -> string\n```\nRead from config.yml or env var",
 		"validate": "```serv\nfn validate(body, schema) -> []string | nil\n```\nValidate request body against schema",
+		"wasm":     "WebAssembly guest execution helpers\n\nMethods: `.readInput()`, `.writeOutput(data)`",
 	}
 	if hover, ok := builtins[word]; ok {
 		return hover
@@ -473,6 +475,7 @@ func isBuiltinOrKeyword(word string) bool {
 		"log": true, "db": true, "cache": true, "http": true, "json": true,
 		"time": true, "metric": true, "atomic": true, "channel": true,
 		"registry": true, "env": true, "config": true, "validate": true,
+		"s3": true, "wasm": true,
 	}
 	return keywords[word] || builtins[word]
 }
@@ -676,6 +679,18 @@ func (s *Server) handleCompletion(msg JSONRPCMessage) {
 		{Label: "metric.gauge", Kind: 3, Detail: "Set gauge value", InsertText: "metric.gauge(\"$1\", $2)"},
 		{Label: "env", Kind: 3, Detail: "Read environment variable", InsertText: "env(\"$1\")"},
 		{Label: "config", Kind: 3, Detail: "Read config value", InsertText: "config(\"$1\")"},
+		{Label: "s3.init", Kind: 3, Detail: "Initialize S3 client", InsertText: "s3.init(\"$1\", \"$2\", \"$3\")"},
+		{Label: "s3.createBucket", Kind: 3, Detail: "Create S3 Bucket", InsertText: "s3.createBucket(\"$1\")"},
+		{Label: "s3.deleteBucket", Kind: 3, Detail: "Delete S3 Bucket", InsertText: "s3.deleteBucket(\"$1\")"},
+		{Label: "s3.setBucketVersioning", Kind: 3, Detail: "Set S3 Bucket Versioning", InsertText: "s3.setBucketVersioning(\"$1\", $2)"},
+		{Label: "s3.put", Kind: 3, Detail: "Upload object to S3", InsertText: "s3.put(\"$1\", \"$2\", $3)"},
+		{Label: "s3.get", Kind: 3, Detail: "Retrieve object from S3", InsertText: "s3.get(\"$1\", \"$2\")"},
+		{Label: "s3.delete", Kind: 3, Detail: "Delete S3 object", InsertText: "s3.delete(\"$1\", \"$2\")"},
+		{Label: "s3.list", Kind: 3, Detail: "List S3 objects", InsertText: "s3.list(\"$1\", \"$2\")"},
+		{Label: "s3.at", Kind: 3, Detail: "Time-travel S3 object version", InsertText: "s3.at(\"$1\", \"$2\", \"$3\")"},
+		{Label: "s3.search", Kind: 3, Detail: "Semantic search S3 query", InsertText: "s3.search(\"$1\", \"$2\", $3)"},
+		{Label: "wasm.readInput", Kind: 3, Detail: "Read input from stdin (WASM context)", InsertText: "wasm.readInput()"},
+		{Label: "wasm.writeOutput", Kind: 3, Detail: "Write output to stdout (WASM context)", InsertText: "wasm.writeOutput($1)"},
 	}
 	items = append(items, builtins...)
 

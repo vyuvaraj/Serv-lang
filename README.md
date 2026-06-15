@@ -18,6 +18,7 @@ Serv is a modern, high-level DSL (Domain-Specific Language) designed specificall
   - [Concurrency & Worker Pools (`spawn`)](#concurrency--worker-pools-spawn)
   - [Database Operations (`db.query`)](#database-operations-dbquery)
   - [Cache Operations (`cache.set` & `cache.get`)](#cache-operations-cacheset--cacheget)
+  - [S3 & ServStore Client Operations (`s3`)](#s3--servstore-client-operations-s3)
   - [Python Interoperability (`extern fn`)](#python-interoperability-extern-fn)
   - [Built-in Functions & Utilities](#built-in-functions--utilities)
 - [Testing Support](#testing-support)
@@ -263,6 +264,34 @@ cache.set("session_user_1", { "id": 1, "role": "admin" }, "10m")
 // Fetch value from cache
 let session = cache.get("session_user_1")
 log.info("Active Session: ", session)
+```
+
+---
+
+### S3 & ServStore Client Operations (`s3`)
+
+Interact with S3-compatible endpoints or a ServStore gateway using the native `s3` runtime functions. You can also import the helper wrapper from the standard library:
+
+```serv
+import { newClient, put, get, deleteObject, list, at, search } from "stdlib/s3.srv"
+
+// Initialize client
+let client = newClient("http://localhost:8080", "admin", "adminsecret")
+
+// Create and configure a bucket
+client.createBucket("my-bucket")
+client.setBucketVersioning("my-bucket", true)
+
+// Upload and retrieve objects
+client.put("my-bucket", "config.json", "{\"status\": \"active\"}")
+let content = client.get("my-bucket", "config.json")
+log.info("Content: ", content)
+
+// Time-travel to retrieve previous versions of an object (ServStore only)
+let historicalContent = client.at("my-bucket", "config.json", "2026-06-15T09:00:00Z")
+
+// Perform semantic search queries (ServStore only)
+let searchResults = client.search("my-bucket", "find active config files", 5)
 ```
 
 ---

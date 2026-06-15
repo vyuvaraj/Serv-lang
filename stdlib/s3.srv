@@ -1,0 +1,42 @@
+// Serv Standard Library: S3/ServStore Client
+// Import: import { init, put, get, delete, list, at, search } from "stdlib/s3.srv"
+
+export fn newClient(endpoint, accessKey, secretKey) {
+    return s3.init(endpoint, accessKey, secretKey)
+}
+
+export fn put(bucket, key, data) {
+    return s3.put(bucket, key, data)
+}
+
+export fn get(bucket, key) {
+    return s3.get(bucket, key)
+}
+
+export fn deleteObject(bucket, key) {
+    return s3.delete(bucket, key)
+}
+
+export fn list(bucket, prefix) {
+    return s3.list(bucket, prefix)
+}
+
+export fn at(bucket, key, timestamp) {
+    return s3.at(bucket, key, timestamp)
+}
+
+export fn search(bucket, query, maxResults) {
+    return s3.search(bucket, query, maxResults)
+}
+
+export fn createBucket(bucket) {
+    return s3.createBucket(bucket)
+}
+
+export fn deleteBucket(bucket) {
+    return s3.deleteBucket(bucket)
+}
+
+export fn setBucketVersioning(bucket, status) {
+    return s3.setBucketVersioning(bucket, status)
+}

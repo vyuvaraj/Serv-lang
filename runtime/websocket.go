@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -53,3 +55,4 @@ func AddWebSocket(path string, handler func(*WSConn)) {
 	wsHandlersMu.Unlock()
 	LogInfo("Registered WebSocket endpoint: ", path)
 }
+

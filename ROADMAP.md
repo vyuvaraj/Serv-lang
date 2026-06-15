@@ -122,6 +122,10 @@ To move Serv beyond a simple microservice tool into a premium, world-class progr
 | 10.3 | **Database Schema ORM Generation** | Medium | Compile schema files into strongly-typed query methods, ensuring compile-time safe database interaction. |
 | 10.4 | **Distributed Trace Propagation** | Medium | Automatically trace HTTP headers, message brokers, and actor spawns with OpenTelemetry context propagation. |
 | 10.5 | **AOT Optimization Pass** | Medium | Build AST optimizations (inlining, constant folding, loop unrolling) before emitting target Go source. |
+| 10.6 | **WASM Target Compilation** | Large | Compile `.srv` code into WASI-compliant WebAssembly binaries for serverless sandbox execution (e.g. inside ServStore transforms). |
+| 10.7 | **Stateful Workflows** | Large | Introduce native Temporal-like `workflow` blocks with automatic state-checkpointing and resilient task retries. |
+| 10.8 | **LSP Debugger (DAP) Support** | Medium | Build a Debug Adapter Protocol server mapping Go debugger state back to source-level `.srv` code coordinates. |
+| 10.9 | **Serv-verse Core Integrations** | Large | Develop unified connectors and drivers targeting ServQueue (distributed event bus) and ServGate (API Gateway). |
 
 ### Detail on Next-Level Items
 
@@ -136,3 +140,15 @@ To move Serv beyond a simple microservice tool into a premium, world-class progr
 #### 3. Database Schema ORM Generation (Phase 10.3)
 - **Goal**: Generate strongly-typed data access objects (DAOs) directly from database migration files or schemas.
 - **Why**: Writing raw JSON queries like `db.findOne("users", "{\"active\": true}")` is error-prone. Typing these queries (e.g., `db.Users.findMany(active: true)`) provides compile-time safety and autocompletion.
+
+#### 4. WASM Target Compilation (Phase 10.6)
+- **Goal**: Add a compilation target to build WASI-compliant WebAssembly binaries (`serv build --target wasm`).
+- **Why**: Allows developers to write their server-side compute-near-data transformations directly in the Serv language instead of external languages (like Rust or Go).
+
+#### 5. Stateful Workflows (Phase 10.7)
+- **Goal**: Add declarative workflows that checkpoint execution state, allowing long-running orchestrations to survive service restarts or hardware failures transparently.
+- **Why**: Critical for business logic orchestration (onboarding, order processing) that span multiple days or services.
+
+#### 6. LSP Debugger Support (Phase 10.8)
+- **Goal**: Implement the Debug Adapter Protocol (DAP) to provide breakpoints, step-in/out, and stack traces back inside Serv source files.
+- **Why**: Elevates the language developer experience to match enterprise languages.

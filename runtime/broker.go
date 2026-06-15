@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -38,8 +40,46 @@ var (
 )
 
 type pubSubEvent struct {
-	callback func(string)
-	payload  string
+	callback    func(string)
+	payload     string
+	traceparent string
+}
+
+type BrokerEnvelope struct {
+	Traceparent string `json:"_traceparent,omitempty"`
+	Payload     string `json:"payload"`
+}
+
+func extractTraceAndPayload(msgData string) (string, string) {
+	var env BrokerEnvelope
+	if strings.HasPrefix(msgData, "{") && strings.Contains(msgData, `"payload"`) {
+		if err := json.Unmarshal([]byte(msgData), &env); err == nil {
+			return env.Traceparent, env.Payload
+		}
+	}
+	return "", msgData
+}
+
+func handleIncomingMessage(traceparentHeader string, rawPayload string, callback func(string), topic string) {
+	tp, payload := extractTraceAndPayload(rawPayload)
+	if tp == "" && traceparentHeader != "" {
+		tp = traceparentHeader
+	}
+
+	var trace *RequestTrace
+	if tp != "" {
+		trace = TraceRequest("Subscribe", topic, tp)
+	} else {
+		trace = TraceRequest("Subscribe", topic, "")
+	}
+	SetActiveTrace(trace)
+	defer ClearActiveTrace()
+	defer EndTrace(trace, 200)
+
+	endSpan := TracePubSub("Subscribe", topic)
+	defer endSpan()
+
+	executeCallbackSafe(callback, payload)
 }
 
 // Message Broker Connections
@@ -99,7 +139,11 @@ func Subscribe(topic string, callback func(string)) {
 
 	if natsClient != nil {
 		_, err := natsClient.Subscribe(topic, func(m *nats.Msg) {
-			callback(string(m.Data))
+			var tp string
+			if m.Header != nil {
+				tp = m.Header.Get("traceparent")
+			}
+			handleIncomingMessage(tp, string(m.Data), callback, topic)
 		})
 		if err == nil {
 			return
@@ -108,7 +152,7 @@ func Subscribe(topic string, callback func(string)) {
 
 	if mqttConn != nil {
 		token := mqttConn.Subscribe(topic, 0, func(client mqtt.Client, msg mqtt.Message) {
-			callback(string(msg.Payload()))
+			handleIncomingMessage("", string(msg.Payload()), callback, topic)
 		})
 		if token.Wait() && token.Error() == nil {
 			return
@@ -121,7 +165,13 @@ func Subscribe(topic string, callback func(string)) {
 		if err1 == nil && err2 == nil {
 			go func() {
 				for d := range msgs {
-					callback(string(d.Body))
+					var tp string
+					if d.Headers != nil {
+						if val, ok := d.Headers["traceparent"].(string); ok {
+							tp = val
+						}
+					}
+					handleIncomingMessage(tp, string(d.Body), callback, topic)
 				}
 			}()
 			return
@@ -143,7 +193,14 @@ func Subscribe(topic string, callback func(string)) {
 				if err != nil {
 					break
 				}
-				callback(string(m.Value))
+				var tp string
+				for _, h := range m.Headers {
+					if h.Key == "traceparent" {
+						tp = string(h.Value)
+						break
+					}
+				}
+				handleIncomingMessage(tp, string(m.Value), callback, topic)
 			}
 		}()
 		return
@@ -159,7 +216,11 @@ func Subscribe(topic string, callback func(string)) {
 					if msg.Err != nil {
 						break
 					}
-					callback(string(msg.Body))
+					var tp string
+					if msg.Header != nil {
+						tp = msg.Header.Get("traceparent")
+					}
+					handleIncomingMessage(tp, string(msg.Body), callback, topic)
 				}
 			}()
 			return
@@ -185,16 +246,39 @@ func Publish(topic string, msg interface{}) {
 		msgStr = string(b)
 	}
 
+	var traceparentVal string
+	if active := GetActiveTrace(); active != nil {
+		traceparentVal = Traceparent(active)
+	}
+
 	// 1. NATS Publish
 	if natsClient != nil {
-		if err := natsClient.Publish(topic, []byte(msgStr)); err == nil {
+		m := &nats.Msg{
+			Subject: topic,
+			Data:    []byte(msgStr),
+		}
+		if traceparentVal != "" {
+			m.Header = make(nats.Header)
+			m.Header.Set("traceparent", traceparentVal)
+		}
+		if err := natsClient.PublishMsg(m); err == nil {
 			return
 		}
 	}
 
-	// 2. MQTT Publish
+	// 2. MQTT Publish - wrap payload in BrokerEnvelope if trace is active
+	var mqttPayload = msgStr
+	if traceparentVal != "" {
+		env := BrokerEnvelope{
+			Traceparent: traceparentVal,
+			Payload:     msgStr,
+		}
+		if eb, err := json.Marshal(env); err == nil {
+			mqttPayload = string(eb)
+		}
+	}
 	if mqttConn != nil {
-		token := mqttConn.Publish(topic, 0, false, msgStr)
+		token := mqttConn.Publish(topic, 0, false, mqttPayload)
 		if token.Wait() && token.Error() == nil {
 			return
 		}
@@ -204,9 +288,14 @@ func Publish(topic string, msg interface{}) {
 	if amqpChan != nil {
 		_, err := amqpChan.QueueDeclare(topic, false, false, false, false, nil)
 		if err == nil {
+			headers := amqp.Table{}
+			if traceparentVal != "" {
+				headers["traceparent"] = traceparentVal
+			}
 			amqpChan.PublishWithContext(context.Background(), "", topic, false, false, amqp.Publishing{
 				ContentType: "text/plain",
 				Body:        []byte(msgStr),
+				Headers:     headers,
 			})
 			return
 		}
@@ -225,14 +314,30 @@ func Publish(topic string, msg interface{}) {
 			kafkaWriterMap[topic] = w
 		}
 		kafkaWriterMu.Unlock()
-		if err := w.WriteMessages(context.Background(), kafka.Message{Value: []byte(msgStr)}); err == nil {
+		var headers []kafka.Header
+		if traceparentVal != "" {
+			headers = append(headers, kafka.Header{
+				Key:   "traceparent",
+				Value: []byte(traceparentVal),
+			})
+		}
+		if err := w.WriteMessages(context.Background(), kafka.Message{
+			Value:   []byte(msgStr),
+			Headers: headers,
+		}); err == nil {
 			return
 		}
 	}
 
 	// 5. ActiveMQ STOMP Publish
 	if stompConn != nil {
-		if err := stompConn.Send(topic, "text/plain", []byte(msgStr)); err == nil {
+		var err error
+		if traceparentVal != "" {
+			err = stompConn.Send(topic, "text/plain", []byte(msgStr), stomp.SendOpt.Header("traceparent", traceparentVal))
+		} else {
+			err = stompConn.Send(topic, "text/plain", []byte(msgStr))
+		}
+		if err == nil {
 			return
 		}
 	}
@@ -245,10 +350,10 @@ func Publish(topic string, msg interface{}) {
 
 	for _, callback := range subs {
 		select {
-		case pubSubQueue <- pubSubEvent{callback: callback, payload: msgStr}:
+		case pubSubQueue <- pubSubEvent{callback: callback, payload: msgStr, traceparent: traceparentVal}:
 		default:
 			// If queue is completely full, spawn a temporary goroutine fallback to avoid dropping events
-			go executeCallbackSafe(callback, msgStr)
+			go handleIncomingMessage(traceparentVal, msgStr, callback, topic)
 		}
 	}
 }
@@ -258,7 +363,7 @@ func startPubSubWorkers() {
 		for i := 0; i < pubSubWorkers; i++ {
 			go func() {
 				for event := range pubSubQueue {
-					executeCallbackSafe(event.callback, event.payload)
+					handleIncomingMessage(event.traceparent, event.payload, event.callback, "")
 				}
 			}()
 		}

@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -108,3 +110,4 @@ func ValidateBody(args ...interface{}) interface{} {
 	}
 	return errors
 }
+

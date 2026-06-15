@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -238,3 +240,4 @@ func ContextLoggerWith(logger interface{}, args ...interface{}) interface{} {
 	// If not a ContextLogger, create a new one
 	return LogWith(args...)
 }
+

@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -390,3 +392,4 @@ func IndexAccess(val interface{}, index interface{}) interface{} {
 	}
 	return nil
 }
+

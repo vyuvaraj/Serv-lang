@@ -482,6 +482,16 @@ func (c *Codegen) genSpawnStmt(s *SpawnStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	taskName := "task"
+	if callExpr, ok := s.Call.(*CallExpr); ok {
+		if ident, ok := callExpr.Function.(*Identifier); ok {
+			taskName = ident.Value
+		} else if member, ok := callExpr.Function.(*MemberExpr); ok {
+			taskName = member.Field
+		}
+	}
+
 	var spawnCode string
 	if s.Limit != nil {
 		limStr, err := c.genExpression(s.Limit)
@@ -491,9 +501,45 @@ func (c *Codegen) genSpawnStmt(s *SpawnStmt) (string, error) {
 		semID := fmt.Sprintf("spawn_%d_%d", s.Token.Line, s.Token.Col)
 		c.imports[`"fmt"`] = true
 		c.imports[`"strconv"`] = true
-		spawnCode = fmt.Sprintf("runtime.AcquireSemaphore(%q, func() int {\n\t\t\tval, _ := strconv.Atoi(fmt.Sprint(%s))\n\t\t\tif val <= 0 { return 1 }\n\t\t\treturn val\n\t\t}())\ngo func() {\n\t\tdefer runtime.ReleaseSemaphore(%q)\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", semID, limStr, semID, call)
+		spawnCode = fmt.Sprintf(`_spawnTrace := runtime.GetActiveTrace()
+		runtime.AcquireSemaphore(%q, func() int {
+			val, _ := strconv.Atoi(fmt.Sprint(%s))
+			if val <= 0 { return 1 }
+			return val
+		}())
+go func() {
+		defer runtime.ReleaseSemaphore(%q)
+		if _spawnTrace != nil {
+			runtime.SetActiveTrace(_spawnTrace)
+			defer runtime.ClearActiveTrace()
+		}
+		_endSpan := runtime.TraceSpawn(%q)
+		defer _endSpan()
+		defer func() {
+			if r := recover(); r != nil {
+				runtime.LogError("Recovered in spawned task: ", r)
+			}
+		}()
+		%s
+	}()
+`, semID, limStr, semID, taskName, call)
 	} else {
-		spawnCode = fmt.Sprintf("go func() {\n\t\tdefer func() {\n\t\t\tif r := recover(); r != nil {\n\t\t\t\truntime.LogError(\"Recovered in spawned task: \", r)\n\t\t\t}\n\t\t}()\n\t\t%s\n\t}()\n", call)
+		spawnCode = fmt.Sprintf(`_spawnTrace := runtime.GetActiveTrace()
+go func() {
+		if _spawnTrace != nil {
+			runtime.SetActiveTrace(_spawnTrace)
+			defer runtime.ClearActiveTrace()
+		}
+		_endSpan := runtime.TraceSpawn(%q)
+		defer _endSpan()
+		defer func() {
+			if r := recover(); r != nil {
+				runtime.LogError("Recovered in spawned task: ", r)
+			}
+		}()
+		%s
+	}()
+`, taskName, call)
 	}
 	if !c.inFunction {
 		return fmt.Sprintf("func init() {\n\t%s}\n\n", spawnCode), nil

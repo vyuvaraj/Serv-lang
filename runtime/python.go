@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -223,5 +225,6 @@ func shutdownPythonWorkers() {
 		}
 	}
 }
+
 
 

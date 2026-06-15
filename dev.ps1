@@ -29,7 +29,7 @@ switch ($Command) {
     "build" {
         Write-Host "Building Serv..." -ForegroundColor White
         Write-Step "serv.exe"
-        go build -o serv.exe main.go
+        go build -o serv.exe .
         if ($LASTEXITCODE -ne 0) { Write-Err "Failed"; exit 1 }
         Write-Step "serv-lsp.exe"
         go build -o serv-lsp.exe ./lsp/
@@ -56,7 +56,7 @@ switch ($Command) {
 
     "install" {
         Write-Host "Building and installing..." -ForegroundColor White
-        go build -o serv.exe main.go
+        go build -o serv.exe .
         if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit 1 }
         go build -o serv-lsp.exe ./lsp/
         if ($LASTEXITCODE -ne 0) { Write-Err "LSP build failed"; exit 1 }
@@ -130,7 +130,8 @@ switch ($Command) {
     "all" {
         Write-Host "=== Full Check ===" -ForegroundColor White
         Write-Host ""
-        go build -o serv.exe main.go
+        go build -o serv.exe .
+
         if ($LASTEXITCODE -ne 0) { Write-Err "Build failed"; exit 1 }
         go build -o serv-lsp.exe ./lsp/
         if ($LASTEXITCODE -ne 0) { Write-Err "LSP build failed"; exit 1 }

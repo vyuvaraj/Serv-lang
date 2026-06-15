@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -178,3 +180,4 @@ func SpawnWithTimeout(timeoutMs interface{}, fn func() interface{}) interface{} 
 		return nil
 	}
 }
+

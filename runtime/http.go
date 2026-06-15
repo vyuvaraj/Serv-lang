@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -199,3 +201,4 @@ func matchRoute(method, path string) (func(Request) interface{}, map[string]stri
 	}
 	return curr.handler, params, curr.limiter
 }
+

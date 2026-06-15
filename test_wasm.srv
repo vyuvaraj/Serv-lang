@@ -1,0 +1,3 @@
+let input = wasm.readInput()
+let output = f"WASM_TRANSFORMED: {input}"
+wasm.writeOutput(output)

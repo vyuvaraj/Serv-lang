@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -8,6 +10,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +71,62 @@ func initOtel() {
 	go otelFlushLoop()
 
 	LogInfo("OpenTelemetry enabled: endpoint=", otelEndpoint, " service=", otelService)
+}
+
+var (
+	activeTraces   = make(map[int64]*RequestTrace)
+	activeTracesMu sync.RWMutex
+)
+
+// GetGID parses and returns the current Goroutine ID.
+func GetGID() int64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	header := string(buf[:n])
+	// Parse "goroutine 123 ["
+	spaceIdx := strings.Index(header, " ")
+	if spaceIdx == -1 {
+		return 0
+	}
+	rest := header[spaceIdx+1:]
+	bracketIdx := strings.Index(rest, " ")
+	if bracketIdx == -1 {
+		bracketIdx = strings.Index(rest, "[")
+	}
+	if bracketIdx == -1 {
+		return 0
+	}
+	idField := strings.TrimSpace(rest[:bracketIdx])
+	id, err := strconv.ParseInt(idField, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+// SetActiveTrace stores the active trace for the current goroutine.
+func SetActiveTrace(rt *RequestTrace) {
+	gid := GetGID()
+	activeTracesMu.Lock()
+	activeTraces[gid] = rt
+	activeTracesMu.Unlock()
+}
+
+// GetActiveTrace retrieves the active trace for the current goroutine.
+func GetActiveTrace() *RequestTrace {
+	gid := GetGID()
+	activeTracesMu.RLock()
+	rt := activeTraces[gid]
+	activeTracesMu.RUnlock()
+	return rt
+}
+
+// ClearActiveTrace removes the trace mapping for the current goroutine.
+func ClearActiveTrace() {
+	gid := GetGID()
+	activeTracesMu.Lock()
+	delete(activeTraces, gid)
+	activeTracesMu.Unlock()
 }
 
 // OtelEnabled returns whether OpenTelemetry tracing is active.
@@ -272,14 +332,24 @@ func generateSpanID() string {
 // --- Component tracing helpers ---
 // These create child spans for internal operations (DB, cache, HTTP, pub/sub, etc.)
 
+func getInheritedTraceContext() (string, string) {
+	parent := GetActiveTrace()
+	if parent != nil && parent.TraceID != "" {
+		return parent.TraceID, parent.SpanID
+	}
+	return generateTraceID(), ""
+}
+
 // TraceDB creates a span for a database operation.
 func TraceDB(operation, query string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "DB " + operation,
 		Kind:      3, // CLIENT
 		StartTime: time.Now().UnixNano(),
@@ -301,9 +371,11 @@ func TraceCache(operation, key string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "Cache " + operation,
 		Kind:      3, // CLIENT
 		StartTime: time.Now().UnixNano(),
@@ -324,9 +396,11 @@ func TraceHTTPClient(method, url string) func(statusCode int) {
 	if !otelEnabled {
 		return func(int) {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "HTTP " + method,
 		Kind:      3, // CLIENT
 		StartTime: time.Now().UnixNano(),
@@ -351,9 +425,11 @@ func TracePubSub(operation, topic string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      operation + " " + topic,
 		Kind:      3, // CLIENT for publish, 1 for subscribe processing
 		StartTime: time.Now().UnixNano(),
@@ -375,9 +451,11 @@ func TraceScheduler(jobType, schedule string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      jobType + " " + schedule,
 		Kind:      1, // INTERNAL
 		StartTime: time.Now().UnixNano(),
@@ -398,9 +476,11 @@ func TraceSpawn(taskName string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "Spawn " + taskName,
 		Kind:      1, // INTERNAL
 		StartTime: time.Now().UnixNano(),
@@ -420,9 +500,11 @@ func TraceWebSocket(path, event string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "WS " + path + " " + event,
 		Kind:      2, // SERVER
 		StartTime: time.Now().UnixNano(),
@@ -443,9 +525,11 @@ func TraceExtern(source, funcName string) func() {
 	if !otelEnabled {
 		return func() {}
 	}
+	traceID, parentID := getInheritedTraceContext()
 	span := otelSpan{
-		TraceID:   generateTraceID(),
+		TraceID:   traceID,
 		SpanID:    generateSpanID(),
+		ParentID:  parentID,
 		Name:      "Extern " + funcName,
 		Kind:      3, // CLIENT
 		StartTime: time.Now().UnixNano(),
@@ -482,3 +566,4 @@ func truncateQuery(query string) string {
 	}
 	return query[:200] + "..."
 }
+

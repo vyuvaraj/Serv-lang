@@ -1,3 +1,5 @@
+//go:build !wasm
+
 package runtime
 
 import (
@@ -66,6 +68,9 @@ func startMCPServer() {
 			continue
 		}
 		handleMCPRequest(req)
+	}
+	if err := scanner.Err(); err != nil {
+		LogError("MCP Server scanner error: ", err.Error())
 	}
 }
 
@@ -180,3 +185,4 @@ func handleMCPRequest(req jsonRPCRequest) {
 		sendRPCError(req.ID, -32601, "Method not found: "+req.Method)
 	}
 }
+
