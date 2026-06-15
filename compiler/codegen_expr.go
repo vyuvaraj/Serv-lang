@@ -259,6 +259,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 		// Collection property access (no parentheses needed)
 		if e.Field == "length" {
+			// If the object has a known slice or string type, use native len()
+			if ident, ok := e.Object.(*Identifier); ok {
+				if varType, exists := c.varTypes[ident.Value]; exists {
+					if strings.HasPrefix(varType, "[]") || varType == "string" {
+						return fmt.Sprintf("len(%s)", objStr), nil
+					}
+				}
+			}
 			return fmt.Sprintf("runtime.Length(%s)", objStr), nil
 		}
 
@@ -419,6 +427,16 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 						isCollectionMethod = true
 					}
 				case "length":
+					// Use native len() for known slice/string types
+					if ident, ok := memExpr.Object.(*Identifier); ok {
+						if varType, exists := c.varTypes[ident.Value]; exists {
+							if strings.HasPrefix(varType, "[]") || varType == "string" {
+								collectionResult = fmt.Sprintf("len(%s)", objStr)
+								isCollectionMethod = true
+								break
+							}
+						}
+					}
 					collectionResult = fmt.Sprintf("runtime.Length(%s)", objStr)
 					isCollectionMethod = true
 				case "push":

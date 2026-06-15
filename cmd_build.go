@@ -90,11 +90,15 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 	}
 
 	// Ensure the build directory has a go.mod that can find serv/runtime
-	if err := ensureBuildGoMod(buildDir); err != nil {
+	goModChanged, err := ensureBuildGoMod(buildDir)
+	if err != nil {
 		return "", fmt.Errorf("failed to setup build module: %w", err)
 	}
-	if err := runGoModTidy(buildDir); err != nil {
-		return "", fmt.Errorf("failed to tidy build module: %w", err)
+	// Only run go mod tidy when go.mod actually changed (avoids ~1-2s overhead per build)
+	if goModChanged {
+		if err := runGoModTidy(buildDir); err != nil {
+			return "", fmt.Errorf("failed to tidy build module: %w", err)
+		}
 	}
 
 	goPath, err := resolveGoPath()
@@ -255,20 +259,21 @@ func buildDirFor(absPath string) string {
 
 // ensureBuildGoMod creates a go.mod in the build directory that can resolve serv/runtime.
 // It uses a replace directive pointing to the Serv installation directory.
-func ensureBuildGoMod(buildDir string) error {
+// Returns true if the go.mod was created or changed (indicating go mod tidy is needed).
+func ensureBuildGoMod(buildDir string) (bool, error) {
 	goModPath := filepath.Join(buildDir, "go.mod")
 
 	// Find the Serv installation root (where runtime/ and go.mod live)
 	servRoot := findServRoot()
 	if servRoot == "" {
-		return fmt.Errorf("cannot find Serv installation (runtime/ directory). Set SERV_HOME or ensure serv.exe is next to the runtime/ folder")
+		return false, fmt.Errorf("cannot find Serv installation (runtime/ directory). Set SERV_HOME or ensure serv.exe is next to the runtime/ folder")
 	}
 
 	// Read the Serv project's go.mod to get the Go version and dependencies
 	servGoMod := filepath.Join(servRoot, "go.mod")
 	servGoModContent, err := os.ReadFile(servGoMod)
 	if err != nil {
-		return fmt.Errorf("cannot read %s: %w", servGoMod, err)
+		return false, fmt.Errorf("cannot read %s: %w", servGoMod, err)
 	}
 
 	// Extract go version from Serv's go.mod
@@ -291,8 +296,17 @@ require serv v0.0.0
 replace serv v0.0.0 => %s
 `, goVersion, filepath.ToSlash(servRoot))
 
+	// Check if go.mod content has changed (skip go mod tidy if identical)
+	existingContent, readErr := os.ReadFile(goModPath)
+	if readErr == nil && string(existingContent) == goMod {
+		// go.mod unchanged — also check go.sum exists
+		if _, err := os.Stat(filepath.Join(buildDir, "go.sum")); err == nil {
+			return false, nil
+		}
+	}
+
 	if err := os.WriteFile(goModPath, []byte(goMod), 0644); err != nil {
-		return err
+		return false, err
 	}
 
 	// Copy go.sum from Serv root (needed for transitive dependencies)
@@ -301,7 +315,7 @@ replace serv v0.0.0 => %s
 		os.WriteFile(filepath.Join(buildDir, "go.sum"), sumContent, 0644)
 	}
 
-	return nil
+	return true, nil
 }
 
 // runGoModTidy runs go mod tidy inside the build directory to resolve transitive dependencies after go files are written.

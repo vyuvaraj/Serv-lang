@@ -30,7 +30,7 @@ func runREPL() {
 	os.MkdirAll(replDir, 0755)
 
 	// Ensure go.mod exists for compilation
-	if err := ensureBuildGoMod(replDir); err != nil {
+	if _, err := ensureBuildGoMod(replDir); err != nil {
 		fmt.Printf("Warning: could not setup build module for REPL: %v\n", err)
 	}
 

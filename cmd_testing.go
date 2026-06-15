@@ -70,13 +70,16 @@ func runTests(srvFile string, withCoverage bool) {
 	}
 
 	// Ensure the build directory has a go.mod that can find serv/runtime
-	if err := ensureBuildGoMod(buildDir); err != nil {
+	goModChanged, err := ensureBuildGoMod(buildDir)
+	if err != nil {
 		fmt.Printf("Failed to setup build module: %v\n", err)
 		os.Exit(1)
 	}
-	if err := runGoModTidy(buildDir); err != nil {
-		fmt.Printf("Failed to tidy build module: %v\n", err)
-		os.Exit(1)
+	if goModChanged {
+		if err := runGoModTidy(buildDir); err != nil {
+			fmt.Printf("Failed to tidy build module: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	fmt.Printf("Running tests from %s...\n", srvFile)

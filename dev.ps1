@@ -24,6 +24,8 @@ function Write-Step($msg) { Write-Host "  $msg" -ForegroundColor Cyan }
 function Write-Ok($msg) { Write-Host "  $([char]0x2713) $msg" -ForegroundColor Green }
 function Write-Err($msg) { Write-Host "  $([char]0x2717) $msg" -ForegroundColor Red }
 
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
 switch ($Command) {
 
     "build" {
@@ -163,4 +165,12 @@ switch ($Command) {
         Write-Host "  .\dev.ps1 all          Build + test + lint"
         Write-Host ""
     }
+}
+
+$stopwatch.Stop()
+$elapsed = $stopwatch.Elapsed
+if ($elapsed.TotalSeconds -ge 60) {
+    Write-Host "`n  Completed in $($elapsed.Minutes)m $($elapsed.Seconds)s" -ForegroundColor DarkGray
+} else {
+    Write-Host "`n  Completed in $([math]::Round($elapsed.TotalSeconds, 2))s" -ForegroundColor DarkGray
 }
