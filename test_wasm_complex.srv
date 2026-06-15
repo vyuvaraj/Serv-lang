@@ -1,0 +1,17 @@
+fn process(x) {
+    if x > 10 {
+        return x * 2
+    }
+    return x + 5
+}
+
+let input = wasm.readInput()
+log.info(f"Input received: {input}")
+
+let result = process(12)
+log.info(f"Result of process(12): {result}")
+
+let m = { name: "serv", value: 42 }
+log.info(f"Map name: {m.name}")
+
+wasm.writeOutput(f"COMPLEX_RESULT: {result}")

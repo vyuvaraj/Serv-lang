@@ -122,7 +122,7 @@ To move Serv beyond a simple microservice tool into a premium, world-class progr
 | 10.3 | **Database Schema ORM Generation** | Medium | Compile schema files into strongly-typed query methods, ensuring compile-time safe database interaction. |
 | 10.4 | **Distributed Trace Propagation** | Medium | Automatically trace HTTP headers, message brokers, and actor spawns with OpenTelemetry context propagation. |
 | 10.5 | **AOT Optimization Pass** | Medium | Build AST optimizations (inlining, constant folding, loop unrolling) before emitting target Go source. |
-| 10.6 | **WASM Target Compilation** | Large | Compile `.srv` code into WASI-compliant WebAssembly binaries for serverless sandbox execution (e.g. inside ServStore transforms). |
+| 10.6 | **WASM Target Compilation** | Large | ✅ Done — `serv build <file.srv> --target wasm` compiles `.srv` files to WASI-compliant WebAssembly. Supported full log formatting via stderr and stubs/abstractions for all non-wasm runtime components. Verified under ServStore transform pipelines. |
 | 10.7 | **Stateful Workflows** | Large | Introduce native Temporal-like `workflow` blocks with automatic state-checkpointing and resilient task retries. |
 | 10.8 | **LSP Debugger (DAP) Support** | Medium | ✅ Done — `serv debug <file.srv>` launches a DAP proxy (stdio) backed by Delve. Translates `.srv` breakpoints ↔ generated Go lines using `// .srv line N` source map comments. Full VS Code support: breakpoints, step, stack frames mapped back to `.srv` source. |
 | 10.9 | **Serv-verse Core Integrations** | Large | Develop unified connectors and drivers targeting ServQueue (distributed event bus) and ServGate (API Gateway). |

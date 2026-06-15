@@ -178,7 +178,7 @@ func printUsage() {
 	fmt.Println("Serv: A Programming Language for Background Services")
 	fmt.Println("Usage:")
 	fmt.Println("  serv init [name]                           Create a new Serv project")
-	fmt.Println("  serv build <file.srv> [-o <output_binary>]  Compile Serv code to native binary")
+	fmt.Println("  serv build <file.srv> [--target <target>] [-o <output>] Compile Serv code to target (native/wasm)")
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
 	fmt.Println("  serv test [--cover] <file.srv>             Run tests defined in a Serv file")
 	fmt.Println("  serv lint <file.srv>                       Validate syntax and check for errors")
