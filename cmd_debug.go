@@ -137,11 +137,14 @@ func buildServDebug(absPath string) (buildDir, genGoFile string, err error) {
 		return "", "", err
 	}
 
-	if err := ensureBuildGoMod(buildDir); err != nil {
+	goModChanged, err := ensureBuildGoMod(buildDir)
+	if err != nil {
 		return "", "", fmt.Errorf("setup build module: %w", err)
 	}
-	if err := runGoModTidy(buildDir); err != nil {
-		return "", "", fmt.Errorf("go mod tidy: %w", err)
+	if goModChanged {
+		if err := runGoModTidy(buildDir); err != nil {
+			return "", "", fmt.Errorf("go mod tidy: %w", err)
+		}
 	}
 
 	goPath, err := resolveGoPath()
