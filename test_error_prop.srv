@@ -1,0 +1,23 @@
+fn divide(a: int, b: int) -> int | error {
+    if b == 0 {
+        return "division by zero"
+    }
+    return a / b
+}
+
+fn safeDiv(a: int, b: int) -> int | error {
+    let val = divide(a, b)?
+    return val
+}
+
+test "error propagation success" {
+    let result, err = safeDiv(10, 2)
+    assert result == 5
+    assert err == nil
+}
+
+test "error propagation failure" {
+    let result, err = safeDiv(10, 0)
+    assert result == nil
+    assert err == "division by zero"
+}

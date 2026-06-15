@@ -26,6 +26,16 @@ type Codegen struct {
 	goMultiReturnFuncs  map[string]bool   // "pkgname.FuncName" -> true (multi-return)
 	beforeEachBlocks    []string          // collected beforeEach bodies for tests
 	afterEachBlocks     []string          // collected afterEach bodies for tests
+
+	currentFn           *FnDecl
+	currentRoute        *RouteStmt
+	currentMiddleware   *MiddlewareDecl
+	currentWs           *WsStmt
+	currentTool         *ToolStmt
+	currentMigration    *MigrationStmt
+	currentEvery        *EveryStmt
+	currentCron         *CronStmt
+	currentSubscribe    *SubscribeStmt
 }
 
 func NewCodegen(program *Program) *Codegen {

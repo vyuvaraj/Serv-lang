@@ -370,6 +370,10 @@ func (c *Codegen) genMatchStmt(s *MatchStmt) (string, error) {
 }
 
 func (c *Codegen) genRouteStmt(s *RouteStmt) (string, error) {
+	oldRoute := c.currentRoute
+	c.currentRoute = s
+	defer func() { c.currentRoute = oldRoute }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -386,6 +390,10 @@ func (c *Codegen) genRouteStmt(s *RouteStmt) (string, error) {
 }
 
 func (c *Codegen) genMiddlewareDecl(s *MiddlewareDecl) (string, error) {
+	oldMw := c.currentMiddleware
+	c.currentMiddleware = s
+	defer func() { c.currentMiddleware = oldMw }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -408,6 +416,10 @@ func (c *Codegen) genWsStmt(s *WsStmt) (string, error) {
 	c.varTypes[s.Param] = "*runtime.WSConn"
 	c.inFunction = true
 
+	oldWs := c.currentWs
+	c.currentWs = s
+	defer func() { c.currentWs = oldWs }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -421,6 +433,10 @@ func (c *Codegen) genWsStmt(s *WsStmt) (string, error) {
 }
 
 func (c *Codegen) genToolStmt(s *ToolStmt) (string, error) {
+	oldTool := c.currentTool
+	c.currentTool = s
+	defer func() { c.currentTool = oldTool }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -429,6 +445,10 @@ func (c *Codegen) genToolStmt(s *ToolStmt) (string, error) {
 }
 
 func (c *Codegen) genMigrationStmt(s *MigrationStmt) (string, error) {
+	oldMigration := c.currentMigration
+	c.currentMigration = s
+	defer func() { c.currentMigration = oldMigration }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -441,6 +461,11 @@ func (c *Codegen) genEveryStmt(s *EveryStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	oldEvery := c.currentEvery
+	c.currentEvery = s
+	defer func() { c.currentEvery = oldEvery }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -454,6 +479,11 @@ func (c *Codegen) genCronStmt(s *CronStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	oldCron := c.currentCron
+	c.currentCron = s
+	defer func() { c.currentCron = oldCron }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -467,6 +497,11 @@ func (c *Codegen) genSubscribeStmt(s *SubscribeStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	oldSub := c.currentSubscribe
+	c.currentSubscribe = s
+	defer func() { c.currentSubscribe = oldSub }()
+
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -690,11 +725,41 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			return "", err
 		}
 		c.declaredVars[s.Name] = true
-		// Generate: _val, _err := TryCallWithError(fn); if _err != nil { return nil, _err }; x = _val
 		tmpVal := fmt.Sprintf("_prop_val_%d", errProp.Token.Line)
 		tmpErr := fmt.Sprintf("_prop_err_%d", errProp.Token.Line)
-		return fmt.Sprintf("%s, %s := runtime.TryCallWithError(func() interface{} { return %s })\nif %s != nil {\n\treturn nil\n}\nvar %s interface{} = %s\n_ = %s\n",
-			tmpVal, tmpErr, innerVal, tmpErr, s.Name, tmpVal, s.Name), nil
+
+		var retStmt string
+		if c.currentFn != nil {
+			retType := c.currentFn.ReturnType
+			if strings.Contains(retType, "|") {
+				parts := strings.Split(retType, "|")
+				hasError := false
+				for _, p := range parts {
+					if strings.TrimSpace(p) == "error" {
+						hasError = true
+						break
+					}
+				}
+				if hasError {
+					retStmt = fmt.Sprintf("return [2]interface{}{nil, %s}", tmpErr)
+				} else {
+					retStmt = "return nil"
+				}
+			} else if retType == "error" {
+				retStmt = fmt.Sprintf("return [2]interface{}{nil, %s}", tmpErr)
+			} else if strings.HasSuffix(retType, "?") {
+				retStmt = "return nil"
+			} else {
+				retStmt = "return nil"
+			}
+		} else if c.currentRoute != nil || c.currentMiddleware != nil || c.currentTool != nil {
+			retStmt = fmt.Sprintf("return map[string]interface{}{\"error\": %s}", tmpErr)
+		} else {
+			retStmt = "return"
+		}
+
+		return fmt.Sprintf("%s, %s := runtime.TryCallWithError(func() interface{} { return %s })\nif %s != nil {\n\t%s\n}\nvar %s interface{} = %s\n_ = %s\n",
+			tmpVal, tmpErr, innerVal, tmpErr, retStmt, s.Name, tmpVal, s.Name), nil
 	}
 
 	val, err := c.genExpression(s.Value)
@@ -809,11 +874,69 @@ func (c *Codegen) genReturnStmt(s *ReturnStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	if c.currentFn != nil && strings.Contains(c.currentFn.ReturnType, "|") {
+		parts := strings.Split(c.currentFn.ReturnType, "|")
+		hasError := false
+		var successTypes []string
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "error" {
+				hasError = true
+			} else {
+				successTypes = append(successTypes, part)
+			}
+		}
+
+		if hasError {
+			valType := c.getExpressionType(s.Value)
+			isSuccess := false
+			for _, st := range successTypes {
+				if valType == toGoType(st) || valType == st {
+					isSuccess = true
+					break
+				}
+			}
+
+			isStringLit := false
+			if _, ok := s.Value.(*StringLiteral); ok {
+				isStringLit = true
+			}
+			if _, ok := s.Value.(*FStringLiteral); ok {
+				isStringLit = true
+			}
+
+			isError := false
+			if isStringLit {
+				hasStringSuccess := false
+				for _, st := range successTypes {
+					if strings.TrimSpace(st) == "string" {
+						hasStringSuccess = true
+						break
+					}
+				}
+				if !hasStringSuccess {
+					isError = true
+				}
+			} else if valType == "error" || (valType != "interface{}" && !isSuccess) {
+				isError = true
+			}
+
+			if isError {
+				return fmt.Sprintf("return [2]interface{}{nil, %s}\n", val), nil
+			}
+		}
+	}
+
 	return fmt.Sprintf("return %s\n", val), nil
 }
 
 func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 	c.inFunction = true
+	oldFn := c.currentFn
+	c.currentFn = s
+	defer func() { c.currentFn = oldFn }()
+
 	oldConcurrent := c.inConcurrentContext
 	c.inConcurrentContext = hasConcurrency(s.Body)
 
