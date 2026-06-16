@@ -40,3 +40,8 @@ export fn deleteBucket(bucket) {
 export fn setBucketVersioning(bucket, status) {
     return s3.setBucketVersioning(bucket, status)
 }
+
+export fn transform(bucket, inputKey, stages, outputKey, saveTrace) {
+    return s3.transform(bucket, inputKey, stages, outputKey, saveTrace)
+}
+

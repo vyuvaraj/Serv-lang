@@ -184,6 +184,8 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.S3DeleteBucket", nil
 			case "setBucketVersioning":
 				return "runtime.S3SetBucketVersioning", nil
+			case "transform":
+				return "runtime.S3Transform", nil
 			}
 		}
 		if objStr == "wasm" {

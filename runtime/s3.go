@@ -10,8 +10,12 @@ import (
 	"time"
 	"fmt"
 	"encoding/json"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/smithy-go/middleware"
@@ -21,11 +25,17 @@ import (
 )
 
 var (
-	defaultS3Client *s3.Client
+	defaultS3Client  *s3.Client
+	defaultEndpoint  string
+	defaultAccessKey string
+	defaultSecretKey string
 )
 
 type S3Client struct {
-	client *s3.Client
+	client    *s3.Client
+	endpoint  string
+	accessKey string
+	secretKey string
 }
 
 func asString(v interface{}) string {
@@ -57,8 +67,17 @@ func S3Init(endpointVal, accessKeyVal, secretKeyVal interface{}) interface{} {
 	})
 
 	defaultS3Client = cli
-	return &S3Client{client: cli}
+	defaultEndpoint = endpoint
+	defaultAccessKey = accessKey
+	defaultSecretKey = secretKey
+	return &S3Client{
+		client:    cli,
+		endpoint:  endpoint,
+		accessKey: accessKey,
+		secretKey: secretKey,
+	}
 }
+
 
 // Global Client Functions
 func S3Put(bucketVal, keyVal, data interface{}) interface{} {
@@ -124,6 +143,13 @@ func S3SetBucketVersioning(bucketVal, statusVal interface{}) interface{} {
 	return s3SetBucketVersioningHelper(defaultS3Client, asString(bucketVal), asString(statusVal))
 }
 
+func S3Transform(bucketVal, inputVal, stagesVal, outputKeyVal, saveTraceVal interface{}) interface{} {
+	if defaultS3Client == nil {
+		return [2]interface{}{nil, "S3 client is not initialized. Call s3.init(...) first."}
+	}
+	return s3TransformHelper(defaultEndpoint, defaultAccessKey, defaultSecretKey, asString(bucketVal), asString(inputVal), stagesVal, asString(outputKeyVal), saveTraceVal)
+}
+
 // Client Object Methods
 func (c *S3Client) Put(bucketVal, keyVal, data interface{}) interface{} {
 	return s3PutHelper(c.client, asString(bucketVal), asString(keyVal), data)
@@ -159,6 +185,10 @@ func (c *S3Client) DeleteBucket(bucketVal interface{}) interface{} {
 
 func (c *S3Client) SetBucketVersioning(bucketVal, statusVal interface{}) interface{} {
 	return s3SetBucketVersioningHelper(c.client, asString(bucketVal), asString(statusVal))
+}
+
+func (c *S3Client) Transform(bucketVal, inputVal, stagesVal, outputKeyVal, saveTraceVal interface{}) interface{} {
+	return s3TransformHelper(c.endpoint, c.accessKey, c.secretKey, asString(bucketVal), asString(inputVal), stagesVal, asString(outputKeyVal), saveTraceVal)
 }
 
 // Helper middleware for custom query parameters
@@ -348,5 +378,137 @@ func s3SetBucketVersioningHelper(cli *s3.Client, bucket, status string) interfac
 		return [2]interface{}{nil, err.Error()}
 	}
 	return "ok"
+}
+
+type PipelineStageSpec struct {
+	Wasm       string `json:"wasm"`
+	MemLimitMB int    `json:"mem_limit_mb,omitempty"`
+	TimeoutSec int    `json:"timeout_sec,omitempty"`
+}
+
+type PipelineRequest struct {
+	Input     string              `json:"input"`
+	Stages    []PipelineStageSpec `json:"stages"`
+	OutputKey string              `json:"output_key,omitempty"`
+	SaveTrace bool                `json:"save_trace,omitempty"`
+}
+
+func getInt(v interface{}) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case int64:
+		return int(val)
+	case float64:
+		return int(val)
+	case string:
+		var i int
+		fmt.Sscan(val, &i)
+		return i
+	default:
+		return 0
+	}
+}
+
+func s3TransformHelper(endpoint, accessKey, secretKey, bucket, inputKey string, stagesVal interface{}, outputKey string, saveTraceVal interface{}) interface{} {
+	var stages []PipelineStageSpec
+	
+	switch v := stagesVal.(type) {
+	case []interface{}:
+		for _, item := range v {
+			switch specVal := item.(type) {
+			case string:
+				stages = append(stages, PipelineStageSpec{Wasm: specVal})
+			case map[string]interface{}:
+				spec := PipelineStageSpec{}
+				if w, ok := specVal["wasm"].(string); ok {
+					spec.Wasm = w
+				}
+				spec.MemLimitMB = getInt(specVal["mem_limit_mb"])
+				spec.TimeoutSec = getInt(specVal["timeout_sec"])
+				stages = append(stages, spec)
+			case map[interface{}]interface{}:
+				spec := PipelineStageSpec{}
+				for k, val := range specVal {
+					kStr := fmt.Sprint(k)
+					if kStr == "wasm" {
+						spec.Wasm = asString(val)
+					} else if kStr == "mem_limit_mb" {
+						spec.MemLimitMB = getInt(val)
+					} else if kStr == "timeout_sec" {
+						spec.TimeoutSec = getInt(val)
+					}
+				}
+				stages = append(stages, spec)
+			}
+		}
+	case string:
+		for _, s := range strings.Split(v, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				stages = append(stages, PipelineStageSpec{Wasm: s})
+			}
+		}
+	}
+
+	saveTrace := false
+	if st, ok := saveTraceVal.(bool); ok {
+		saveTrace = st
+	}
+
+	reqBody := PipelineRequest{
+		Input:     inputKey,
+		Stages:    stages,
+		OutputKey: outputKey,
+		SaveTrace: saveTrace,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+
+	url := fmt.Sprintf("%s/%s?pipeline=true", strings.TrimSuffix(endpoint, "/"), bucket)
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(jsonBytes))
+	if err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	h := sha256.New()
+	h.Write(jsonBytes)
+	payloadHash := hex.EncodeToString(h.Sum(nil))
+
+	signer := v4.NewSigner()
+	creds := aws.Credentials{
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretKey,
+	}
+	err = signer.SignHTTP(context.Background(), creds, req, payloadHash, "s3", "us-east-1", time.Now())
+	if err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+
+	if resp.StatusCode >= 300 {
+		return [2]interface{}{nil, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBytes))}
+	}
+
+	var res interface{}
+	if err := json.Unmarshal(respBytes, &res); err != nil {
+		return [2]interface{}{nil, err.Error()}
+	}
+
+	return res
 }
 
