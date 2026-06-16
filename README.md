@@ -7,37 +7,34 @@ Serv is a modern, high-level DSL (Domain-Specific Language) designed specificall
 ## Table of Contents
 - [Key Features](#key-features)
 - [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Building the Compiler](#building-the-compiler)
+- [Editor Support](#editor-support)
 - [CLI Commands Reference](#cli-commands-reference)
 - [Language Syntax Guide](#language-syntax-guide)
-  - [Core Architecture Statements](#core-architecture-statements)
-  - [Schedulers (`every` & `cron`)](#schedulers-every--cron)
-  - [Web Servers & HTTP APIs (`route`)](#web-servers--http-apis-route)
-  - [Pub/Sub Broker (`publish` & `subscribe`)](#pubsub-broker-publish--subscribe)
-  - [Concurrency & Worker Pools (`spawn`)](#concurrency--worker-pools-spawn)
-  - [Database Operations (`db.query`)](#database-operations-dbquery)
-  - [Cache Operations (`cache.set` & `cache.get`)](#cache-operations-cacheset--cacheget)
-  - [S3 & ServStore Client Operations (`s3`)](#s3--servstore-client-operations-s3)
-  - [Python Interoperability (`extern fn`)](#python-interoperability-extern-fn)
-  - [Built-in Functions & Utilities](#built-in-functions--utilities)
+- [Web Playground](#web-playground)
+- [Standard Library](#standard-library)
+- [Package Management](#package-management)
 - [Testing Support](#testing-support)
 - [Compilation & Deployment](#compilation--deployment)
+- [Documentation](#documentation)
 
 ---
 
 ## Key Features
 
-- **Optional Static Typing & Compiler Optimizations**: Declare static types (`int`, `string`, `bool`) to generate native Go code, bypass interface reflection overhead, and execute mathematical/logic operations directly on Go primitives.
-- **High-Performance Pub/Sub**: Channel-decoupled event queue with a pool of 20 concurrent background workers for low latency and zero blockages.
-- **Declarative Background Workflows**: Native syntax for defining periodic intervals and cron schedules.
-- **Built-in HTTP & Pub/Sub Routing**: Directly declare endpoints, routing, and message queue subscriptions.
-- **Multi-Database Support**: Out-of-the-box integration with SQLite, PostgreSQL, Oracle, and MongoDB.
-- **Embedded Cache**: Native in-memory key-value caching.
-- **Simple Concurrency**: Spawn asynchronous threads or rate-limited worker pools with a single keyword.
-- **Python Extensibility**: Seamless bindings to execute Python scripts directly from Serv code.
-- **Modern Syntax**: Includes string interpolation, pattern matching (`match`), and exception handling (`try-catch`).
-- **First-class Testing**: Write and run unit tests natively using the test framework.
+- **Declarative Infrastructure**: Routes, schedulers, pub/sub, databases, caches, and WebSockets as language keywords — not library calls.
+- **Compiles to Native Binaries**: Go code generation → single binary deployment. No runtime dependencies.
+- **Optional Static Typing**: Gradual type system with `int`, `float`, `string`, `bool`, optional types (`T?`), union types (`T | error`), and generics with constraints.
+- **48 Standard Library Modules**: Auth, JWT, retry, circuit breaker, pagination, CORS, rate limiting, validation, and more — written in Serv itself.
+- **Built-in Test Framework**: `test "name" { assert expr }` blocks with structured assertion messages.
+- **Multiple Database Backends**: SQLite, PostgreSQL, Oracle, MongoDB — same `db.query()` API.
+- **Multiple Broker Backends**: Kafka, NATS, RabbitMQ, MQTT — same `subscribe`/`publish` syntax.
+- **Concurrency Primitives**: `spawn`, `async`/`await`, channels, worker pools.
+- **Middleware & Auth**: Declarative middleware with `use [auth, logging]` on routes.
+- **Python Interop**: Call Python scripts via `extern fn` bindings.
+- **Go Package FFI**: Import any Go package with `serv add <package>` and auto-generated declarations.
+- **VS Code Extension**: Full LSP with diagnostics, autocomplete, hover, go-to-definition, and 30+ snippets.
+- **OpenTelemetry & Prometheus**: Built-in tracing and metrics export.
+- **Docker Support**: `serv dockerize` generates production-ready Dockerfiles.
 
 ---
 
@@ -69,40 +66,39 @@ Add the binary to your system PATH for global access.
 
 ---
 
+## Editor Support
+
+### VS Code Extension
+Install **Serv Language Support** from the VS Code Marketplace (or from `.vsix` in the repo):
+- Syntax highlighting for `.srv` files
+- Real-time diagnostics (type errors, unused variables, missing returns)
+- Autocomplete and hover information
+- Go-to-definition across files
+- 30+ code snippets (`route`, `fn`, `struct`, `test`, `every`, `subscribe`, etc.)
+- Commands: Run (`Ctrl+Shift+R`), Build (`Ctrl+Shift+B`), Test (`Ctrl+Shift+T`)
+- Format on save
+
+---
+
 ## CLI Commands Reference
 
-Serv provides a comprehensive CLI for compilation, execution, testing, and deployment:
-
-### 1. Compile to Native Binary
-Compiles the `.srv` file, generates a native executable, and deletes intermediate builds.
-```bash
-serv build <file.srv> [-o <output_binary>]
-```
-*Example:* `serv build main.srv -o app_service.exe`
-
-### 2. Run Immediately
-Compiles and starts the service in a single command.
-```bash
-serv run <file.srv>
-```
-
-### 3. Run in Watch Mode (Hot-Reload)
-Starts the service and monitors the workspace for file changes. If any `.srv` or `.py` file is modified, the compiler automatically rebuilds and restarts the service.
-```bash
-serv run <file.srv> --watch
-```
-
-### 4. Run Unit Tests
-Locates all `test` blocks in the Serv file, generates a temporary test suite, and executes tests with real-time feedback.
-```bash
-serv test <file.srv>
-```
-
-### 5. Generate Dockerfile
-Generates a optimized multi-stage `Dockerfile` suitable for containerizing your service.
-```bash
-serv dockerize <file.srv>
-```
+| Command | Description |
+|---------|-------------|
+| `serv build <file.srv> [-o output]` | Compile to native binary |
+| `serv run <file.srv> [--watch]` | Compile and run (with optional hot-reload) |
+| `serv test <file.srv> [--cover] [--filter name]` | Run test blocks |
+| `serv lint <file.srv>` | Check syntax and static analysis |
+| `serv fmt <file.srv> [--check]` | Format code (4-space indent) |
+| `serv repl` | Interactive shell |
+| `serv add <go-package>` | Generate `.srv.d` declaration for a Go package |
+| `serv packages` | List installed package declarations |
+| `serv remove <package>` | Remove a package declaration |
+| `serv install <name>` | Install a community package |
+| `serv publish <dir>` | Publish a package to the registry |
+| `serv init [name]` | Create a new Serv project |
+| `serv dockerize <file.srv>` | Generate a production Dockerfile |
+| `serv debug <file.srv>` | Debug with Delve |
+| `serv audit` | Audit Go dependencies for vulnerabilities |
 
 ---
 
@@ -363,53 +359,62 @@ try {
 
 ---
 
-## Web Playground & Sandbox (Phase 9.3)
+## Web Playground
 
-Serv provides an interactive Web Playground where you can write, format, compile, and execute Serv scripts in your web browser.
+Serv includes an interactive Web Playground for trying the language in-browser.
 
-### Key Features
-- **In-Browser WASM Compiler**: Syntax analysis, warning diagnostics, and formatting (`serv fmt`) run entirely client-side using WebAssembly.
-- **Backend Sandbox Runner**: Compiles the code to a native binary in a sandboxed directory and executes it.
-- **Auto-Termination**: Long-running background services (HTTP servers, cron schedulers) are dynamically stopped after 1.5 seconds to capture initial output logs and release OS socket handles instantly.
+- **WASM Compiler**: Syntax analysis and formatting run client-side
+- **Sandbox Runner**: Compiles and executes code server-side with auto-termination
 
-### Running Locally
-To launch the Web Playground locally, run:
 ```bash
-# Build the playground server binary
 go build -o web_playground/server/server.exe web_playground/server/main.go
-
-# Start the server (default port: 8080)
 ./web_playground/server/server.exe
+# Open http://localhost:8080
 ```
-Then navigate to `http://localhost:8080` in your web browser.
 
 ---
 
-## Community Package Registry (Phase 9.5)
+## Standard Library
 
-Serv includes a built-in package distribution tool to publish modules to the registry and install third-party dependencies locally.
+Serv ships with 48 importable modules written in Serv itself:
 
-### 1. Publishing a Package
-Bundle a directory containing `.srv` files and upload it to the registry:
+| Category | Modules |
+|----------|---------|
+| **Auth & Security** | auth, jwt, crypto, cors, sanitize, ip |
+| **Resilience** | retry, circuit_breaker, timeout, semaphore, dlq |
+| **HTTP** | http_client, response, middleware, ratelimit, webhook |
+| **Data** | validation, pagination, pagination_cursor, csv, diff, sort, collections |
+| **Config & Env** | config, env, feature_flags |
+| **Observability** | tracing, metrics, health, audit |
+| **Utilities** | strings_util, datetime, math, url, base64, mask, idempotency, batch, queue |
+| **Infra** | s3, cache_patterns, tenant, scheduler, job, graceful |
+
+Import with:
+```serv
+import { hashPassword, verifyPassword } from "stdlib/crypto"
+import { ok, notFound, created } from "stdlib/response"
+import { retry } from "stdlib/retry"
+```
+
+---
+
+## Package Management
+
+### Publishing
 ```bash
 serv publish <package-dir>
 ```
 
-### 2. Installing a Package
-Download a package from the registry and install it into a local `packages/` directory:
+### Installing
 ```bash
 serv install <package-name>
 ```
 
-### 3. Importing Packages
-Import installed modules in your code using non-relative imports:
+### Using
 ```serv
 import { Helper, helperFunc } from "mypkg"
-
-let instance = Helper { val: 42 }
-let msg = helperFunc()
 ```
-Imports will automatically resolve to `packages/mypkg/index.srv` or `packages/mypkg/main.srv` with strict visibility checks. Only declarations marked with `export` are accessible outside the module.
+Resolves to `packages/mypkg/index.srv` or `packages/mypkg/main.srv`. Only `export`-marked declarations are accessible.
 
 ---
 
@@ -464,3 +469,29 @@ Inside `.build`:
 3. `serv_test.go`: Aggregates the `test` blocks translated to Go's native testing framework.
 
 The output binary compiles out all debug logs and features a fast, low-overhead native runtime engine.
+
+---
+
+## Documentation
+
+- [Language Reference](docs/language-reference.md) — Full syntax and type system
+- [Getting Started](docs/getting-started.md) — First project walkthrough
+- [Standard Library](docs/stdlib.md) — All 48 modules documented
+- [Built-in Functions](docs/builtins.md) — `log`, `db`, `cache`, `http`, `json`, `metric`
+- [CLI Reference](docs/cli.md) — All commands and flags
+- [Deployment Guide](docs/deployment.md) — Docker, TLS, observability
+- [Examples](examples/) — 42 working examples covering all features
+
+---
+
+## License
+
+MIT
+
+---
+
+## Links
+
+- **GitHub**: [github.com/vyuvaraj/Serv-lang](https://github.com/vyuvaraj/Serv-lang)
+- **VS Code Extension**: Search "Serv Language Support" in Extensions
+- **Issues**: [github.com/vyuvaraj/Serv-lang/issues](https://github.com/vyuvaraj/Serv-lang/issues)
