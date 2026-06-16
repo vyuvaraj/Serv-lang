@@ -1289,3 +1289,52 @@ func (c *Codegen) genActorDecl(s *ActorDecl) (string, error) {
 
 	return out.String(), nil
 }
+
+// genWorkflowDecl compiles a workflow block into:
+//  1. A Go function func workflow_<Name>(ctx *runtime.WorkflowCtx, param interface{}) interface{}
+//  2. An init() registration call: runtime.RegisterWorkflow("Name", workflow_<Name>)
+func (c *Codegen) genWorkflowDecl(s *WorkflowDecl) (string, error) {
+	oldInFunction := c.inFunction
+	c.inFunction = true
+	oldDeclared := c.declaredVars
+	c.declaredVars = make(map[string]bool)
+	for k, v := range oldDeclared {
+		c.declaredVars[k] = v
+	}
+	// The param name is available as a local variable.
+	if s.Param != "" {
+		c.declaredVars[s.Param] = true
+	}
+	// The workflow context is available as _wfCtx.
+	c.declaredVars["_wfCtx"] = true
+
+	// Mark that we are inside a workflow so await expressions use _wfCtx.Step().
+	c.currentWorkflow = s
+	bodyStr, err := c.genBlockStatement(s.Body)
+	c.currentWorkflow = nil
+	if err != nil {
+		return "", err
+	}
+
+	c.declaredVars = oldDeclared
+	c.inFunction = oldInFunction
+
+	paramDecl := "_ interface{}"
+	if s.Param != "" {
+		paramDecl = s.Param + " interface{}"
+	}
+
+	fnName := "workflow_" + s.Name
+
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf(
+		"func %s(_wfCtx *runtime.WorkflowCtx, %s) interface{} %s\n\n",
+		fnName, paramDecl, bodyStr,
+	))
+	// Emit an init() that registers this workflow with the runtime.
+	out.WriteString(fmt.Sprintf(
+		"func init() { runtime.RegisterWorkflow(%q, func(ctx *runtime.WorkflowCtx, p interface{}) interface{} { return %s(ctx, p) }) }\n\n",
+		s.Name, fnName,
+	))
+	return out.String(), nil
+}

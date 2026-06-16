@@ -1,0 +1,18 @@
+fn processPayment(order) {
+	return "payment-ok"
+}
+
+fn arrangeShipment(order) {
+	return "shipment-arranged"
+}
+
+workflow OrderProcessing(order) {
+	let payment = await processPayment(order)
+	let shipment = await arrangeShipment(order)
+	return shipment
+}
+
+test "workflow codegen compiles and runs" {
+	let id = workflow.start("OrderProcessing", "order-001")
+	assert id != nil
+}

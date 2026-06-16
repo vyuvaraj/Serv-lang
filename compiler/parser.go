@@ -77,6 +77,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(TOKEN_FSTRING, p.parseFStringLiteral)
 	p.registerPrefix(TOKEN_CACHE, p.parseCacheIdentifier)
+	p.registerPrefix(TOKEN_WORKFLOW, p.parseWorkflowIdentifier)
 	p.registerPrefix(TOKEN_ASSERT, p.parseAssertExpression)
 	p.registerPrefix(TOKEN_TRUE, p.parseBooleanLiteral)
 	p.registerPrefix(TOKEN_FALSE, p.parseBooleanLiteral)
@@ -219,6 +220,12 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseStructDeclaration()
 	case TOKEN_ACTOR:
 		return p.parseActorDeclaration()
+	case TOKEN_WORKFLOW:
+		if p.peekToken.Type == TOKEN_DOT {
+			// workflow.start(...) — used as an expression, not a declaration
+			return p.parseExpressionStatement()
+		}
+		return p.parseWorkflowDeclaration()
 	case TOKEN_INTERFACE:
 		return p.parseInterfaceDeclaration()
 	case TOKEN_MIDDLEWARE:

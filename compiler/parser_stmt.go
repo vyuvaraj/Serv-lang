@@ -307,3 +307,38 @@ func (p *Parser) parseActorDeclaration() Statement {
 	stmt.Body = p.parseBlockStatement()
 	return stmt
 }
+
+func (p *Parser) parseWorkflowDeclaration() Statement {
+	stmt := &WorkflowDecl{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+
+	if !p.expectPeek(TOKEN_LPAREN) {
+		return nil
+	}
+
+	if p.peekToken.Type != TOKEN_RPAREN {
+		p.nextToken()
+		stmt.Param = p.curToken.Literal
+		if p.peekToken.Type == TOKEN_COLON {
+			p.nextToken() // skip ':'
+			p.nextToken() // skip type (or use it if needed)
+			p.parseTypeAnnotation()
+		}
+	}
+
+	if !p.expectPeek(TOKEN_RPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}
+

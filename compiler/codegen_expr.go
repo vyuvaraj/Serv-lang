@@ -324,6 +324,23 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 		if memExpr, ok := e.Function.(*MemberExpr); ok {
 			objStr, err := c.genExpression(memExpr.Object)
+			// workflow.start("Name", param) — early intercept before any member resolution
+			if err == nil && objStr == "workflow" && memExpr.Field == "start" {
+				var args []string
+				for _, arg := range e.Arguments {
+					argStr, argErr := c.genExpression(arg)
+					if argErr != nil {
+						return "", argErr
+					}
+					args = append(args, argStr)
+				}
+				if len(args) == 1 {
+					return fmt.Sprintf("runtime.StartWorkflow(%s, nil)", args[0]), nil
+				} else if len(args) >= 2 {
+					return fmt.Sprintf("runtime.StartWorkflow(%s, %s)", args[0], args[1]), nil
+				}
+				return "runtime.StartWorkflow(nil, nil)", nil
+			}
 			if err == nil && objStr == "env" && memExpr.Field == "secret" {
 				var args []string
 				for _, arg := range e.Arguments {
@@ -614,6 +631,12 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		}
 		if funcStr == "ask" && len(args) == 2 {
 			return fmt.Sprintf("runtime.ActorAsk(%s, %s)", args[0], args[1]), nil
+		}
+		if funcStr == "workflow.start" && len(args) >= 1 {
+			if len(args) == 1 {
+				return fmt.Sprintf("runtime.StartWorkflow(%s, nil)", args[0]), nil
+			}
+			return fmt.Sprintf("runtime.StartWorkflow(%s, %s)", args[0], args[1]), nil
 		}
 
 		// Special case: time.now()
@@ -1027,10 +1050,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				}
 			}
 		}
-		// Single await: await expr — run in goroutine, wait for result
+		// Single await: await expr — run in goroutine, wait for result.
+		// Inside a workflow, wrap in _wfCtx.Step() for replay-safe persistence.
 		valStr, err := c.genExpression(e.Value)
 		if err != nil {
 			return "", err
+		}
+		if c.currentWorkflow != nil {
+			return fmt.Sprintf("_wfCtx.Step(func() interface{} { return %s })", valStr), nil
 		}
 		return fmt.Sprintf("runtime.Await(func() interface{} { return %s })", valStr), nil
 

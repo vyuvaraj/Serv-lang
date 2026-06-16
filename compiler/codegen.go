@@ -39,6 +39,7 @@ type Codegen struct {
 	currentActor        *ActorDecl
 	actorFields         map[string]bool
 	actors              map[string]*ActorDecl
+	currentWorkflow     *WorkflowDecl
 	dbTables            map[string]DBTable
 }
 
@@ -420,6 +421,8 @@ case *StructDecl:
 return c.genStructDecl(s)
 case *ActorDecl:
 return c.genActorDecl(s)
+case *WorkflowDecl:
+return c.genWorkflowDecl(s)
 case *MethodDecl:
 return c.genMethodDecl(s)
 case *InterfaceDecl:

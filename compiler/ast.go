@@ -1051,3 +1051,17 @@ func (a *ActorDecl) String() string {
 	}
 	return "actor " + a.Name + "(" + strings.Join(params, ", ") + ") " + a.Body.String() + "\n"
 }
+
+// Workflow Declaration: workflow Name(param) { body }
+type WorkflowDecl struct {
+	Token Token
+	Name  string
+	Param string
+	Body  *BlockStmt
+}
+
+func (w *WorkflowDecl) statementNode()       {}
+func (w *WorkflowDecl) TokenLiteral() string { return w.Token.Literal }
+func (w *WorkflowDecl) String() string {
+	return "workflow " + w.Name + "(" + w.Param + ") " + w.Body.String() + "\n"
+}

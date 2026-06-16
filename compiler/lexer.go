@@ -61,6 +61,7 @@ const (
 	TOKEN_RATE_LIMIT TokenType = "RATE_LIMIT"
 	TOKEN_MOCK       TokenType = "MOCK"
 	TOKEN_ACTOR      TokenType = "ACTOR"
+	TOKEN_WORKFLOW   TokenType = "WORKFLOW"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -553,6 +554,7 @@ var keywords = map[string]TokenType{
 	"rate_limit": TOKEN_RATE_LIMIT,
 	"mock":       TOKEN_MOCK,
 	"actor":      TOKEN_ACTOR,
+	"workflow":   TOKEN_WORKFLOW,
 }
 
 func lookupIdent(ident string) TokenType {
