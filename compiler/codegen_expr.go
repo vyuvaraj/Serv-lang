@@ -49,10 +49,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 
-		if e.Field == "send" || e.Field == "Send" {
+		isBuiltinNamespace := (objStr == "channel" || objStr == "log" || objStr == "db" || objStr == "s3" || objStr == "wasm" || objStr == "cache" || objStr == "mcp" || objStr == "atomic" || objStr == "registry" || objStr == "schedule" || objStr == "time" || objStr == "metric" || objStr == "http" || objStr == "json")
+		if !isBuiltinNamespace && (e.Field == "send" || e.Field == "Send") {
 			return fmt.Sprintf("func(msg interface{}) { runtime.ActorSend(%s, msg) }", objStr), nil
 		}
-		if e.Field == "ask" || e.Field == "Ask" {
+		if !isBuiltinNamespace && (e.Field == "ask" || e.Field == "Ask") {
 			return fmt.Sprintf("func(msg interface{}) interface{} { return runtime.ActorAsk(%s, msg) }", objStr), nil
 		}
 
