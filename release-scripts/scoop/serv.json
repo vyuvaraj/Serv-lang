@@ -2,7 +2,7 @@
     "version": "0.1.0",
     "description": "Programming language for background services, schedulers, and APIs",
     "homepage": "https://github.com/vyuvaraj/Serv-lang",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "depends": "go",
     "architecture": {
         "64bit": {

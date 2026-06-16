@@ -486,7 +486,7 @@ The output binary compiles out all debug logs and features a fast, low-overhead 
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE)
 
 ---
 
