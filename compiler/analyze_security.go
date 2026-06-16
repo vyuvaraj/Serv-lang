@@ -1,5 +1,9 @@
 package compiler
 
+import (
+	"reflect"
+)
+
 // analyzeSQLInjection scans the program's statements to find db.query(...) calls
 // that use string concatenation or interpolation, suggesting SQL injection risks.
 func analyzeSQLInjection(program *Program) []Diagnostic {
@@ -10,9 +14,21 @@ func analyzeSQLInjection(program *Program) []Diagnostic {
 	return diags
 }
 
+func isNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
+}
+
 func checkStmtSQLInjection(stmt Statement) []Diagnostic {
 	var diags []Diagnostic
-	if stmt == nil {
+	if isNil(stmt) {
 		return diags
 	}
 
@@ -62,7 +78,7 @@ func checkStmtSQLInjection(stmt Statement) []Diagnostic {
 
 func checkExprSQLInjection(expr Expression) []Diagnostic {
 	var diags []Diagnostic
-	if expr == nil {
+	if isNil(expr) {
 		return diags
 	}
 
