@@ -45,12 +45,24 @@ func GetField(obj interface{}, field string) interface{} {
 	return nil
 }
 
-// Equal compares two interface{} values for equality without fmt.Sprintf allocation.
-func Equal(a, b interface{}) bool {
-	if a == nil && b == nil {
+func isNil(i interface{}) bool {
+	if i == nil {
 		return true
 	}
-	if a == nil || b == nil {
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	}
+	return false
+}
+
+// Equal compares two interface{} values for equality without fmt.Sprintf allocation.
+func Equal(a, b interface{}) bool {
+	if isNil(a) && isNil(b) {
+		return true
+	}
+	if isNil(a) || isNil(b) {
 		return false
 	}
 	switch av := a.(type) {
@@ -373,11 +385,6 @@ func IndexAccess(val interface{}, index interface{}) interface{} {
 		return nil
 	}
 	switch v := val.(type) {
-	case []interface{}:
-		idx := toInt(index)
-		if idx >= 0 && idx < len(v) {
-			return v[idx]
-		}
 	case *SafeMap:
 		return v.Get(fmt.Sprint(index))
 	case map[string]interface{}:
@@ -387,6 +394,13 @@ func IndexAccess(val interface{}, index interface{}) interface{} {
 			return val
 		}
 		return nil
+	}
+	rv := reflect.ValueOf(val)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		idx := toInt(index)
+		if idx >= 0 && idx < rv.Len() {
+			return rv.Index(idx).Interface()
+		}
 	}
 	return nil
 }

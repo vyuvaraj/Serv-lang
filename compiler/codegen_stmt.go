@@ -844,6 +844,25 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			c.declaredVars[name] = true
 		}
 		c.imports[`"fmt"`] = true
+
+		isDbQueryCall := false
+		if callExpr, ok := s.Value.(*CallExpr); ok {
+			if memExpr, ok := callExpr.Function.(*MemberExpr); ok {
+				if objMem, ok := memExpr.Object.(*MemberExpr); ok {
+					if ident, ok := objMem.Object.(*Identifier); ok && ident.Value == "db" {
+						if memExpr.Field == "find" || memExpr.Field == "findOne" {
+							isDbQueryCall = true
+						}
+					}
+				}
+			}
+		}
+
+		if isDbQueryCall {
+			return fmt.Sprintf("%s, %s := safeCall(func() interface{} { r, e := %s; return [2]interface{}{r, e} })\n_ = %s\n_ = %s\n",
+				s.Names[0], s.Names[1], val, s.Names[0], s.Names[1]), nil
+		}
+
 		return fmt.Sprintf("%s, %s := safeCall(func() interface{} { return %s })\n_ = %s\n_ = %s\n",
 			s.Names[0], s.Names[1], val, s.Names[0], s.Names[1]), nil
 	}

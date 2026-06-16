@@ -170,11 +170,21 @@ func (t *ToolStmt) String() string {
 	return "tool \"" + t.Name + "\" \"" + t.Description + "\" (" + t.Param + ") " + t.Body.String() + "\n"
 }
 
-// Migration Statement
+type DBColumn struct {
+	Name string
+	Type string
+}
+
+type DBTable struct {
+	Name    string
+	Columns []DBColumn
+}
+
 type MigrationStmt struct {
-	Token Token
-	Name  string
-	Body  *BlockStmt
+	Token  Token
+	Name   string
+	Body   *BlockStmt
+	Tables []DBTable
 }
 
 func (m *MigrationStmt) statementNode()       {}
@@ -182,6 +192,7 @@ func (m *MigrationStmt) TokenLiteral() string { return m.Token.Literal }
 func (m *MigrationStmt) String() string {
 	return "migration \"" + m.Name + "\" " + m.Body.String() + "\n"
 }
+
 
 // Every Statement
 type EveryStmt struct {

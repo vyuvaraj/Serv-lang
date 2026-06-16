@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sync"
 )
 
@@ -64,9 +65,10 @@ func ForEach(slice interface{}, callback func(interface{}) interface{}) interfac
 
 // Length returns the length of a slice or string.
 func Length(val interface{}) interface{} {
+	if val == nil {
+		return 0
+	}
 	switch v := val.(type) {
-	case []interface{}:
-		return len(v)
 	case string:
 		return len(v)
 	case *SafeMap:
@@ -75,9 +77,12 @@ func Length(val interface{}) interface{} {
 		return len(v.m)
 	case map[string]interface{}:
 		return len(v)
-	default:
-		return 0
 	}
+	rv := reflect.ValueOf(val)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		return rv.Len()
+	}
+	return 0
 }
 
 // Push appends an element to a slice and returns the new slice.

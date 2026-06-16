@@ -2,8 +2,11 @@ package compiler
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 )
+
 
 func (p *Parser) parseBrokerStatement() Statement {
 	stmt := &BrokerStmt{Token: p.curToken}
@@ -157,8 +160,120 @@ func (p *Parser) parseMigrationStatement() Statement {
 	}
 
 	stmt.Body = p.parseBlockStatement()
+
+	// Parse table schemas from db.query("CREATE TABLE ...") inside the migration body
+	stmt.Tables = []DBTable{}
+	for _, blockStmt := range stmt.Body.Statements {
+		exprStmt, ok := blockStmt.(*ExprStmt)
+		if !ok {
+			continue
+		}
+		callExpr, ok := exprStmt.Value.(*CallExpr)
+		if !ok {
+			continue
+		}
+		memberExpr, ok := callExpr.Function.(*MemberExpr)
+		if !ok {
+			continue
+		}
+		objIdent, ok := memberExpr.Object.(*Identifier)
+		if !ok || objIdent.Value != "db" || (memberExpr.Field != "query" && memberExpr.Field != "querySafe") {
+			continue
+		}
+		if len(callExpr.Arguments) < 1 {
+			continue
+		}
+		strLit, ok := callExpr.Arguments[0].(*StringLiteral)
+		if !ok {
+			continue
+		}
+
+		sql := strings.TrimSpace(strLit.Value)
+		sqlLower := strings.ToLower(sql)
+		if strings.Contains(sqlLower, "create table") {
+			// Extract Table Name and Columns
+			// regex to parse CREATE TABLE [IF NOT EXISTS] table_name ( columns )
+			reTableName := regexp.MustCompile(`(?i)create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_]+)\s*\((.*)\)`)
+			matches := reTableName.FindStringSubmatch(sql)
+			if len(matches) >= 3 {
+				tableName := matches[1]
+				colDefsStr := matches[2]
+				
+				// Basic column definition parser (handles simple column lists separated by commas, skipping nested commas e.g. DECIMAL(10,2))
+				// But sqlite/postgres migrations typically have simple types like INTEGER, TEXT, VARCHAR, REAL, BOOLEAN.
+				colDefs := splitColumns(colDefsStr)
+				
+				table := DBTable{
+					Name:    tableName,
+					Columns: []DBColumn{},
+				}
+
+				for _, colDefStr := range colDefs {
+					colDefStr = strings.TrimSpace(colDefStr)
+					if colDefStr == "" {
+						continue
+					}
+					// Check for table constraints like PRIMARY KEY (col), UNIQUE (col), FOREIGN KEY etc.
+					colDefLower := strings.ToLower(colDefStr)
+					if strings.HasPrefix(colDefLower, "primary key") || strings.HasPrefix(colDefLower, "foreign key") || strings.HasPrefix(colDefLower, "unique") || strings.HasPrefix(colDefLower, "check") || strings.HasPrefix(colDefLower, "constraint") {
+						continue
+					}
+					
+					parts := regexp.MustCompile(`\s+`).Split(colDefStr, -1)
+					if len(parts) >= 2 {
+						colName := strings.Trim(parts[0], "`\"[]")
+						colTypeRaw := strings.ToLower(parts[1])
+						
+						// Map SQL types to Serv/Go types (int, float, string, bool)
+						colType := "string"
+						if strings.Contains(colTypeRaw, "int") {
+							colType = "int"
+						} else if strings.Contains(colTypeRaw, "double") || strings.Contains(colTypeRaw, "float") || strings.Contains(colTypeRaw, "real") || strings.Contains(colTypeRaw, "numeric") || strings.Contains(colTypeRaw, "decimal") {
+							colType = "float64"
+						} else if strings.Contains(colTypeRaw, "bool") {
+							colType = "bool"
+						}
+						
+						table.Columns = append(table.Columns, DBColumn{
+							Name: colName,
+							Type: colType,
+						})
+					}
+				}
+				stmt.Tables = append(stmt.Tables, table)
+			}
+		}
+	}
+
 	return stmt
 }
+
+// splitColumns splits columns DDL by commas, ignoring commas inside parentheses like DECIMAL(10,2)
+func splitColumns(colDefsStr string) []string {
+	var cols []string
+	var current strings.Builder
+	parenDepth := 0
+	for i := 0; i < len(colDefsStr); i++ {
+		char := colDefsStr[i]
+		if char == '(' {
+			parenDepth++
+		} else if char == ')' {
+			parenDepth--
+		}
+		
+		if char == ',' && parenDepth == 0 {
+			cols = append(cols, current.String())
+			current.Reset()
+		} else {
+			current.WriteByte(char)
+		}
+	}
+	if current.Len() > 0 {
+		cols = append(cols, current.String())
+	}
+	return cols
+}
+
 
 func (p *Parser) parseEveryStatement() Statement {
 	stmt := &EveryStmt{Token: p.curToken}

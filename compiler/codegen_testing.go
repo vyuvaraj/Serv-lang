@@ -37,6 +37,10 @@ func (c *Codegen) GenerateTests() string {
 	if c.imports[`"regexp"`] {
 		out.WriteString("var _ = regexp.MustCompile\n")
 	}
+	if c.imports[`"strings"`] {
+		out.WriteString("var _ = strings.Join\n")
+	}
+
 	out.WriteString("\n")
 	for _, fn := range c.testFuncs {
 		out.WriteString(fn)

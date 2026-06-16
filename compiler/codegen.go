@@ -39,6 +39,7 @@ type Codegen struct {
 	currentActor        *ActorDecl
 	actorFields         map[string]bool
 	actors              map[string]*ActorDecl
+	dbTables            map[string]DBTable
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -58,14 +59,57 @@ func NewCodegen(program *Program) *Codegen {
 		goMultiReturnFuncs: make(map[string]bool),
 		actorFields: make(map[string]bool),
 		actors: make(map[string]*ActorDecl),
+		dbTables: make(map[string]DBTable),
 	}
 }
+
 
 func (c *Codegen) Generate() (string, error) {
 	// Run escape analysis to annotate MapLiteral nodes
 	AnalyzeMapConcurrency(c.program)
 
 	var body bytes.Buffer
+
+	// Pre-pass: collect struct type names and function return types
+	for _, stmt := range c.program.Statements {
+		switch s := stmt.(type) {
+		case *StructDecl:
+			c.structTypes[s.Name] = true
+			c.structFields[s.Name] = s.Fields
+		case *FnDecl:
+			if s.ReturnType != "" {
+				c.funcReturnTypes[s.Name] = s.ReturnType
+			}
+			if len(s.ParamTypes) > 0 {
+				c.funcParamTypes[s.Name] = s.ParamTypes
+			}
+		case *ActorDecl:
+			c.actors[s.Name] = s
+		case *MigrationStmt:
+			for _, table := range s.Tables {
+				c.dbTables[table.Name] = table
+			}
+		case *ExportStmt:
+			switch inner := s.Inner.(type) {
+			case *StructDecl:
+				c.structTypes[inner.Name] = true
+				c.structFields[inner.Name] = inner.Fields
+			case *ActorDecl:
+				c.actors[inner.Name] = inner
+			case *MigrationStmt:
+				for _, table := range inner.Tables {
+					c.dbTables[table.Name] = table
+				}
+			case *FnDecl:
+				if inner.ReturnType != "" {
+					c.funcReturnTypes[inner.Name] = inner.ReturnType
+				}
+				if len(inner.ParamTypes) > 0 {
+					c.funcParamTypes[inner.Name] = inner.ParamTypes
+				}
+			}
+		}
+	}
 
 	// Check if there are any non-test statements that would use the runtime
 	hasNonTestStmts := false
@@ -85,39 +129,10 @@ func (c *Codegen) Generate() (string, error) {
 	// fmt and runtime are always needed by helper functions and main()
 	c.imports[`"fmt"`] = true
 	c.imports[`"serv/runtime"`] = true
-
-	// Pre-pass: collect struct type names and function return types
-	for _, stmt := range c.program.Statements {
-		switch s := stmt.(type) {
-		case *StructDecl:
-			c.structTypes[s.Name] = true
-			c.structFields[s.Name] = s.Fields
-		case *FnDecl:
-			if s.ReturnType != "" {
-				c.funcReturnTypes[s.Name] = s.ReturnType
-			}
-			if len(s.ParamTypes) > 0 {
-				c.funcParamTypes[s.Name] = s.ParamTypes
-			}
-		case *ActorDecl:
-			c.actors[s.Name] = s
-		case *ExportStmt:
-			switch inner := s.Inner.(type) {
-			case *StructDecl:
-				c.structTypes[inner.Name] = true
-				c.structFields[inner.Name] = inner.Fields
-			case *ActorDecl:
-				c.actors[inner.Name] = inner
-			case *FnDecl:
-				if inner.ReturnType != "" {
-					c.funcReturnTypes[inner.Name] = inner.ReturnType
-				}
-				if len(inner.ParamTypes) > 0 {
-					c.funcParamTypes[inner.Name] = inner.ParamTypes
-				}
-			}
-		}
+	if len(c.dbTables) > 0 {
+		c.imports[`"strings"`] = true
 	}
+
 
 	// First pass: extract externs and imports to build the header
 	for _, stmt := range c.program.Statements {
@@ -148,6 +163,181 @@ func (c *Codegen) Generate() (string, error) {
 			return "", err
 		}
 		body.WriteString(gen)
+	}
+
+	// Generate Database ORM wrappers if any tables exist
+	if len(c.dbTables) > 0 {
+		var dbHelperCode strings.Builder
+		dbHelperCode.WriteString("\n// --- Database ORM Structures and Helpers ---\n")
+		
+		// Generate global db fields struct
+		dbHelperCode.WriteString("type dbClientStruct struct {\n")
+		for tableName := range c.dbTables {
+			dbHelperCode.WriteString(fmt.Sprintf("\t%s *dbTableClient_%s\n", capitalizeFirst(tableName), tableName))
+		}
+		dbHelperCode.WriteString("}\n\n")
+		dbHelperCode.WriteString("var db = &dbClientStruct{\n")
+		for tableName := range c.dbTables {
+			dbHelperCode.WriteString(fmt.Sprintf("\t%s: &dbTableClient_%s{},\n", capitalizeFirst(tableName), tableName))
+		}
+		dbHelperCode.WriteString("}\n\n")
+
+		for tableName, table := range c.dbTables {
+			// Row Struct
+			rowStructName := capitalizeFirst(tableName) + "Row"
+			dbHelperCode.WriteString(fmt.Sprintf("type %s struct {\n", rowStructName))
+			for _, col := range table.Columns {
+				goType := toGoType(col.Type)
+				dbHelperCode.WriteString(fmt.Sprintf("\t%s %s\n", capitalizeFirst(col.Name), goType))
+			}
+			dbHelperCode.WriteString("}\n\n")
+
+			// Client Struct
+			clientStructName := "dbTableClient_" + tableName
+			dbHelperCode.WriteString(fmt.Sprintf("type %s struct{}\n\n", clientStructName))
+
+			// Methods: find, findOne, insert, update, delete
+			// 1. find
+			dbHelperCode.WriteString(fmt.Sprintf(`func (c *%s) Find(filter map[string]interface{}) ([]%s, error) {
+	// Build where clause
+	query := "SELECT * FROM %s"
+	var args []interface{}
+	if len(filter) > 0 {
+		var clauses []string
+		for k, v := range filter {
+			clauses = append(clauses, k + " = ?")
+			args = append(args, v)
+		}
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	res := runtime.DBQuery(query, args...)
+	if tuple, ok := res.([2]interface{}); ok && tuple[1] != nil {
+		return nil, fmt.Errorf("%%v", tuple[1])
+	}
+	slice, ok := res.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid result format")
+	}
+	var rows []%s
+	for _, item := range slice {
+		sm, ok := item.(*runtime.SafeMap)
+		if !ok {
+			continue
+		}
+		var r %s
+`, clientStructName, rowStructName, tableName, rowStructName, rowStructName))
+
+			for _, col := range table.Columns {
+				goType := toGoType(col.Type)
+				dbHelperCode.WriteString(fmt.Sprintf("\t\tif val := sm.Get(%q); val != nil {\n", col.Name))
+				switch goType {
+				case "int":
+					dbHelperCode.WriteString(fmt.Sprintf("\t\t\tr.%s = toInt(val)\n", capitalizeFirst(col.Name)))
+				case "float64":
+					dbHelperCode.WriteString(fmt.Sprintf("\t\t\tr.%s = toFloat64(val)\n", capitalizeFirst(col.Name)))
+				case "bool":
+					dbHelperCode.WriteString(fmt.Sprintf("\t\t\tr.%s = toBool(val)\n", capitalizeFirst(col.Name)))
+				default:
+					dbHelperCode.WriteString(fmt.Sprintf("\t\t\tr.%s = toString(val)\n", capitalizeFirst(col.Name)))
+				}
+				dbHelperCode.WriteString("\t\t}\n")
+			}
+			dbHelperCode.WriteString(`		rows = append(rows, r)
+	}
+	return rows, nil
+}
+
+`)
+
+			// 2. findOne
+			dbHelperCode.WriteString(fmt.Sprintf(`func (c *%s) FindOne(filter map[string]interface{}) (*%s, error) {
+	rows, err := c.Find(filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
+`, clientStructName, rowStructName))
+
+			// 3. insert
+			var colNames []string
+			var colPlaceholders []string
+			var colValues []string
+			for _, col := range table.Columns {
+				colNames = append(colNames, col.Name)
+				colPlaceholders = append(colPlaceholders, "?")
+				colValues = append(colValues, fmt.Sprintf("row.%s", capitalizeFirst(col.Name)))
+			}
+			dbHelperCode.WriteString(fmt.Sprintf(`func (c *dbTableClient_%s) Insert(row *%s) error {
+	query := "INSERT INTO %s (%s) VALUES (%s)"
+	res := runtime.DBQuery(query, %s)
+	if tuple, ok := res.([2]interface{}); ok && tuple[1] != nil {
+		return fmt.Errorf("%%v", tuple[1])
+	}
+	return nil
+}
+
+`, tableName, rowStructName, tableName, strings.Join(colNames, ", "), strings.Join(colPlaceholders, ", "), strings.Join(colValues, ", ")))
+
+
+			// 4. update
+			dbHelperCode.WriteString(fmt.Sprintf(`func (c *%s) Update(filter map[string]interface{}, update map[string]interface{}) error {
+	if len(update) == 0 {
+		return nil
+	}
+	query := "UPDATE %s SET "
+	var args []interface{}
+	var setClauses []string
+	for k, v := range update {
+		setClauses = append(setClauses, k + " = ?")
+		args = append(args, v)
+	}
+	query += strings.Join(setClauses, ", ")
+	if len(filter) > 0 {
+		var whereClauses []string
+		for k, v := range filter {
+			whereClauses = append(whereClauses, k + " = ?")
+			args = append(args, v)
+		}
+		query += " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+	res := runtime.DBQuery(query, args...)
+	if tuple, ok := res.([2]interface{}); ok && tuple[1] != nil {
+		return fmt.Errorf("%%v", tuple[1])
+	}
+	return nil
+}
+
+`, clientStructName, tableName))
+
+			// 5. delete
+			dbHelperCode.WriteString(fmt.Sprintf(`func (c *%s) Delete(filter map[string]interface{}) error {
+	query := "DELETE FROM %s"
+	var args []interface{}
+	if len(filter) > 0 {
+		var clauses []string
+		for k, v := range filter {
+			clauses = append(clauses, k + " = ?")
+			args = append(args, v)
+		}
+		query += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	res := runtime.DBQuery(query, args...)
+	if tuple, ok := res.([2]interface{}); ok && tuple[1] != nil {
+		return fmt.Errorf("%%v", tuple[1])
+	}
+	return nil
+}
+
+`, clientStructName, tableName))
+
+
+		}
+		body.WriteString(dbHelperCode.String())
 	}
 
 	// Build final output with imports
@@ -181,6 +371,10 @@ func (c *Codegen) Generate() (string, error) {
 	if c.imports[`"regexp"`] {
 		out.WriteString("var _ = regexp.MustCompile // ensure regexp is used\n\n")
 	}
+	if c.imports[`"strings"`] {
+		out.WriteString("var _ = strings.Join // ensure strings is used\n\n")
+	}
+
 
 	// Pre-compiled regex variables
 	if len(c.regexDecls) > 0 {

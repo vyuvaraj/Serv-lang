@@ -49,7 +49,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 
-		isBuiltinNamespace := (objStr == "channel" || objStr == "log" || objStr == "db" || objStr == "s3" || objStr == "wasm" || objStr == "cache" || objStr == "mcp" || objStr == "atomic" || objStr == "registry" || objStr == "schedule" || objStr == "time" || objStr == "metric" || objStr == "http" || objStr == "json")
+		isBuiltinNamespace := (objStr == "db" || strings.HasPrefix(objStr, "db.") || strings.HasPrefix(objStr, "dbClientStruct") || objStr == "channel" || objStr == "log" || objStr == "s3" || objStr == "wasm" || objStr == "cache" || objStr == "mcp" || objStr == "atomic" || objStr == "registry" || objStr == "schedule" || objStr == "time" || objStr == "metric" || objStr == "http" || objStr == "json")
 		if !isBuiltinNamespace && (e.Field == "send" || e.Field == "Send") {
 			return fmt.Sprintf("func(msg interface{}) { runtime.ActorSend(%s, msg) }", objStr), nil
 		}
@@ -130,6 +130,9 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 		}
 		if objStr == "db" {
+			if _, exists := c.dbTables[e.Field]; exists {
+				return fmt.Sprintf("db.%s", capitalizeFirst(e.Field)), nil
+			}
 			switch e.Field {
 			case "query":
 				return "runtime.DBQuery", nil
@@ -147,6 +150,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.AddBeforeQueryHook", nil
 			}
 		}
+
 		if objStr == "s3" {
 			switch e.Field {
 			case "init":
@@ -289,8 +293,15 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		case "status":
 			field = "Status"
 		}
+		
+		// If object is db.TableName, compile directly as member access
+		if strings.HasPrefix(objStr, "db.") {
+			return fmt.Sprintf("%s.%s", objStr, capitalizeFirst(e.Field)), nil
+		}
+
 		// Since objects might be interface{}, use runtime helper for dynamic field access
 		return fmt.Sprintf("runtime.MemberAccess(%s, %q)", objStr, e.Field), nil
+
 
 	case *MemberAssignExpr:
 		objStr, err := c.genExpression(e.Object)
@@ -358,7 +369,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 
 			// Collection methods: .filter, .map, .find, .reduce, .forEach, .length, .push, .contains
-			if err == nil && !isRegexpCheck && !isStructMethodCall {
+			if err == nil && !isRegexpCheck && !isStructMethodCall && !strings.HasPrefix(objStr, "db.") && objStr != "db" {
 				switch memExpr.Field {
 				// ContextLogger methods: .info, .warn, .error, .debug, .with on user-declared variables
 				case "info":
@@ -555,7 +566,29 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			// Map db table client methods to uppercase Go counterparts
+			if strings.HasPrefix(funcStr, "db.") {
+				parts := strings.Split(funcStr, ".")
+				if len(parts) == 3 {
+					method := parts[2]
+					switch method {
+					case "find":
+						method = "Find"
+					case "findOne":
+						method = "FindOne"
+					case "insert":
+						method = "Insert"
+					case "update":
+						method = "Update"
+					case "delete":
+						method = "Delete"
+					}
+					funcStr = parts[0] + "." + capitalizeFirst(parts[1]) + "." + method
+				}
+			}
 		}
+
+
 
 		var args []string
 		for _, arg := range e.Arguments {
@@ -628,8 +661,18 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 					}
 				}
 			}
+			// Map db table client method calls
+			if objName, ok := memExpr.Object.(*Identifier); ok && objName.Value == "db" {
+				if _, exists := c.dbTables[memExpr.Field]; exists {
+					// Method on db.TableName: e.g. find, findOne, insert, update, delete
+					// All these return (value, error) or error. If we are in a multi-return context (let a, b = ...),
+					// Go expects two values. Since GoCodeGen already maps to Go methods returning two values, we just return the Go callStr directly!
+					return callStr, nil
+				}
+			}
 		}
 		return callStr, nil
+
 
 	case *FStringLiteral:
 		return c.genFString(e.Value)
@@ -1048,6 +1091,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			typeArgStr = "[" + strings.Join(e.TypeArgs, ", ") + "]"
 		}
 		return fmt.Sprintf("&%s%s{\n\t\t%s,\n\t}", e.TypeName, typeArgStr, strings.Join(fields, ",\n\t\t")), nil
+
 
 	case *AssertExpr:
 		// Generate structured assertion messages based on the condition type
