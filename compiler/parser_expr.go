@@ -505,3 +505,18 @@ func (p *Parser) parseSelfExpression() Expression {
 func (p *Parser) parseValidateIdentifier() Expression {
 	return &Identifier{Token: p.curToken, Value: "validate"}
 }
+
+func (p *Parser) parseSpawnExpression() Expression {
+	expr := &SpawnExpr{Token: p.curToken}
+	if p.peekToken.Type == TOKEN_LPAREN {
+		p.nextToken() // skip 'spawn' and move to '('
+		p.nextToken() // skip '('
+		expr.Limit = p.parseExpression(LOWEST)
+		if !p.expectPeek(TOKEN_RPAREN) {
+			return nil
+		}
+	}
+	p.nextToken()
+	expr.Call = p.parseExpression(LOWEST)
+	return expr
+}

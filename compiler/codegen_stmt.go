@@ -1152,3 +1152,114 @@ func (c *Codegen) genExprStmt(s *ExprStmt) (string, error) {
 	}
 	return expr + "\n", nil
 }
+
+func (c *Codegen) genActorDecl(s *ActorDecl) (string, error) {
+	c.currentActor = s
+	c.actorFields = make(map[string]bool)
+
+	for _, p := range s.Params {
+		c.actorFields[p] = true
+	}
+
+	var stateVars []string
+	var initStmts []string
+	var methods []string
+
+	for _, stmt := range s.Body.Statements {
+		switch st := stmt.(type) {
+		case *LetStmt:
+			c.actorFields[st.Name] = true
+			stateVars = append(stateVars, st.Name)
+			valStr, err := c.genExpression(st.Value)
+			if err != nil {
+				return "", err
+			}
+			initStmts = append(initStmts, fmt.Sprintf("actor.%s = %s", st.Name, valStr))
+		case *FnDecl:
+			oldInFunction := c.inFunction
+			c.inFunction = true
+			
+			oldDeclared := c.declaredVars
+			c.declaredVars = make(map[string]bool)
+			c.declaredVars["self"] = true
+			
+			var params []string
+			for _, pName := range st.Params {
+				c.declaredVars[pName] = true
+				params = append(params, pName+" interface{}")
+			}
+			
+			bodyStr, err := c.genBlockStatement(st.Body)
+			if err != nil {
+				return "", err
+			}
+			
+			c.declaredVars = oldDeclared
+			c.inFunction = oldInFunction
+			
+			methodCode := fmt.Sprintf("func (self *%s_Actor) %s(%s) interface{} %s\n\n", s.Name, st.Name, strings.Join(params, ", "), bodyStr)
+			methods = append(methods, methodCode)
+		}
+	}
+
+	var structFields []string
+	structFields = append(structFields, "mailbox chan runtime.ActorMessage")
+	for _, pName := range s.Params {
+		structFields = append(structFields, pName+" interface{}")
+	}
+	for _, svName := range stateVars {
+		structFields = append(structFields, svName+" interface{}")
+	}
+
+	structDef := fmt.Sprintf("type %s_Actor struct {\n\t%s\n}\n\n", s.Name, strings.Join(structFields, "\n\t"))
+
+	runMethod := fmt.Sprintf(`func (self *%s_Actor) run() {
+	for msg := range self.mailbox {
+		res := self.receive(msg.Payload)
+		if msg.Reply != nil {
+			msg.Reply <- res
+		}
+	}
+}
+
+`, s.Name)
+
+	var spawnParams []string
+	var structInits []string
+	structInits = append(structInits, "mailbox: mailbox")
+	for _, pName := range s.Params {
+		spawnParams = append(spawnParams, pName+" interface{}")
+		structInits = append(structInits, fmt.Sprintf("%s: %s", pName, pName))
+	}
+
+	selfDecl := ""
+	if len(initStmts) > 0 {
+		selfDecl = "self := actor"
+	}
+
+	spawnConstructor := fmt.Sprintf(`func Spawn_%s(%s) *runtime.ActorRef {
+	mailbox := make(chan runtime.ActorMessage, 100)
+	actor := &%s_Actor{
+		%s,
+	}
+	%s
+	%s
+	go actor.run()
+	return &runtime.ActorRef{Mailbox: mailbox}
+}
+
+`, s.Name, strings.Join(spawnParams, ", "), s.Name, strings.Join(structInits, ",\n\t\t"), selfDecl, strings.Join(initStmts, "\n\t"))
+
+	c.currentActor = nil
+	c.actorFields = nil
+
+	var out bytes.Buffer
+	out.WriteString(structDef)
+	out.WriteString(runMethod)
+	out.WriteString(spawnConstructor)
+	for _, m := range methods {
+		out.WriteString(m)
+	}
+
+	return out.String(), nil
+}

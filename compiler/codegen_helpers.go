@@ -136,6 +136,10 @@ func hasConcurrency(node Node) bool {
 	switch s := node.(type) {
 	case *SpawnStmt, *PublishStmt:
 		return true
+	case *SpawnExpr:
+		return true
+	case *ActorDecl:
+		return true
 	case *BlockStmt:
 		for _, sub := range s.Statements {
 			if hasConcurrency(sub) {
@@ -189,6 +193,8 @@ func stmtToken(stmt Statement) Token {
 	case *PublishStmt:
 		return s.Token
 	case *SpawnStmt:
+		return s.Token
+	case *ActorDecl:
 		return s.Token
 	case *ExternFnStmt:
 		return s.Token

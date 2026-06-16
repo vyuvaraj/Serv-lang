@@ -119,6 +119,13 @@ func analyzeStmtEscape(stmt Statement, scope *escapeScope, nextGoroutine func() 
 		}
 		analyzeStmtEscape(s.Body, inner, nextGoroutine)
 
+	case *ActorDecl:
+		actorScope := newEscapeScope(scope, scope.goroutine)
+		for _, p := range s.Params {
+			actorScope.vars[p] = nil
+		}
+		analyzeStmtEscape(s.Body, actorScope, nextGoroutine)
+
 	// Concurrent boundaries:
 	case *RouteStmt:
 		// Route handlers run concurrently per request
@@ -281,6 +288,12 @@ func analyzeExprEscape(expr Expression, scope *escapeScope, nextGoroutine func()
 			} else {
 				analyzeExprEscape(el, scope, nextGoroutine)
 			}
+		}
+	case *SpawnExpr:
+		spawnScope := newEscapeScope(scope, nextGoroutine())
+		analyzeExprEscape(e.Call, spawnScope, nextGoroutine)
+		if e.Limit != nil {
+			analyzeExprEscape(e.Limit, scope, nextGoroutine)
 		}
 	}
 }

@@ -83,6 +83,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_NIL, p.parseNilLiteral)
 	p.registerPrefix(TOKEN_SELF, p.parseSelfExpression)
 	p.registerPrefix(TOKEN_AWAIT, p.parseAwaitExpression)
+	p.registerPrefix(TOKEN_SPAWN, p.parseSpawnExpression)
 	p.registerPrefix(TOKEN_FN, p.parseFnLiteral)
 	p.registerPrefix(TOKEN_VALIDATE, p.parseValidateIdentifier)
 	p.registerPrefix(TOKEN_MINUS, p.parsePrefixExpression)
@@ -216,6 +217,8 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseForStatement()
 	case TOKEN_STRUCT:
 		return p.parseStructDeclaration()
+	case TOKEN_ACTOR:
+		return p.parseActorDeclaration()
 	case TOKEN_INTERFACE:
 		return p.parseInterfaceDeclaration()
 	case TOKEN_MIDDLEWARE:

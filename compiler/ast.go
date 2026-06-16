@@ -252,6 +252,22 @@ func (s *SpawnStmt) String() string {
 	return "spawn " + s.Call.String() + "\n"
 }
 
+// Spawn Expression
+type SpawnExpr struct {
+	Token Token
+	Call  Expression // should resolve to CallExpr
+	Limit Expression // optional limit expression (nil if none)
+}
+
+func (s *SpawnExpr) expressionNode()      {}
+func (s *SpawnExpr) TokenLiteral() string { return s.Token.Literal }
+func (s *SpawnExpr) String() string {
+	if s.Limit != nil {
+		return "spawn(" + s.Limit.String() + ") " + s.Call.String()
+	}
+	return "spawn " + s.Call.String()
+}
+
 type MatchCase struct {
 	Value Expression // nil if default "_"
 	Body  *BlockStmt
@@ -1005,3 +1021,22 @@ type ValidateStmt struct {
 func (v *ValidateStmt) statementNode()       {}
 func (v *ValidateStmt) TokenLiteral() string { return v.Token.Literal }
 func (v *ValidateStmt) String() string       { return "validate { ... }\n" }
+
+// Actor Declaration: actor Name(params) { body }
+type ActorDecl struct {
+	Token      Token
+	Name       string
+	Params     []string
+	ParamTypes []string
+	Body       *BlockStmt
+}
+
+func (a *ActorDecl) statementNode()       {}
+func (a *ActorDecl) TokenLiteral() string { return a.Token.Literal }
+func (a *ActorDecl) String() string {
+	var params []string
+	for i, name := range a.Params {
+		params = append(params, name+": "+a.ParamTypes[i])
+	}
+	return "actor " + a.Name + "(" + strings.Join(params, ", ") + ") " + a.Body.String() + "\n"
+}
