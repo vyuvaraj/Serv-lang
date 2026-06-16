@@ -152,3 +152,33 @@ To move Serv beyond a simple microservice tool into a premium, world-class progr
 #### 6. LSP Debugger Support (Phase 10.8)
 - **Goal**: Implement the Debug Adapter Protocol (DAP) to provide breakpoints, step-in/out, and stack traces back inside Serv source files.
 - **Why**: Elevates the language developer experience to match enterprise languages.
+
+---
+
+## Phase 11: Developer Tooling and Project Maturity
+
+To prepare Serv-lang for production usage and support larger codebases, the following project structure, testing, and debugging items are added:
+
+| # | Item | Effort | Description | Status |
+|---|------|--------|-------------|--------|
+| 11.1 | **Project Manifest (`serv.toml`)** | Medium | A configuration file defining project metadata, entry points, environment profiles, and dependency locks. | ⬜ Planned |
+| 11.2 | **Multi-File Compilation** | Medium | Enable compiling whole directories (`serv build ./`) rather than single-file structures. | ⬜ Planned |
+| 11.3 | **Panic Stack Trace Mapping** | Medium | Map Go runtime panic traces back to original `.srv` line numbers using emitted source map comments. | ⬜ Planned |
+| 11.4 | **Structured Mocking in Tests** | Medium | Add support to stub out network calls (`mock http.get`) and database operations (`mock db.query`) inside test blocks. | ⬜ Planned |
+| 11.5 | **Scoped Symbol Table Refactor** | Large | Refactor the compiler internals to use proper lexical scopes instead of a simple flat symbol table. | ⬜ Planned |
+| 11.6 | **Environment Profiles** | Small | Support loading environment-specific variables and configuration files based on flag (e.g., `--env staging`). | ⬜ Planned |
+
+### Detail on Phase 11 Items
+
+#### 1. Project Manifest & Multi-File Projects (Phase 11.1 & 11.2)
+- **Goal**: Support standard repository structures where a single service consists of multiple files and modular folders, managed by a root `serv.toml` file.
+- **Why**: Larger services are impossible to maintain in single-file scripts or flat imports. A project manifest organizes modules and ensures clean build artifacts.
+
+#### 2. Panic Stack Trace Mapping (Phase 11.3)
+- **Goal**: Read generated Go stack traces and rewrite them on the fly to refer back to `.srv` line numbers.
+- **Why**: Greatly simplifies the debugging process when runtime panics occur in deployed environments.
+
+#### 3. Structured Mocking (Phase 11.4)
+- **Goal**: Allow test definitions to override builtin calls temporarily during the scope of a test block.
+- **Why**: Unblocks true hermetic unit testing without needing real database connections or external API servers active.
+
