@@ -50,6 +50,12 @@ scoop bucket add serv https://github.com/vyuvaraj/scoop-serv
 scoop install serv
 ```
 
+### Install via Homebrew (macOS / Linux)
+```bash
+brew tap vyuvaraj/serv
+brew install serv
+```
+
 ### Install via Script (Windows)
 ```powershell
 irm https://raw.githubusercontent.com/vyuvaraj/Serv-lang/main/release-scripts/install.ps1 | iex
