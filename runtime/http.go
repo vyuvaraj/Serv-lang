@@ -202,3 +202,67 @@ func matchRoute(method, path string) (func(Request) interface{}, map[string]stri
 	return curr.handler, params, curr.limiter
 }
 
+var (
+	corsEnabled   bool
+	corsOrigins   []string
+	corsOriginsMu sync.RWMutex
+
+	globalIPRateLimitEnabled bool
+	globalIPRateLimiter      *ipRateLimiter
+)
+
+type ipRateLimiter struct {
+	rate        int
+	period      string
+	limiters    map[string]*routeRateLimiter
+	limitersMu  sync.RWMutex
+}
+
+func newIPRateLimiter(rate int, period string) *ipRateLimiter {
+	return &ipRateLimiter{
+		rate:     rate,
+		period:   period,
+		limiters: make(map[string]*routeRateLimiter),
+	}
+}
+
+func (ipl *ipRateLimiter) getLimiter(ip string) *routeRateLimiter {
+	ipl.limitersMu.RLock()
+	lim, exists := ipl.limiters[ip]
+	ipl.limitersMu.RUnlock()
+	if exists {
+		return lim
+	}
+	ipl.limitersMu.Lock()
+	defer ipl.limitersMu.Unlock()
+	lim, exists = ipl.limiters[ip]
+	if !exists {
+		lim = newRouteRateLimiter(ipl.rate, ipl.period)
+		ipl.limiters[ip] = lim
+	}
+	return lim
+}
+
+func EnableCORS(origins []string) {
+	corsOriginsMu.Lock()
+	defer corsOriginsMu.Unlock()
+	corsEnabled = true
+	corsOrigins = origins
+}
+
+func SetGlobalIPRateLimit(rate int, period string) {
+	globalIPRateLimitEnabled = true
+	globalIPRateLimiter = newIPRateLimiter(rate, period)
+}
+
+func GetGlobalIPRateLimiterStub(ip string) *routeRateLimiter {
+	if globalIPRateLimiter == nil {
+		return nil
+	}
+	return globalIPRateLimiter.getLimiter(ip)
+}
+
+func (rl *routeRateLimiter) AllowStub() bool {
+	return rl.allow()
+}
+

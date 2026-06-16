@@ -57,6 +57,8 @@ const (
 	TOKEN_MODULE     TokenType = "MODULE"
 	TOKEN_AS         TokenType = "AS"
 	TOKEN_WS         TokenType = "WS"
+	TOKEN_CORS       TokenType = "CORS"
+	TOKEN_RATE_LIMIT TokenType = "RATE_LIMIT"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -545,6 +547,8 @@ var keywords = map[string]TokenType{
 	"beforeEach": TOKEN_BEFORE_EACH,
 	"afterEach":  TOKEN_AFTER_EACH,
 	"timeout":   TOKEN_TIMEOUT,
+	"cors":      TOKEN_CORS,
+	"rate_limit": TOKEN_RATE_LIMIT,
 }
 
 func lookupIdent(ident string) TokenType {

@@ -321,6 +321,18 @@ func (c *Codegen) genServerStmt(s *ServerStmt) (string, error) {
 	return fmt.Sprintf("func init() {\n\truntime.InitServer(fmt.Sprint(%s))\n}\n\n", val), nil
 }
 
+func (c *Codegen) genCorsStmt(s *CorsStmt) (string, error) {
+	var origins []string
+	for _, o := range s.Origins {
+		origins = append(origins, fmt.Sprintf("%q", o))
+	}
+	return fmt.Sprintf("func init() {\n\truntime.EnableCORS([]string{%s})\n}\n\n", strings.Join(origins, ", ")), nil
+}
+
+func (c *Codegen) genRateLimitStmt(s *RateLimitStmt) (string, error) {
+	return fmt.Sprintf("func init() {\n\truntime.SetGlobalIPRateLimit(%d, %q)\n}\n\n", s.LimitRate, s.LimitPeriod), nil
+}
+
 func (c *Codegen) genDatabaseStmt(s *DatabaseStmt) (string, error) {
 	val, err := c.genExpression(s.Value)
 	if err != nil {

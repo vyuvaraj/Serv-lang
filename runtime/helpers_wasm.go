@@ -38,7 +38,32 @@ func (w *WSConn) Close()              {}
 var (
 	logLevel   = "info"
 	logLevelMu sync.RWMutex
+	secrets    []string
+	secretsMu  sync.RWMutex
 )
+
+func RegisterSecret(val string) {
+	if val == "" {
+		return
+	}
+	secretsMu.Lock()
+	defer secretsMu.Unlock()
+	for _, s := range secrets {
+		if s == val {
+			return
+		}
+	}
+	secrets = append(secrets, val)
+}
+
+func sanitizeLog(msg string) string {
+	secretsMu.RLock()
+	defer secretsMu.RUnlock()
+	for _, secret := range secrets {
+		msg = strings.ReplaceAll(msg, secret, "[REDACTED]")
+	}
+	return msg
+}
 
 func shouldLog(level string) bool {
 	levels := map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
@@ -51,7 +76,7 @@ func logStructured(level string, args ...interface{}) {
 	if !shouldLog(level) {
 		return
 	}
-	msg := fmt.Sprint(args...)
+	msg := sanitizeLog(fmt.Sprint(args...))
 	fmt.Fprintf(os.Stderr, "[%s] %s\n", strings.ToUpper(level), msg)
 }
 
@@ -59,11 +84,12 @@ func logStructuredWithFields(level string, fields map[string]interface{}, args .
 	if !shouldLog(level) {
 		return
 	}
-	msg := fmt.Sprint(args...)
+	msg := sanitizeLog(fmt.Sprint(args...))
 	if len(fields) > 0 {
 		var pairs []string
 		for k, v := range fields {
-			pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+			valStr := fmt.Sprint(v)
+			pairs = append(pairs, fmt.Sprintf("%s=%s", k, sanitizeLog(valStr)))
 		}
 		fmt.Fprintf(os.Stderr, "[%s] %s %s\n", strings.ToUpper(level), msg, strings.Join(pairs, " "))
 	} else {
@@ -270,9 +296,12 @@ func RegistryHas(name interface{}) interface{} {
 	return exists
 }
 
-// ── Config / Env Stubs ────────────────────────────────────────────────────────
-
 func Env(key string) string    { return os.Getenv(key) }
+func EnvSecret(key string) string {
+	val := os.Getenv(key)
+	RegisterSecret(val)
+	return val
+}
 func Config(key string) string { return "" }
 
 // ── DB / Cache / Broker Stubs ────────────────────────────────────────────────

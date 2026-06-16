@@ -303,6 +303,18 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 
 		if memExpr, ok := e.Function.(*MemberExpr); ok {
 			objStr, err := c.genExpression(memExpr.Object)
+			if err == nil && objStr == "env" && memExpr.Field == "secret" {
+				var args []string
+				for _, arg := range e.Arguments {
+					argStr, err := c.genExpression(arg)
+					if err != nil {
+						return "", err
+					}
+					args = append(args, argStr)
+				}
+				return fmt.Sprintf("runtime.EnvSecret(%s)", strings.Join(args, ", ")), nil
+			}
+
 			if err == nil && objStr == "regexp" && memExpr.Field == "check" {
 				isRegexpCheck = true
 				funcStr = "regexp.check"

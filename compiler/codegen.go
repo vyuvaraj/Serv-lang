@@ -218,12 +218,16 @@ case *InterfaceDecl:
 return c.genInterfaceDecl(s)
 case *BrokerStmt:
 return c.genBrokerStmt(s)
-case *ServerStmt:
-return c.genServerStmt(s)
-case *DatabaseStmt:
-return c.genDatabaseStmt(s)
-case *CacheStmt:
-return c.genCacheStmt(s)
+	case *ServerStmt:
+		return c.genServerStmt(s)
+	case *CorsStmt:
+		return c.genCorsStmt(s)
+	case *RateLimitStmt:
+		return c.genRateLimitStmt(s)
+	case *DatabaseStmt:
+		return c.genDatabaseStmt(s)
+	case *CacheStmt:
+		return c.genCacheStmt(s)
 case *MatchStmt:
 return c.genMatchStmt(s)
 case *RouteStmt:

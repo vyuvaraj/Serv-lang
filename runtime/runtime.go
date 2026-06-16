@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -173,6 +174,12 @@ func Env(key string) string {
 	return os.Getenv(key)
 }
 
+func EnvSecret(key string) string {
+	val := os.Getenv(key)
+	RegisterSecret(val)
+	return val
+}
+
 func Config(key string) string {
 	configMapMu.RLock()
 	val, exists := configMap[key]
@@ -243,6 +250,57 @@ func StartServer() interface{} {
 	wsHandlersMu.RUnlock()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// 1. CORS check
+		if corsEnabled {
+			origin := r.Header.Get("Origin")
+			allowed := false
+			corsOriginsMu.RLock()
+			for _, o := range corsOrigins {
+				if o == "*" || o == origin {
+					allowed = true
+					break
+				}
+			}
+			corsOriginsMu.RUnlock()
+
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
+				w.Header().Set("Access-Control-Max-Age", "86400")
+			}
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+
+		// 2. Global per-IP rate limiting
+		if globalIPRateLimitEnabled && globalIPRateLimiter != nil {
+			clientIP := r.Header.Get("X-Forwarded-For")
+			if clientIP == "" {
+				clientIP = r.Header.Get("X-Real-IP")
+			}
+			if clientIP == "" {
+				if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
+					clientIP = r.RemoteAddr[:idx]
+				} else {
+					clientIP = r.RemoteAddr
+				}
+			}
+			lim := globalIPRateLimiter.getLimiter(clientIP)
+			if lim != nil && !lim.allow() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": 429,
+					"error":  "Too Many Requests",
+				})
+				return
+			}
+		}
+
 		handler, params, limiter := matchRoute(r.Method, r.URL.Path)
 
 		if handler == nil {
@@ -261,30 +319,42 @@ func StartServer() interface{} {
 		}
 
 		bodyBytes, _ := io.ReadAll(r.Body)
+		rawBody := string(bodyBytes)
+		
+		// 3. Input Sanitization
+		sanitizedBody := sanitizeJSON(rawBody)
+		
+		sanitizedParams := make(map[string]string)
+		for k, v := range params {
+			sanitizedParams[k] = html.EscapeString(v)
+		}
+
 		req := Request{
 			Method:  r.Method,
 			Path:    r.URL.Path,
-			Body:    string(bodyBytes),
-			Params:  params,
+			Body:    sanitizedBody,
+			Params:  sanitizedParams,
 			Headers: make(map[string]string),
 			Query:   make(map[string]string),
 		}
 
-		// Merge query parameters into params (path params take priority)
+		// Merge query parameters into params (path/query params take priority)
 		for key, values := range r.URL.Query() {
-			req.Query[key] = values[0]
+			escapedVal := html.EscapeString(values[0])
+			req.Query[key] = escapedVal
 			if _, exists := req.Params[key]; !exists {
-				req.Params[key] = values[0]
+				req.Params[key] = escapedVal
 			}
 		}
 
 		// Merge headers into params (lowercase, path/query params take priority)
 		for key, values := range r.Header {
-			req.Headers[key] = values[0]
+			escapedVal := html.EscapeString(values[0])
+			req.Headers[key] = escapedVal
 			lowerKey := strings.ToLower(key)
-			req.Headers[lowerKey] = values[0]
+			req.Headers[lowerKey] = escapedVal
 			if _, exists := req.Params[lowerKey]; !exists {
-				req.Params[lowerKey] = values[0]
+				req.Params[lowerKey] = escapedVal
 			}
 		}
 
@@ -472,3 +542,38 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 }
 
 var startTime = time.Now()
+
+func sanitizeJSON(bodyStr string) string {
+	if bodyStr == "" {
+		return ""
+	}
+	var data interface{}
+	if err := json.Unmarshal([]byte(bodyStr), &data); err != nil {
+		// Not JSON or invalid, return html escaped raw string
+		return html.EscapeString(bodyStr)
+	}
+	sanitized := sanitizeInterface(data)
+	b, _ := json.Marshal(sanitized)
+	return string(b)
+}
+
+func sanitizeInterface(val interface{}) interface{} {
+	switch v := val.(type) {
+	case string:
+		return html.EscapeString(v)
+	case map[string]interface{}:
+		res := make(map[string]interface{})
+		for k, child := range v {
+			res[k] = sanitizeInterface(child)
+		}
+		return res
+	case []interface{}:
+		res := make([]interface{}, len(v))
+		for i, child := range v {
+			res[i] = sanitizeInterface(child)
+		}
+		return res
+	default:
+		return v
+	}
+}

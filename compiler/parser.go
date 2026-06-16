@@ -235,6 +235,10 @@ func (p *Parser) parseStatement() Statement {
 		return &BreakStmt{Token: p.curToken}
 	case TOKEN_CONTINUE:
 		return &ContinueStmt{Token: p.curToken}
+	case TOKEN_CORS:
+		return p.parseCorsStatement()
+	case TOKEN_RATE_LIMIT:
+		return p.parseRateLimitStatement()
 	case TOKEN_BEFORE_EACH:
 		return p.parseBeforeEachStatement()
 	case TOKEN_AFTER_EACH:

@@ -96,6 +96,27 @@ func (s *ServerStmt) statementNode()       {}
 func (s *ServerStmt) TokenLiteral() string { return s.Token.Literal }
 func (s *ServerStmt) String() string       { return "server " + s.Value.String() + "\n" }
 
+// Cors Statement
+type CorsStmt struct {
+	Token   Token
+	Origins []string
+}
+
+func (c *CorsStmt) statementNode()       {}
+func (c *CorsStmt) TokenLiteral() string { return c.Token.Literal }
+func (c *CorsStmt) String() string       { return "cors ...\n" }
+
+// RateLimit Statement
+type RateLimitStmt struct {
+	Token       Token
+	LimitRate   int
+	LimitPeriod string
+}
+
+func (r *RateLimitStmt) statementNode()       {}
+func (r *RateLimitStmt) TokenLiteral() string { return r.Token.Literal }
+func (r *RateLimitStmt) String() string       { return "rate_limit ...\n" }
+
 // Database Statement
 type DatabaseStmt struct {
 	Token Token

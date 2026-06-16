@@ -384,3 +384,67 @@ func (p *Parser) parseExportStatement() Statement {
 
 	return &ExportStmt{Token: exportToken, Inner: inner}
 }
+
+func (p *Parser) parseCorsStatement() Statement {
+	stmt := &CorsStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_IDENT) || p.curToken.Literal != "origins" {
+		p.addError("expected 'origins' keyword in cors block")
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_COLON) {
+		return nil
+	}
+
+	p.nextToken()
+	if p.curToken.Type == TOKEN_LBRACKET {
+		for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
+			p.nextToken()
+			if p.curToken.Type == TOKEN_STRING {
+				stmt.Origins = append(stmt.Origins, p.curToken.Literal)
+			}
+			if p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+			}
+		}
+		if !p.expectPeek(TOKEN_RBRACKET) {
+			return nil
+		}
+	} else if p.curToken.Type == TOKEN_STRING {
+		stmt.Origins = []string{p.curToken.Literal}
+	} else {
+		p.addError("expected string or list of strings for cors origins")
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_RBRACE) {
+		return nil
+	}
+	return stmt
+}
+
+func (p *Parser) parseRateLimitStatement() Statement {
+	stmt := &RateLimitStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_INT) {
+		return nil
+	}
+	val, err := strconv.Atoi(p.curToken.Literal)
+	if err != nil {
+		return nil
+	}
+	stmt.LimitRate = val
+
+	if !p.expectPeek(TOKEN_SLASH) {
+		return nil
+	}
+
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.LimitPeriod = p.curToken.Literal
+	return stmt
+}

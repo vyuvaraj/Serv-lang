@@ -41,11 +41,39 @@ func logStructured(level string, args ...interface{}) {
 	logStructuredWithFields(level, nil, args...)
 }
 
+var (
+	secrets   []string
+	secretsMu sync.RWMutex
+)
+
+func RegisterSecret(val string) {
+	if val == "" {
+		return
+	}
+	secretsMu.Lock()
+	defer secretsMu.Unlock()
+	for _, s := range secrets {
+		if s == val {
+			return
+		}
+	}
+	secrets = append(secrets, val)
+}
+
+func sanitizeLog(msg string) string {
+	secretsMu.RLock()
+	defer secretsMu.RUnlock()
+	for _, secret := range secrets {
+		msg = strings.ReplaceAll(msg, secret, "[REDACTED]")
+	}
+	return msg
+}
+
 func logStructuredWithFields(level string, fields map[string]interface{}, args ...interface{}) {
 	if !shouldLog(level) {
 		return
 	}
-	msg := fmt.Sprint(args...)
+	msg := sanitizeLog(fmt.Sprint(args...))
 	if logJSON {
 		entry := map[string]interface{}{
 			"level":     level,
@@ -53,7 +81,11 @@ func logStructuredWithFields(level string, fields map[string]interface{}, args .
 			"timestamp": time.Now().Format(time.RFC3339),
 		}
 		for k, v := range fields {
-			entry[k] = v
+			if s, ok := v.(string); ok {
+				entry[k] = sanitizeLog(s)
+			} else {
+				entry[k] = v
+			}
 		}
 		b, _ := json.Marshal(entry)
 		fmt.Println(string(b))
@@ -61,7 +93,8 @@ func logStructuredWithFields(level string, fields map[string]interface{}, args .
 		if len(fields) > 0 {
 			var pairs []string
 			for k, v := range fields {
-				pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+				valStr := fmt.Sprint(v)
+				pairs = append(pairs, fmt.Sprintf("%s=%s", k, sanitizeLog(valStr)))
 			}
 			log.Printf("[%s] %s %s", strings.ToUpper(level), msg, strings.Join(pairs, " "))
 		} else {

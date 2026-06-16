@@ -46,6 +46,9 @@ func Analyze(program *Program) []Diagnostic {
 	// Check for dead imports
 	diags = append(diags, analyzeDeadImports(program)...)
 
+	// Check for SQL injection risks
+	diags = append(diags, analyzeSQLInjection(program)...)
+
 	for _, stmt := range program.Statements {
 		diags = append(diags, analyzeStatement(stmt, program)...)
 	}
