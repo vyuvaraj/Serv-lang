@@ -8,9 +8,9 @@ import (
 func (c *Codegen) genExpression(expr Expression) (string, error) {
 	switch e := expr.(type) {
 	case *Identifier:
-		// Map standard builtins like log.info, metric.inc, http.get
-		// Wait, they are parsed as MemberExpr if they use dot notation.
-		// If it's a simple identifier, output it
+		if c.currentActor != nil && c.actorFields[e.Value] && !c.declaredVars[e.Value] {
+			return "self." + e.Value, nil
+		}
 		return e.Value, nil
 
 	case *StringLiteral:
@@ -47,6 +47,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		objStr, err := c.genExpression(e.Object)
 		if err != nil {
 			return "", err
+		}
+
+		isBuiltinNamespace := (objStr == "channel" || objStr == "log" || objStr == "db" || objStr == "s3" || objStr == "wasm" || objStr == "cache" || objStr == "mcp" || objStr == "atomic" || objStr == "registry" || objStr == "schedule" || objStr == "time" || objStr == "metric" || objStr == "http" || objStr == "json")
+		if !isBuiltinNamespace && (e.Field == "send" || e.Field == "Send") {
+			return fmt.Sprintf("func(msg interface{}) { runtime.ActorSend(%s, msg) }", objStr), nil
+		}
+		if !isBuiltinNamespace && (e.Field == "ask" || e.Field == "Ask") {
+			return fmt.Sprintf("func(msg interface{}) interface{} { return runtime.ActorAsk(%s, msg) }", objStr), nil
 		}
 
 		// Self field access: self.field -> self.Field (direct struct access)
@@ -568,6 +576,12 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if funcStr == "validate" {
 			return fmt.Sprintf("runtime.ValidateBody(%s)", strings.Join(args, ", ")), nil
 		}
+		if funcStr == "send" && len(args) == 2 {
+			return fmt.Sprintf("runtime.ActorSend(%s, %s)", args[0], args[1]), nil
+		}
+		if funcStr == "ask" && len(args) == 2 {
+			return fmt.Sprintf("runtime.ActorAsk(%s, %s)", args[0], args[1]), nil
+		}
 
 		// Special case: time.now()
 		if funcStr == "time.now" {
@@ -843,6 +857,10 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		name := e.Name
+		if c.currentActor != nil && c.actorFields[name] && !c.declaredVars[name] {
+			name = "self." + name
+		}
 		// Type coercion: if target variable has a known type but expression returns interface{}
 		if targetType, ok := c.varTypes[e.Name]; ok {
 			inferred := c.getExpressionType(e.Value)
@@ -859,12 +877,16 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				}
 			}
 		}
-		return fmt.Sprintf("%s = %s", e.Name, valStr), nil
+		return fmt.Sprintf("%s = %s", name, valStr), nil
 
 	case *CompoundAssignExpr:
 		valStr, err := c.genExpression(e.Value)
 		if err != nil {
 			return "", err
+		}
+		name := e.Name
+		if c.currentActor != nil && c.actorFields[name] && !c.declaredVars[name] {
+			name = "self." + name
 		}
 		// If variable has a known numeric type, emit direct Go compound assignment
 		if varType, ok := c.varTypes[e.Name]; ok && (varType == "int" || varType == "float64") {
@@ -878,7 +900,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 					valStr = fmt.Sprintf("toFloat64(%s)", valStr)
 				}
 			}
-			return fmt.Sprintf("%s %s %s", e.Name, e.Operator, valStr), nil
+			return fmt.Sprintf("%s %s %s", name, e.Operator, valStr), nil
 		}
 		// String concatenation: if variable is known string type
 		if varType, ok := c.varTypes[e.Name]; ok && varType == "string" && e.Operator == "+=" {
@@ -886,11 +908,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			if valType == "interface{}" {
 				valStr = fmt.Sprintf("toString(%s)", valStr)
 			}
-			return fmt.Sprintf("%s += %s", e.Name, valStr), nil
+			return fmt.Sprintf("%s += %s", name, valStr), nil
 		}
 		// For interface{} variables, compute and reassign
 		op := string(e.Operator[0]) // extract arithmetic op from +=, -=, etc.
-		return fmt.Sprintf("%s = runtime.Arith(%s, %s, %q)", e.Name, e.Name, valStr, op), nil
+		return fmt.Sprintf("%s = runtime.Arith(%s, %s, %q)", name, name, valStr, op), nil
 
 	case *SliceExpr:
 		leftStr, err := c.genExpression(e.Left)
@@ -1021,7 +1043,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 			fields = append(fields, fmt.Sprintf("%s: %s", capitalizeFirst(k), vStr))
 		}
-		return fmt.Sprintf("&%s{\n\t\t%s,\n\t}", e.TypeName, strings.Join(fields, ",\n\t\t")), nil
+		typeArgStr := ""
+		if len(e.TypeArgs) > 0 {
+			typeArgStr = "[" + strings.Join(e.TypeArgs, ", ") + "]"
+		}
+		return fmt.Sprintf("&%s%s{\n\t\t%s,\n\t}", e.TypeName, typeArgStr, strings.Join(fields, ",\n\t\t")), nil
 
 	case *AssertExpr:
 		// Generate structured assertion messages based on the condition type
@@ -1055,6 +1081,9 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("func() {\n\t\tvar v interface{} = %s\n\t\tif v == nil || v == false {\n\t\t\tt.Fatalf(\"assertion failed: expected truthy value, got %%v\", v)\n\t\t}\n\t}()", condStr), nil
+
+	case *SpawnExpr:
+		return c.genSpawnExpr(e)
 
 	default:
 		return "", fmt.Errorf("unknown expression type: %T", expr)
@@ -1184,6 +1213,35 @@ func (c *Codegen) compileInlineExpr(exprText string) (string, error) {
 		return "", fmt.Errorf("failed to parse inline expression")
 	}
 	return c.genExpression(expr)
+}
+
+func (c *Codegen) genSpawnExpr(e *SpawnExpr) (string, error) {
+	if callExpr, ok := e.Call.(*CallExpr); ok {
+		if ident, ok := callExpr.Function.(*Identifier); ok {
+			if _, exists := c.actors[ident.Value]; exists {
+				var args []string
+				for _, arg := range callExpr.Arguments {
+					argStr, err := c.genExpression(arg)
+					if err != nil {
+						return "", err
+					}
+					args = append(args, argStr)
+				}
+				return fmt.Sprintf("Spawn_%s(%s)", ident.Value, strings.Join(args, ", ")), nil
+			}
+		}
+	}
+
+	stmt := &SpawnStmt{
+		Token: e.Token,
+		Call:  e.Call,
+		Limit: e.Limit,
+	}
+	stmtCode, err := c.genSpawnStmt(stmt)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("func() interface{} {\n\t%s\n\treturn nil\n}()", stmtCode), nil
 }
 
 

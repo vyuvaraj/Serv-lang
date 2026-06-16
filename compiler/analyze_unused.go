@@ -181,6 +181,13 @@ func collectDeclarations(stmt Statement, declared map[string]Token) {
 				}
 			}
 		}
+	case *ActorDecl:
+		declared[s.Name] = s.Token
+		if s.Body != nil {
+			for _, inner := range s.Body.Statements {
+				collectDeclarations(inner, declared)
+			}
+		}
 	}
 }
 
@@ -242,6 +249,12 @@ func collectReferences(stmt Statement, referenced map[string]bool) {
 		collectExprRefs(s.Value, referenced)
 	case *SpawnStmt:
 		collectExprRefs(s.Call, referenced)
+	case *ActorDecl:
+		if s.Body != nil {
+			for _, inner := range s.Body.Statements {
+				collectReferences(inner, referenced)
+			}
+		}
 	}
 }
 
@@ -316,6 +329,8 @@ func collectExprRefs(expr Expression, referenced map[string]bool) {
 		collectFStringRefs(e.Value, referenced)
 	case *SelfExpr:
 		referenced["self"] = true
+	case *SpawnExpr:
+		collectExprRefs(e.Call, referenced)
 	}
 }
 
@@ -456,6 +471,12 @@ func collectStmtIdentifiers(stmt Statement, refs map[string]bool) {
 		collectExprIdentifiers(s.Value, refs)
 	case *SpawnStmt:
 		collectExprIdentifiers(s.Call, refs)
+	case *ActorDecl:
+		if s.Body != nil {
+			for _, inner := range s.Body.Statements {
+				collectStmtIdentifiers(inner, refs)
+			}
+		}
 	case *ExportStmt:
 		collectStmtIdentifiers(s.Inner, refs)
 	}
@@ -529,5 +550,7 @@ func collectExprIdentifiers(expr Expression, refs map[string]bool) {
 		collectExprIdentifiers(e.Cond, refs)
 	case *ErrorPropExpr:
 		collectExprIdentifiers(e.Value, refs)
+	case *SpawnExpr:
+		collectExprIdentifiers(e.Call, refs)
 	}
 }

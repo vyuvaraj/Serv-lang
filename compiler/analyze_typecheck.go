@@ -87,11 +87,29 @@ func checkExprCallTypes(expr Expression, funcSigs map[string]*FnDecl, enclosingF
 				}
 
 				// Check argument types (when both are known)
+				typeParamSet := make(map[string]bool)
+				for _, tp := range callee.TypeParams {
+					typeParamSet[tp] = true
+				}
+				if enclosingFn != nil {
+					for _, tp := range enclosingFn.TypeParams {
+						typeParamSet[tp] = true
+					}
+				}
+
 				for i, arg := range e.Arguments {
 					if i >= len(callee.ParamTypes) || callee.ParamTypes[i] == "" {
 						continue
 					}
 					expectedType := callee.ParamTypes[i]
+					isTypeParam := typeParamSet[expectedType]
+					if strings.HasPrefix(expectedType, "[]") && typeParamSet[strings.TrimPrefix(expectedType, "[]")] {
+						isTypeParam = true
+					}
+					if isTypeParam {
+						continue
+					}
+
 					actualType := inferLiteralType(arg)
 					if actualType != "" && !typesCompatible(actualType, expectedType) {
 						diags = append(diags, Diagnostic{

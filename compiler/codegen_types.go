@@ -322,4 +322,16 @@ func sanitizeTestName(name string) string {
 	return result
 }
 
+func (c *Codegen) isStructType(t string) bool {
+	// Remove optional suffix if present
+	t = strings.TrimSuffix(t, "?")
+	// Remove pointer prefix if present
+	t = strings.TrimPrefix(t, "*")
+	// Extract base generic name
+	if idx := strings.Index(t, "["); idx != -1 {
+		t = t[:idx]
+	}
+	return c.structTypes[t]
+}
+
 

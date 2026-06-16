@@ -36,6 +36,9 @@ type Codegen struct {
 	currentEvery        *EveryStmt
 	currentCron         *CronStmt
 	currentSubscribe    *SubscribeStmt
+	currentActor        *ActorDecl
+	actorFields         map[string]bool
+	actors              map[string]*ActorDecl
 }
 
 func NewCodegen(program *Program) *Codegen {
@@ -53,6 +56,8 @@ func NewCodegen(program *Program) *Codegen {
 		goPackageAliases: make(map[string]string),
 		declaredGoFuncs:  make(map[string]string),
 		goMultiReturnFuncs: make(map[string]bool),
+		actorFields: make(map[string]bool),
+		actors: make(map[string]*ActorDecl),
 	}
 }
 
@@ -94,11 +99,15 @@ func (c *Codegen) Generate() (string, error) {
 			if len(s.ParamTypes) > 0 {
 				c.funcParamTypes[s.Name] = s.ParamTypes
 			}
+		case *ActorDecl:
+			c.actors[s.Name] = s
 		case *ExportStmt:
 			switch inner := s.Inner.(type) {
 			case *StructDecl:
 				c.structTypes[inner.Name] = true
 				c.structFields[inner.Name] = inner.Fields
+			case *ActorDecl:
+				c.actors[inner.Name] = inner
 			case *FnDecl:
 				if inner.ReturnType != "" {
 					c.funcReturnTypes[inner.Name] = inner.ReturnType
@@ -212,6 +221,8 @@ case *ForStmt:
 return c.genForStmt(s)
 case *StructDecl:
 return c.genStructDecl(s)
+case *ActorDecl:
+return c.genActorDecl(s)
 case *MethodDecl:
 return c.genMethodDecl(s)
 case *InterfaceDecl:

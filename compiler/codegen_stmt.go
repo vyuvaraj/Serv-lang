@@ -220,10 +220,33 @@ func (c *Codegen) genForStmt(s *ForStmt) (string, error) {
 
 func (c *Codegen) genStructDecl(s *StructDecl) (string, error) {
 	var out bytes.Buffer
-	out.WriteString(fmt.Sprintf("type %s struct {\n", s.Name))
+
+	typeParamSet := make(map[string]bool)
+	for _, tp := range s.TypeParams {
+		typeParamSet[tp] = true
+	}
+
+	typeParamStr := ""
+	if len(s.TypeParams) > 0 {
+		var tps []string
+		for i, tp := range s.TypeParams {
+			constraint := "any"
+			if i < len(s.TypeConstraints) && s.TypeConstraints[i] != "" {
+				constraint = servConstraintToGo(s.TypeConstraints[i])
+			}
+			tps = append(tps, tp+" "+constraint)
+		}
+		typeParamStr = "[" + strings.Join(tps, ", ") + "]"
+	}
+
+	out.WriteString(fmt.Sprintf("type %s%s struct {\n", s.Name, typeParamStr))
 	for _, f := range s.Fields {
 		goType := toGoType(f.Type)
-		if goType == "interface{}" && !strings.HasSuffix(f.Type, "?") && !strings.Contains(f.Type, "|") {
+		if typeParamSet[f.Type] {
+			goType = f.Type
+		} else if strings.HasPrefix(f.Type, "[]") && typeParamSet[strings.TrimPrefix(f.Type, "[]")] {
+			goType = "[]" + strings.TrimPrefix(f.Type, "[]")
+		} else if goType == "interface{}" && !strings.HasSuffix(f.Type, "?") && !strings.Contains(f.Type, "|") {
 			goType = f.Type
 		}
 		out.WriteString(fmt.Sprintf("\t%s %s\n", capitalizeFirst(f.Name), goType))
@@ -840,8 +863,8 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			case "string":
 				val = fmt.Sprintf("toString(%s)", val)
 			default:
-				if strings.HasPrefix(targetType, "*") || c.structTypes[targetType] {
-					goType := targetType
+				if strings.HasPrefix(targetType, "*") || c.isStructType(targetType) {
+					goType := strings.TrimSuffix(targetType, "?")
 					if !strings.HasPrefix(goType, "*") {
 						goType = "*" + goType
 					}
@@ -862,7 +885,7 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			goType = "*" + s.Type
 		}
 		c.varTypes[s.Name] = s.Type
-
+ 
 		// Apply type coercion if the value is dynamic (interface{})
 		inferred := c.getExpressionType(s.Value)
 		if inferred == "interface{}" {
@@ -876,19 +899,23 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			case "string":
 				val = fmt.Sprintf("toString(%s)", val)
 			default:
-				if c.structTypes[s.Type] {
-					val = fmt.Sprintf("interface{}(%s).(*%s)", val, s.Type)
+				if c.isStructType(s.Type) {
+					val = fmt.Sprintf("interface{}(%s).(*%s)", val, strings.TrimSuffix(s.Type, "?"))
 				}
 			}
 		}
 	} else if structLit, ok := s.Value.(*StructLiteral); ok {
-		goType = "*" + structLit.TypeName
-		c.varTypes[s.Name] = structLit.TypeName
+		typeArgStr := ""
+		if len(structLit.TypeArgs) > 0 {
+			typeArgStr = "[" + strings.Join(structLit.TypeArgs, ", ") + "]"
+		}
+		goType = "*" + structLit.TypeName + typeArgStr
+		c.varTypes[s.Name] = structLit.TypeName + typeArgStr
 	} else if callExpr, ok := s.Value.(*CallExpr); ok {
 		if ident, ok := callExpr.Function.(*Identifier); ok {
 			if retType, exists := c.funcReturnTypes[ident.Value]; exists {
-				if c.structTypes[retType] {
-					goType = "*" + retType
+				if c.isStructType(retType) {
+					goType = "*" + strings.TrimSuffix(retType, "?")
 					c.varTypes[s.Name] = retType
 				} else {
 					gt := toGoType(retType)
@@ -976,6 +1003,22 @@ func (c *Codegen) genReturnStmt(s *ReturnStmt) (string, error) {
 			}
 		}
 	}
+	if c.currentFn != nil && len(c.currentFn.TypeParams) > 0 {
+		typeParamSet := make(map[string]bool)
+		for _, tp := range c.currentFn.TypeParams {
+			typeParamSet[tp] = true
+		}
+		if typeParamSet[c.currentFn.ReturnType] || (strings.HasPrefix(c.currentFn.ReturnType, "[]") && typeParamSet[strings.TrimPrefix(c.currentFn.ReturnType, "[]")]) {
+			val = fmt.Sprintf("interface{}(%s).(%s)", val, c.currentFn.ReturnType)
+		}
+	}
+	if c.currentFn != nil && c.currentFn.ReturnType != "" {
+		retType := toGoType(c.currentFn.ReturnType)
+		if retType == "interface{}" && c.isStructType(c.currentFn.ReturnType) {
+			goRetType := "*" + strings.TrimSuffix(c.currentFn.ReturnType, "?")
+			val = fmt.Sprintf("interface{}(%s).(%s)", val, goRetType)
+		}
+	}
 
 	return fmt.Sprintf("return %s\n", val), nil
 }
@@ -1038,8 +1081,8 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 			retType = "[]" + strings.TrimPrefix(s.ReturnType, "[]")
 		} else {
 			retType = toGoType(s.ReturnType)
-			if retType == "interface{}" && c.structTypes[s.ReturnType] {
-				retType = "*" + s.ReturnType
+			if retType == "interface{}" && c.isStructType(s.ReturnType) {
+				retType = "*" + strings.TrimSuffix(s.ReturnType, "?")
 			}
 		}
 	}
@@ -1115,4 +1158,115 @@ func (c *Codegen) genExprStmt(s *ExprStmt) (string, error) {
 		return fmt.Sprintf("func init() {\n\t%s\n}\n\n", expr), nil
 	}
 	return expr + "\n", nil
+}
+
+func (c *Codegen) genActorDecl(s *ActorDecl) (string, error) {
+	c.currentActor = s
+	c.actorFields = make(map[string]bool)
+
+	for _, p := range s.Params {
+		c.actorFields[p] = true
+	}
+
+	var stateVars []string
+	var initStmts []string
+	var methods []string
+
+	for _, stmt := range s.Body.Statements {
+		switch st := stmt.(type) {
+		case *LetStmt:
+			c.actorFields[st.Name] = true
+			stateVars = append(stateVars, st.Name)
+			valStr, err := c.genExpression(st.Value)
+			if err != nil {
+				return "", err
+			}
+			initStmts = append(initStmts, fmt.Sprintf("actor.%s = %s", st.Name, valStr))
+		case *FnDecl:
+			oldInFunction := c.inFunction
+			c.inFunction = true
+			
+			oldDeclared := c.declaredVars
+			c.declaredVars = make(map[string]bool)
+			c.declaredVars["self"] = true
+			
+			var params []string
+			for _, pName := range st.Params {
+				c.declaredVars[pName] = true
+				params = append(params, pName+" interface{}")
+			}
+			
+			bodyStr, err := c.genBlockStatement(st.Body)
+			if err != nil {
+				return "", err
+			}
+			
+			c.declaredVars = oldDeclared
+			c.inFunction = oldInFunction
+			
+			methodCode := fmt.Sprintf("func (self *%s_Actor) %s(%s) interface{} %s\n\n", s.Name, st.Name, strings.Join(params, ", "), bodyStr)
+			methods = append(methods, methodCode)
+		}
+	}
+
+	var structFields []string
+	structFields = append(structFields, "mailbox chan runtime.ActorMessage")
+	for _, pName := range s.Params {
+		structFields = append(structFields, pName+" interface{}")
+	}
+	for _, svName := range stateVars {
+		structFields = append(structFields, svName+" interface{}")
+	}
+
+	structDef := fmt.Sprintf("type %s_Actor struct {\n\t%s\n}\n\n", s.Name, strings.Join(structFields, "\n\t"))
+
+	runMethod := fmt.Sprintf(`func (self *%s_Actor) run() {
+	for msg := range self.mailbox {
+		res := self.receive(msg.Payload)
+		if msg.Reply != nil {
+			msg.Reply <- res
+		}
+	}
+}
+
+`, s.Name)
+
+	var spawnParams []string
+	var structInits []string
+	structInits = append(structInits, "mailbox: mailbox")
+	for _, pName := range s.Params {
+		spawnParams = append(spawnParams, pName+" interface{}")
+		structInits = append(structInits, fmt.Sprintf("%s: %s", pName, pName))
+	}
+
+	selfDecl := ""
+	if len(initStmts) > 0 {
+		selfDecl = "self := actor"
+	}
+
+	spawnConstructor := fmt.Sprintf(`func Spawn_%s(%s) *runtime.ActorRef {
+	mailbox := make(chan runtime.ActorMessage, 100)
+	actor := &%s_Actor{
+		%s,
+	}
+	%s
+	%s
+	go actor.run()
+	return &runtime.ActorRef{Mailbox: mailbox}
+}
+
+`, s.Name, strings.Join(spawnParams, ", "), s.Name, strings.Join(structInits, ",\n\t\t"), selfDecl, strings.Join(initStmts, "\n\t"))
+
+	c.currentActor = nil
+	c.actorFields = nil
+
+	var out bytes.Buffer
+	out.WriteString(structDef)
+	out.WriteString(runMethod)
+	out.WriteString(spawnConstructor)
+	for _, m := range methods {
+		out.WriteString(m)
+	}
+
+	return out.String(), nil
 }

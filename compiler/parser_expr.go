@@ -62,6 +62,26 @@ func (p *Parser) parseIdentifier() Expression {
 				return call
 			}
 			// If no '(' follows, treat as regular index (shouldn't happen with isGenericCallAhead)
+		} else if p.isGenericStructLiteralAhead() {
+			p.nextToken() // consume '['
+			typeArgs := []string{}
+			for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
+				p.nextToken()
+				if p.curToken.Type == TOKEN_IDENT {
+					typeArgs = append(typeArgs, p.curToken.Literal)
+				}
+				if p.peekToken.Type == TOKEN_COMMA {
+					p.nextToken()
+				}
+			}
+			p.nextToken() // consume ']'
+			// Now expect '{'
+			if p.peekToken.Type == TOKEN_LBRACE {
+				p.nextToken() // consume '{'
+				lit := p.parseStructLiteral(ident.Value).(*StructLiteral)
+				lit.TypeArgs = typeArgs
+				return lit
+			}
 		}
 	}
 
@@ -103,6 +123,36 @@ func (p *Parser) isGenericCallAhead() bool {
 			return false
 		} else if t.Type != TOKEN_IDENT && t.Type != TOKEN_COMMA {
 			// If we see anything other than IDENT or COMMA inside brackets, it's not a generic call
+			return false
+		}
+	}
+	return false
+}
+
+func (p *Parser) isGenericStructLiteralAhead() bool {
+	lCopy := NewLexer(p.l.input)
+	lCopy.position = p.l.position
+	lCopy.readPosition = p.l.readPosition
+	lCopy.ch = p.l.ch
+	lCopy.line = p.l.line
+	lCopy.col = p.l.col
+
+	depth := 0
+	for i := 0; i < 20; i++ { // limit lookahead
+		t := lCopy.NextToken()
+		if t.Type == TOKEN_LBRACKET {
+			depth++
+		} else if t.Type == TOKEN_RBRACKET {
+			if depth > 0 {
+				depth--
+			} else {
+				// Found matching ']', check if '{' follows
+				next := lCopy.NextToken()
+				return next.Type == TOKEN_LBRACE
+			}
+		} else if t.Type == TOKEN_EOF {
+			return false
+		} else if t.Type != TOKEN_IDENT && t.Type != TOKEN_COMMA {
 			return false
 		}
 	}
@@ -454,4 +504,19 @@ func (p *Parser) parseSelfExpression() Expression {
 // parseValidateIdentifier treats 'validate' as a function identifier in expression context.
 func (p *Parser) parseValidateIdentifier() Expression {
 	return &Identifier{Token: p.curToken, Value: "validate"}
+}
+
+func (p *Parser) parseSpawnExpression() Expression {
+	expr := &SpawnExpr{Token: p.curToken}
+	if p.peekToken.Type == TOKEN_LPAREN {
+		p.nextToken() // skip 'spawn' and move to '('
+		p.nextToken() // skip '('
+		expr.Limit = p.parseExpression(LOWEST)
+		if !p.expectPeek(TOKEN_RPAREN) {
+			return nil
+		}
+	}
+	p.nextToken()
+	expr.Call = p.parseExpression(LOWEST)
+	return expr
 }

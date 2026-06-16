@@ -1,6 +1,9 @@
 package compiler
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // parseStructDeclaration parses: struct Name { field: type, ... }
 func (p *Parser) parseStructDeclaration() Statement {
@@ -10,6 +13,32 @@ func (p *Parser) parseStructDeclaration() Statement {
 		return nil
 	}
 	stmt.Name = p.curToken.Literal
+
+	// Optional type parameters: struct Box[T] { ... } or struct Pair[T, U] { ... }
+	if p.peekToken.Type == TOKEN_LBRACKET {
+		p.nextToken() // consume '['
+		stmt.TypeParams = []string{}
+		stmt.TypeConstraints = []string{}
+		for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
+			p.nextToken()
+			if p.curToken.Type == TOKEN_IDENT {
+				stmt.TypeParams = append(stmt.TypeParams, p.curToken.Literal)
+				if p.peekToken.Type == TOKEN_COLON {
+					p.nextToken() // consume ':'
+					p.nextToken() // constraint name
+					stmt.TypeConstraints = append(stmt.TypeConstraints, p.curToken.Literal)
+				} else {
+					stmt.TypeConstraints = append(stmt.TypeConstraints, "")
+				}
+			}
+			if p.peekToken.Type == TOKEN_COMMA {
+				p.nextToken()
+			}
+		}
+		if !p.expectPeek(TOKEN_RBRACKET) {
+			return nil
+		}
+	}
 
 	if !p.expectPeek(TOKEN_LBRACE) {
 		return nil
@@ -208,9 +237,10 @@ func (p *Parser) parseValidateStatement() Statement {
 
 // parseTypeAnnotation reads a type annotation which can be:
 // - simple: int, string, T
-// - array: []int, []T
+// - array: []int, []T, []Box[T]
 // - optional: int?, string?, User?
 // - union: int | string, User | error
+// - generic: Box[T], Pair[int, string]
 func (p *Parser) parseTypeAnnotation() string {
 	var baseType string
 
@@ -220,11 +250,39 @@ func (p *Parser) parseTypeAnnotation() string {
 			p.nextToken() // consume ']'
 			p.nextToken() // move to element type
 			baseType = "[]" + p.curToken.Literal
+			if p.peekToken.Type == TOKEN_LBRACKET {
+				p.nextToken() // consume '['
+				var args []string
+				for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
+					p.nextToken()
+					args = append(args, p.parseTypeAnnotation())
+					if p.peekToken.Type == TOKEN_COMMA {
+						p.nextToken()
+					}
+				}
+				if p.expectPeek(TOKEN_RBRACKET) {
+					baseType = baseType + "[" + strings.Join(args, ", ") + "]"
+				}
+			}
 		} else {
 			baseType = p.curToken.Literal
 		}
 	} else {
 		baseType = p.curToken.Literal
+		if p.peekToken.Type == TOKEN_LBRACKET {
+			p.nextToken() // consume '['
+			var args []string
+			for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
+				p.nextToken()
+				args = append(args, p.parseTypeAnnotation())
+				if p.peekToken.Type == TOKEN_COMMA {
+					p.nextToken()
+				}
+			}
+			if p.expectPeek(TOKEN_RBRACKET) {
+				baseType = baseType + "[" + strings.Join(args, ", ") + "]"
+			}
+		}
 	}
 
 	// Check for optional: T?
