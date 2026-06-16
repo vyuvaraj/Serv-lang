@@ -65,6 +65,9 @@ func NewCodegen(program *Program) *Codegen {
 
 
 func (c *Codegen) Generate() (string, error) {
+	// Run AOT optimizations
+	c.program = Optimize(c.program)
+
 	// Run escape analysis to annotate MapLiteral nodes
 	AnalyzeMapConcurrency(c.program)
 
