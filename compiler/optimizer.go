@@ -208,34 +208,46 @@ func optimizeExpression(expr Expression) Expression {
 		// 1. Integer Arithmetic & Comparison
 		if lInt, ok1 := left.(*IntegerLiteral); ok1 {
 			if rInt, ok2 := right.(*IntegerLiteral); ok2 {
-				return foldIntegers(lInt.Value, rInt.Value, e.Operator, e.Token)
+				if folded := foldIntegers(lInt.Value, rInt.Value, e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 			if rFloat, ok2 := right.(*FloatLiteral); ok2 {
-				return foldFloats(float64(lInt.Value), rFloat.Value, e.Operator, e.Token)
+				if folded := foldFloats(float64(lInt.Value), rFloat.Value, e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 		}
 
 		// 2. Float Arithmetic & Comparison
 		if lFloat, ok1 := left.(*FloatLiteral); ok1 {
 			if rFloat, ok2 := right.(*FloatLiteral); ok2 {
-				return foldFloats(lFloat.Value, rFloat.Value, e.Operator, e.Token)
+				if folded := foldFloats(lFloat.Value, rFloat.Value, e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 			if rInt, ok2 := right.(*IntegerLiteral); ok2 {
-				return foldFloats(lFloat.Value, float64(rInt.Value), e.Operator, e.Token)
+				if folded := foldFloats(lFloat.Value, float64(rInt.Value), e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 		}
 
 		// 3. String Concatenation & Comparison
 		if lStr, ok1 := left.(*StringLiteral); ok1 {
 			if rStr, ok2 := right.(*StringLiteral); ok2 {
-				return foldStrings(lStr.Value, rStr.Value, e.Operator, e.Token)
+				if folded := foldStrings(lStr.Value, rStr.Value, e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 		}
 
 		// 4. Boolean Operations
 		if lBool, ok1 := left.(*BooleanLiteral); ok1 {
 			if rBool, ok2 := right.(*BooleanLiteral); ok2 {
-				return foldBooleans(lBool.Value, rBool.Value, e.Operator, e.Token)
+				if folded := foldBooleans(lBool.Value, rBool.Value, e.Operator, e.Token); folded != nil {
+					return folded
+				}
 			}
 		}
 
