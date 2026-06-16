@@ -262,9 +262,10 @@ func splitColumns(colDefsStr string) []string {
 	parenDepth := 0
 	for i := 0; i < len(colDefsStr); i++ {
 		char := colDefsStr[i]
-		if char == '(' {
+		switch char {
+		case '(':
 			parenDepth++
-		} else if char == ')' {
+		case ')':
 			parenDepth--
 		}
 		
@@ -523,7 +524,8 @@ func (p *Parser) parseCorsStatement() Statement {
 	}
 
 	p.nextToken()
-	if p.curToken.Type == TOKEN_LBRACKET {
+	switch p.curToken.Type {
+	case TOKEN_LBRACKET:
 		for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
 			p.nextToken()
 			if p.curToken.Type == TOKEN_STRING {
@@ -536,9 +538,9 @@ func (p *Parser) parseCorsStatement() Statement {
 		if !p.expectPeek(TOKEN_RBRACKET) {
 			return nil
 		}
-	} else if p.curToken.Type == TOKEN_STRING {
+	case TOKEN_STRING:
 		stmt.Origins = []string{p.curToken.Literal}
-	} else {
+	default:
 		p.addError("expected string or list of strings for cors origins")
 		return nil
 	}

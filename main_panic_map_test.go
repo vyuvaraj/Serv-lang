@@ -61,22 +61,24 @@ test "trigger panic" {
 	t.Logf("Compiler stdout output:\n%s", outputStdout)
 	t.Logf("Compiler stderr output:\n%s", outputStderr)
 
+	combinedOutput := outputStdout + "\n" + outputStderr
+
 	// 5. Verify that the output stack trace was rewritten to point to the .srv file and correct line
 	// The original divide function is on line 3, and the division 'a / b' is on line 3 of the srv file.
 	// We want to ensure we see '<tmpFile_base>:<line>' and not 'service.go' or 'main.go'.
 	expectedFile := filepath.Base(tmpFile.Name())
-	if !strings.Contains(outputStderr, expectedFile) {
-		t.Errorf("Expected stack trace to contain original file %q, but it did not.\nStderr:\n%s", expectedFile, outputStderr)
+	if !strings.Contains(combinedOutput, expectedFile) {
+		t.Errorf("Expected stack trace to contain original file %q, but it did not.\nCombined Output:\n%s", expectedFile, combinedOutput)
 	}
 
 	// Also make sure we mapped back to a line in the .srv file, e.g. line 3 or 7
-	if !strings.Contains(outputStderr, expectedFile+":3") && !strings.Contains(outputStderr, expectedFile+":7") {
-		t.Errorf("Expected stack trace to contain mapped line numbers (e.g. :3 or :7) for %q.\nStderr:\n%s", expectedFile, outputStderr)
+	if !strings.Contains(combinedOutput, expectedFile+":3") && !strings.Contains(combinedOutput, expectedFile+":7") {
+		t.Errorf("Expected stack trace to contain mapped line numbers (e.g. :3 or :7) for %q.\nCombined Output:\n%s", expectedFile, combinedOutput)
 	}
 
 	// Make sure service.go or main.go coordinate wasn't left untranslated for the user-defined stack frames
 	// Note: system stack frames like runtime/panic.go are fine, but our generated files should be mapped.
-	if strings.Contains(outputStderr, "service.go:") {
-		t.Errorf("Expected service.go references to be rewritten, but found 'service.go:' in Stderr:\n%s", outputStderr)
+	if strings.Contains(combinedOutput, "service.go:") {
+		t.Errorf("Expected service.go references to be rewritten, but found 'service.go:' in Combined Output:\n%s", combinedOutput)
 	}
 }

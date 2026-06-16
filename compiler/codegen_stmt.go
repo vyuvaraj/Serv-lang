@@ -165,9 +165,9 @@ func (c *Codegen) genForStmt(s *ForStmt) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		c.declaredVars[s.Variable] = true
+		c.declareVar(s.Variable)
 		if s.KeyVar != "" {
-			c.declaredVars[s.KeyVar] = true
+			c.declareVar(s.KeyVar)
 			c.varTypes[s.KeyVar] = "interface{}"
 		}
 
@@ -260,17 +260,17 @@ func (c *Codegen) genMethodDecl(s *MethodDecl) (string, error) {
 	c.inFunction = true
 	oldDeclared := c.declaredVars
 	oldVarTypes := c.varTypes
-	c.declaredVars = make(map[string]bool)
+	c.declaredVars = NewScope(nil)
 	c.varTypes = make(map[string]string)
 	for k, v := range oldVarTypes {
 		c.varTypes[k] = v
 	}
-	c.declaredVars["self"] = true
+	c.declareVar("self")
 	c.varTypes["self"] = s.TypeName
 
 	var params []string
 	for i, p := range s.Params {
-		c.declaredVars[p] = true
+		c.declareVar(p)
 		pt := "interface{}"
 		if i < len(s.ParamTypes) && s.ParamTypes[i] != "" {
 			pt = toGoType(s.ParamTypes[i])
@@ -450,12 +450,12 @@ func (c *Codegen) genMiddlewareDecl(s *MiddlewareDecl) (string, error) {
 func (c *Codegen) genWsStmt(s *WsStmt) (string, error) {
 	oldDeclared := c.declaredVars
 	oldVarTypes := c.varTypes
-	c.declaredVars = make(map[string]bool)
+	c.declaredVars = NewScope(nil)
 	c.varTypes = make(map[string]string)
 	for k, v := range oldVarTypes {
 		c.varTypes[k] = v
 	}
-	c.declaredVars[s.Param] = true
+	c.declareVar(s.Param)
 	c.varTypes[s.Param] = "*runtime.WSConn"
 	c.inFunction = true
 
@@ -784,7 +784,7 @@ func (c *Codegen) genDestructureLetStmt(s *DestructureLetStmt) (string, error) {
 	out.WriteString(fmt.Sprintf("var %s interface{} = %s\n", tmpVar, val))
 	c.imports[`"fmt"`] = true
 	for _, field := range s.Fields {
-		c.declaredVars[field] = true
+		c.declareVar(field)
 		out.WriteString(fmt.Sprintf("var %s interface{} = func() interface{} {\n", field))
 		out.WriteString(fmt.Sprintf("\tswitch v := %s.(type) {\n", tmpVar))
 		out.WriteString(fmt.Sprintf("\tcase *runtime.SafeMap:\n\t\treturn v.Get(%q)\n", field))
@@ -804,7 +804,7 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		c.declaredVars[s.Name] = true
+		c.declareVar(s.Name)
 		tmpVal := fmt.Sprintf("_prop_val_%d", errProp.Token.Line)
 		tmpErr := fmt.Sprintf("_prop_err_%d", errProp.Token.Line)
 
@@ -849,7 +849,7 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 
 	if len(s.Names) > 1 {
 		for _, name := range s.Names {
-			c.declaredVars[name] = true
+			c.declareVar(name)
 		}
 		c.imports[`"fmt"`] = true
 
@@ -875,7 +875,7 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 			s.Names[0], s.Names[1], val, s.Names[0], s.Names[1]), nil
 	}
 
-	if c.declaredVars[s.Name] {
+	if c.isDeclared(s.Name) {
 		// Re-assignment: update type tracking
 		inferred := c.getExpressionType(s.Value)
 		targetType, ok := c.varTypes[s.Name]
@@ -905,7 +905,7 @@ func (c *Codegen) genLetStmt(s *LetStmt) (string, error) {
 		}
 		return fmt.Sprintf("%s = %s\n_ = %s\n", s.Name, val, s.Name), nil
 	}
-	c.declaredVars[s.Name] = true
+	c.declareVar(s.Name)
 	goType := "interface{}"
 	if s.Type != "" {
 		goType = toGoType(s.Type)
@@ -1069,7 +1069,7 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 
 	oldDeclared := c.declaredVars
 	oldVarTypes := c.varTypes
-	c.declaredVars = make(map[string]bool)
+	c.declaredVars = NewScope(nil)
 	c.varTypes = make(map[string]string)
 	for k, v := range oldVarTypes {
 		c.varTypes[k] = v
@@ -1082,7 +1082,7 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 
 	var params []string
 	for i, p := range s.Params {
-		c.declaredVars[p] = true
+		c.declareVar(p)
 		pt := "interface{}"
 		if i < len(s.ParamTypes) && s.ParamTypes[i] != "" {
 			rawType := s.ParamTypes[i]
@@ -1163,11 +1163,8 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 
 func (c *Codegen) genTryCatchStmt(s *TryCatchStmt) (string, error) {
 	oldDeclared := c.declaredVars
-	c.declaredVars = make(map[string]bool)
-	for k, v := range oldDeclared {
-		c.declaredVars[k] = v
-	}
-	c.declaredVars[s.Param] = true
+	c.declaredVars = NewScope(oldDeclared)
+	c.declareVar(s.Param)
 
 	tryBodyStr, err := c.genBlockStatement(s.TryBody)
 	if err != nil {
@@ -1222,12 +1219,12 @@ func (c *Codegen) genActorDecl(s *ActorDecl) (string, error) {
 			c.inFunction = true
 			
 			oldDeclared := c.declaredVars
-			c.declaredVars = make(map[string]bool)
-			c.declaredVars["self"] = true
+			c.declaredVars = NewScope(nil)
+			c.declareVar("self")
 			
 			var params []string
 			for _, pName := range st.Params {
-				c.declaredVars[pName] = true
+				c.declareVar(pName)
 				params = append(params, pName+" interface{}")
 			}
 			
@@ -1313,16 +1310,13 @@ func (c *Codegen) genWorkflowDecl(s *WorkflowDecl) (string, error) {
 	oldInFunction := c.inFunction
 	c.inFunction = true
 	oldDeclared := c.declaredVars
-	c.declaredVars = make(map[string]bool)
-	for k, v := range oldDeclared {
-		c.declaredVars[k] = v
-	}
+	c.declaredVars = NewScope(oldDeclared)
 	// The param name is available as a local variable.
 	if s.Param != "" {
-		c.declaredVars[s.Param] = true
+		c.declareVar(s.Param)
 	}
 	// The workflow context is available as _wfCtx.
-	c.declaredVars["_wfCtx"] = true
+	c.declareVar("_wfCtx")
 
 	// Mark that we are inside a workflow so await expressions use _wfCtx.Step().
 	c.currentWorkflow = s

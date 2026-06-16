@@ -10,7 +10,7 @@ import (
 type Codegen struct {
 	program             *Program
 	imports             map[string]bool
-	declaredVars        map[string]bool
+	declaredVars        *Scope
 	varTypes            map[string]string // varName -> type
 	inFunction          bool
 	inConcurrentContext bool
@@ -47,7 +47,7 @@ func NewCodegen(program *Program) *Codegen {
 	return &Codegen{
 		program:             program,
 		imports:             make(map[string]bool),
-		declaredVars:        make(map[string]bool),
+		declaredVars:        NewScope(nil),
 		varTypes:     make(map[string]string),
 		goExterns:    make(map[string]string),
 		regexDecls:   []string{},
@@ -498,15 +498,12 @@ c.inFunction = true
 defer func() { c.inFunction = oldInFunc }()
 
 oldDeclared := c.declaredVars
-c.declaredVars = make(map[string]bool)
-for k, v := range oldDeclared {
-c.declaredVars[k] = v
-}
+c.declaredVars = NewScope(c.declaredVars)
 
 oldVarTypes := c.varTypes
 c.varTypes = make(map[string]string)
 for k, v := range oldVarTypes {
-c.varTypes[k] = v
+	c.varTypes[k] = v
 }
 defer func() {
 	c.declaredVars = oldDeclared

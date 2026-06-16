@@ -4,44 +4,25 @@ import "fmt"
 
 // analyzeUnusedVars finds variables declared in a function body that are never referenced.
 func analyzeUnusedVars(fn *FnDecl) []Diagnostic {
-	var diags []Diagnostic
-
-	// Collect all let declarations in the function
-	declared := make(map[string]Token) // name -> declaration token
-	for _, stmt := range fn.Body.Statements {
-		collectDeclarations(stmt, declared)
-	}
-
-	// Collect all identifier references in the function body
-	referenced := make(map[string]bool)
-	for _, stmt := range fn.Body.Statements {
-		collectReferences(stmt, referenced)
-	}
-
-	// Also mark function params as declared (but they don't generate warnings)
-	paramSet := make(map[string]bool)
+	// Root scope of the function parameters
+	rootScope := NewScope(nil)
 	for _, p := range fn.Params {
-		paramSet[p] = true
+		rootScope.Insert(&Symbol{
+			Name:  p,
+			Type:  "parameter",
+			Token: fn.Token,
+			Used:  true, // Parameters don't generate warnings
+		})
 	}
 
-	// Report unused variables (skip params and special names)
-	for name, tok := range declared {
-		if paramSet[name] {
-			continue
-		}
-		if name == "_" || name == "self" {
-			continue
-		}
-		if !referenced[name] {
-			diags = append(diags, Diagnostic{
-				Line:     tok.Line,
-				Col:      tok.Col,
-				Severity: "warning",
-				Message:  fmt.Sprintf("variable '%s' is declared but never used", name),
-			})
+	var diags []Diagnostic
+	if fn.Body != nil {
+		for _, stmt := range fn.Body.Statements {
+			analyzeStmtUnused(stmt, rootScope, &diags)
 		}
 	}
 
+	collectUnusedDiagnostics(rootScope, &diags)
 	return diags
 }
 
@@ -52,35 +33,21 @@ func analyzeBlock(block *BlockStmt, parentParams []string) []Diagnostic {
 		return diags
 	}
 
-	declared := make(map[string]Token)
-	for _, stmt := range block.Statements {
-		collectDeclarations(stmt, declared)
-	}
-
-	referenced := make(map[string]bool)
-	for _, stmt := range block.Statements {
-		collectReferences(stmt, referenced)
-	}
-
-	paramSet := make(map[string]bool)
+	rootScope := NewScope(nil)
 	for _, p := range parentParams {
-		paramSet[p] = true
+		rootScope.Insert(&Symbol{
+			Name:  p,
+			Type:  "parameter",
+			Token: Token{},
+			Used:  true,
+		})
 	}
 
-	for name, tok := range declared {
-		if paramSet[name] || name == "_" || name == "self" {
-			continue
-		}
-		if !referenced[name] {
-			diags = append(diags, Diagnostic{
-				Line:     tok.Line,
-				Col:      tok.Col,
-				Severity: "warning",
-				Message:  fmt.Sprintf("variable '%s' is declared but never used", name),
-			})
-		}
+	for _, stmt := range block.Statements {
+		analyzeStmtUnused(stmt, rootScope, &diags)
 	}
 
+	collectUnusedDiagnostics(rootScope, &diags)
 	return diags
 }
 
@@ -129,213 +96,247 @@ func analyzeDeadImports(program *Program) []Diagnostic {
 	return diags
 }
 
-// collectDeclarations walks a statement tree and records let declarations.
-func collectDeclarations(stmt Statement, declared map[string]Token) {
-	switch s := stmt.(type) {
-	case *LetStmt:
-		declared[s.Name] = s.Token
-	case *DestructureLetStmt:
-		for _, f := range s.Fields {
-			declared[f] = s.Token
+// collectUnusedDiagnostics recursively walks the scope tree and collects warnings for unused variables.
+func collectUnusedDiagnostics(scope *Scope, diags *[]Diagnostic) {
+	if scope == nil {
+		return
+	}
+	for _, sym := range scope.Symbols {
+		if sym.Type == "variable" && !sym.Used && sym.Name != "_" && sym.Name != "self" {
+			*diags = append(*diags, Diagnostic{
+				Line:     sym.Token.Line,
+				Col:      sym.Token.Col,
+				Severity: "warning",
+				Message:  fmt.Sprintf("variable '%s' is declared but never used", sym.Name),
+			})
 		}
-	case *ForStmt:
-		if s.Variable != "" {
-			declared[s.Variable] = s.Token
-		}
-		if s.KeyVar != "" {
-			declared[s.KeyVar] = s.Token
-		}
-		if s.Body != nil {
-			for _, inner := range s.Body.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
-	case *IfStmt:
-		if s.Body != nil {
-			for _, inner := range s.Body.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
-		if s.ElseBody != nil {
-			for _, inner := range s.ElseBody.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
-	case *TryCatchStmt:
-		if s.TryBody != nil {
-			for _, inner := range s.TryBody.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
-		if s.CatchBody != nil {
-			declared[s.Param] = s.Token
-			for _, inner := range s.CatchBody.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
-	case *MatchStmt:
-		for _, c := range s.Cases {
-			if c.Body != nil {
-				for _, inner := range c.Body.Statements {
-					collectDeclarations(inner, declared)
-				}
-			}
-		}
-	case *ActorDecl:
-		declared[s.Name] = s.Token
-		if s.Body != nil {
-			for _, inner := range s.Body.Statements {
-				collectDeclarations(inner, declared)
-			}
-		}
+	}
+	for _, child := range scope.Children {
+		collectUnusedDiagnostics(child, diags)
 	}
 }
 
-// collectReferences walks a statement tree and records all identifier usages.
-func collectReferences(stmt Statement, referenced map[string]bool) {
+// analyzeStmtUnused walks the statement tree, declaring variables in the current scope level
+// and pushing child scopes for nested blocks.
+func analyzeStmtUnused(stmt Statement, scope *Scope, diags *[]Diagnostic) {
+	if stmt == nil {
+		return
+	}
 	switch s := stmt.(type) {
 	case *LetStmt:
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Value, scope)
+		sym := &Symbol{
+			Name:  s.Name,
+			Type:  "variable",
+			Token: s.Token,
+		}
+		if !scope.Insert(sym) {
+			scope.Symbols[s.Name] = sym // shadow/overwrite
+		}
 	case *DestructureLetStmt:
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Value, scope)
+		for _, f := range s.Fields {
+			sym := &Symbol{
+				Name:  f,
+				Type:  "variable",
+				Token: s.Token,
+			}
+			scope.Symbols[f] = sym // shadow/overwrite
+		}
 	case *ReturnStmt:
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Value, scope)
 	case *ExprStmt:
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Value, scope)
 	case *IfStmt:
-		collectExprRefs(s.Condition, referenced)
+		collectRefsInExpr(s.Condition, scope)
 		if s.Body != nil {
+			child := NewScope(scope)
 			for _, inner := range s.Body.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 		if s.ElseBody != nil {
+			child := NewScope(scope)
 			for _, inner := range s.ElseBody.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 	case *ForStmt:
-		collectExprRefs(s.Iterable, referenced)
+		collectRefsInExpr(s.Iterable, scope)
+		child := NewScope(scope)
+		if s.Variable != "" {
+			child.Insert(&Symbol{
+				Name:  s.Variable,
+				Type:  "variable",
+				Token: s.Token,
+				Used:  true, // loop variable
+			})
+		}
+		if s.KeyVar != "" {
+			child.Insert(&Symbol{
+				Name:  s.KeyVar,
+				Type:  "variable",
+				Token: s.Token,
+				Used:  true, // loop key variable
+			})
+		}
 		if s.Body != nil {
 			for _, inner := range s.Body.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 	case *TryCatchStmt:
 		if s.TryBody != nil {
+			child := NewScope(scope)
 			for _, inner := range s.TryBody.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 		if s.CatchBody != nil {
+			child := NewScope(scope)
+			if s.Param != "" {
+				child.Insert(&Symbol{
+					Name:  s.Param,
+					Type:  "parameter",
+					Token: s.Token,
+					Used:  true,
+				})
+			}
 			for _, inner := range s.CatchBody.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 	case *MatchStmt:
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Value, scope)
 		for _, c := range s.Cases {
+			child := NewScope(scope)
 			if c.Value != nil {
-				collectExprRefs(c.Value, referenced)
+				collectRefsInExpr(c.Value, child)
 			}
 			if c.Body != nil {
 				for _, inner := range c.Body.Statements {
-					collectReferences(inner, referenced)
+					analyzeStmtUnused(inner, child, diags)
 				}
 			}
 		}
 	case *PublishStmt:
-		collectExprRefs(s.Topic, referenced)
-		collectExprRefs(s.Value, referenced)
+		collectRefsInExpr(s.Topic, scope)
+		collectRefsInExpr(s.Value, scope)
 	case *SpawnStmt:
-		collectExprRefs(s.Call, referenced)
+		collectRefsInExpr(s.Call, scope)
 	case *ActorDecl:
 		if s.Body != nil {
+			child := NewScope(scope)
+			for _, p := range s.Params {
+				child.Insert(&Symbol{
+					Name:  p,
+					Type:  "parameter",
+					Token: s.Token,
+					Used:  true,
+				})
+			}
 			for _, inner := range s.Body.Statements {
-				collectReferences(inner, referenced)
+				analyzeStmtUnused(inner, child, diags)
 			}
 		}
 	}
 }
 
-// collectExprRefs recursively collects all identifier references from an expression.
-func collectExprRefs(expr Expression, referenced map[string]bool) {
+// collectRefsInExpr recursively traverses an expression tree and marks any referenced symbols as used.
+func collectRefsInExpr(expr Expression, scope *Scope) {
 	if expr == nil {
 		return
 	}
 	switch e := expr.(type) {
 	case *Identifier:
-		referenced[e.Value] = true
+		if sym, found := scope.Lookup(e.Value); found {
+			sym.Used = true
+		}
 	case *AssignExpr:
-		referenced[e.Name] = true
-		collectExprRefs(e.Value, referenced)
+		if sym, found := scope.Lookup(e.Name); found {
+			sym.Used = true
+		}
+		collectRefsInExpr(e.Value, scope)
 	case *CompoundAssignExpr:
-		referenced[e.Name] = true
-		collectExprRefs(e.Value, referenced)
+		if sym, found := scope.Lookup(e.Name); found {
+			sym.Used = true
+		}
+		collectRefsInExpr(e.Value, scope)
 	case *MemberExpr:
-		collectExprRefs(e.Object, referenced)
+		collectRefsInExpr(e.Object, scope)
 	case *OptionalMemberExpr:
-		collectExprRefs(e.Object, referenced)
+		collectRefsInExpr(e.Object, scope)
 	case *MemberAssignExpr:
-		collectExprRefs(e.Object, referenced)
-		collectExprRefs(e.Value, referenced)
+		collectRefsInExpr(e.Object, scope)
+		collectRefsInExpr(e.Value, scope)
 	case *CallExpr:
-		collectExprRefs(e.Function, referenced)
+		collectRefsInExpr(e.Function, scope)
 		for _, arg := range e.Arguments {
-			collectExprRefs(arg, referenced)
+			collectRefsInExpr(arg, scope)
 		}
 	case *InfixExpr:
-		collectExprRefs(e.Left, referenced)
-		collectExprRefs(e.Right, referenced)
+		collectRefsInExpr(e.Left, scope)
+		collectRefsInExpr(e.Right, scope)
 	case *PrefixExpr:
-		collectExprRefs(e.Right, referenced)
+		collectRefsInExpr(e.Right, scope)
 	case *IndexExpr:
-		collectExprRefs(e.Left, referenced)
-		collectExprRefs(e.Index, referenced)
+		collectRefsInExpr(e.Left, scope)
+		collectRefsInExpr(e.Index, scope)
 	case *SliceExpr:
-		collectExprRefs(e.Left, referenced)
-		collectExprRefs(e.Start, referenced)
-		collectExprRefs(e.End, referenced)
+		collectRefsInExpr(e.Left, scope)
+		collectRefsInExpr(e.Start, scope)
+		collectRefsInExpr(e.End, scope)
 	case *ArrayLiteral:
 		for _, el := range e.Elements {
-			collectExprRefs(el, referenced)
+			collectRefsInExpr(el, scope)
 		}
 	case *MapLiteral:
 		for _, v := range e.Pairs {
-			collectExprRefs(v, referenced)
+			collectRefsInExpr(v, scope)
 		}
 		for _, s := range e.Spreads {
-			collectExprRefs(s.Value, referenced)
+			collectRefsInExpr(s.Value, scope)
 		}
 	case *StructLiteral:
 		for _, v := range e.Fields {
-			collectExprRefs(v, referenced)
+			collectRefsInExpr(v, scope)
 		}
 	case *FnLiteral:
+		child := NewScope(scope)
+		for _, p := range e.Params {
+			child.Insert(&Symbol{
+				Name:  p,
+				Type:  "parameter",
+				Token: e.Token,
+				Used:  true,
+			})
+		}
 		if e.IsArrow {
-			collectExprRefs(e.ArrowExpr, referenced)
+			collectRefsInExpr(e.ArrowExpr, child)
 		} else if e.Body != nil {
 			for _, s := range e.Body.Statements {
-				collectReferences(s, referenced)
+				analyzeStmtUnused(s, child, nil)
 			}
 		}
 	case *AwaitExpr:
-		collectExprRefs(e.Value, referenced)
+		collectRefsInExpr(e.Value, scope)
 	case *AssertExpr:
-		collectExprRefs(e.Cond, referenced)
+		collectRefsInExpr(e.Cond, scope)
 	case *ErrorPropExpr:
-		collectExprRefs(e.Value, referenced)
+		collectRefsInExpr(e.Value, scope)
 	case *FStringLiteral:
-		collectFStringRefs(e.Value, referenced)
+		collectFStringRefsInUnused(e.Value, scope)
 	case *SelfExpr:
-		referenced["self"] = true
+		if sym, found := scope.Lookup("self"); found {
+			sym.Used = true
+		}
 	case *SpawnExpr:
-		collectExprRefs(e.Call, referenced)
+		collectRefsInExpr(e.Call, scope)
 	}
 }
 
-// collectFStringRefs extracts identifier references from f-string interpolation braces.
-func collectFStringRefs(str string, referenced map[string]bool) {
+// collectFStringRefsInUnused parses f-string interpolations and marks any referenced variables as used.
+func collectFStringRefsInUnused(str string, scope *Scope) {
 	runes := []rune(str)
 	i := 0
 	for i < len(runes) {
@@ -353,7 +354,7 @@ func collectFStringRefs(str string, referenced map[string]bool) {
 			parser := NewParser(lexer)
 			expr := parser.parseExpression(LOWEST)
 			if expr != nil {
-				collectExprRefs(expr, referenced)
+				collectRefsInExpr(expr, scope)
 			}
 		} else {
 			i++

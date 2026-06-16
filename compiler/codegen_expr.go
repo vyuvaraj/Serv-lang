@@ -8,7 +8,7 @@ import (
 func (c *Codegen) genExpression(expr Expression) (string, error) {
 	switch e := expr.(type) {
 	case *Identifier:
-		if c.currentActor != nil && c.actorFields[e.Value] && !c.declaredVars[e.Value] {
+		if c.currentActor != nil && c.actorFields[e.Value] && !c.isDeclared(e.Value) {
 			return "self." + e.Value, nil
 		}
 		return e.Value, nil
@@ -403,7 +403,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				case "info":
 					if !isStructMethodCall {
 						if ident, ok := memExpr.Object.(*Identifier); ok {
-							if c.declaredVars[ident.Value] {
+							if c.isDeclared(ident.Value) {
 								var args []string
 								for _, arg := range e.Arguments {
 									argStr, _ := c.genExpression(arg)
@@ -417,7 +417,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				case "warn":
 					if !isStructMethodCall {
 						if ident, ok := memExpr.Object.(*Identifier); ok {
-							if c.declaredVars[ident.Value] {
+							if c.isDeclared(ident.Value) {
 								var args []string
 								for _, arg := range e.Arguments {
 									argStr, _ := c.genExpression(arg)
@@ -431,7 +431,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				case "error":
 					if !isStructMethodCall {
 						if ident, ok := memExpr.Object.(*Identifier); ok {
-							if c.declaredVars[ident.Value] {
+							if c.isDeclared(ident.Value) {
 								var args []string
 								for _, arg := range e.Arguments {
 									argStr, _ := c.genExpression(arg)
@@ -445,7 +445,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				case "debug":
 					if !isStructMethodCall {
 						if ident, ok := memExpr.Object.(*Identifier); ok {
-							if c.declaredVars[ident.Value] {
+							if c.isDeclared(ident.Value) {
 								var args []string
 								for _, arg := range e.Arguments {
 									argStr, _ := c.genExpression(arg)
@@ -935,7 +935,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 		name := e.Name
-		if c.currentActor != nil && c.actorFields[name] && !c.declaredVars[name] {
+		if c.currentActor != nil && c.actorFields[name] && !c.isDeclared(name) {
 			name = "self." + name
 		}
 		// Type coercion: if target variable has a known type but expression returns interface{}
@@ -962,7 +962,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			return "", err
 		}
 		name := e.Name
-		if c.currentActor != nil && c.actorFields[name] && !c.declaredVars[name] {
+		if c.currentActor != nil && c.actorFields[name] && !c.isDeclared(name) {
 			name = "self." + name
 		}
 		// If variable has a known numeric type, emit direct Go compound assignment
