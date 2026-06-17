@@ -122,14 +122,40 @@ func InitBroker(url string) {
 	} else if strings.HasPrefix(url, "kafka://") {
 		kafkaBrokerAddr = strings.TrimPrefix(url, "kafka://")
 		LogInfo("Targeting Kafka Broker Address: ", kafkaBrokerAddr)
-	} else if strings.HasPrefix(url, "activemq://") || strings.HasPrefix(url, "stomp://") {
-		addr := strings.TrimPrefix(strings.TrimPrefix(url, "activemq://"), "stomp://")
-		var err error
-		stompConn, err = stomp.Dial("tcp", addr)
-		if err != nil {
-			LogWarn("Failed to connect to ActiveMQ over STOMP: ", err, " - Falling back to in-memory broker")
+	} else if strings.HasPrefix(url, "activemq://") || strings.HasPrefix(url, "stomp://") || strings.HasPrefix(url, "servqueue://") {
+		addr := url
+		var login, passcode string
+
+		if strings.HasPrefix(url, "servqueue://") {
+			addr = strings.TrimPrefix(url, "servqueue://")
+			// Parse username:password if present
+			if strings.Contains(addr, "@") {
+				parts := strings.SplitN(addr, "@", 2)
+				creds := parts[0]
+				addr = parts[1]
+				if strings.Contains(creds, ":") {
+					credParts := strings.SplitN(creds, ":", 2)
+					login = credParts[0]
+					passcode = credParts[1]
+				} else {
+					login = creds
+				}
+			}
 		} else {
-			LogInfo("Connected to ActiveMQ/STOMP successfully")
+			addr = strings.TrimPrefix(strings.TrimPrefix(url, "activemq://"), "stomp://")
+		}
+
+		var err error
+		var opts []func(*stomp.Conn) error
+		if login != "" || passcode != "" {
+			opts = append(opts, stomp.ConnOpt.Login(login, passcode))
+		}
+
+		stompConn, err = stomp.Dial("tcp", addr, opts...)
+		if err != nil {
+			LogWarn("Failed to connect to STOMP/ServQueue broker: ", err, " - Falling back to in-memory broker")
+		} else {
+			LogInfo("Connected to STOMP/ServQueue broker successfully at ", addr)
 		}
 	}
 }
