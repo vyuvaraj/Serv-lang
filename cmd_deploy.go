@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -106,11 +107,31 @@ CMD ["./service"]
 	}
 
 	fmt.Printf("✓ Generated fly.toml and Dockerfile for '%s'\n", appName)
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Install flyctl: https://fly.io/docs/flyctl/install/")
-	fmt.Println("  2. fly auth login")
-	fmt.Printf("  3. fly apps create %s\n", appName)
-	fmt.Println("  4. fly deploy")
+
+	flyCmd := ""
+	if _, err := exec.LookPath("flyctl"); err == nil {
+		flyCmd = "flyctl"
+	} else if _, err := exec.LookPath("fly"); err == nil {
+		flyCmd = "fly"
+	}
+
+	if flyCmd != "" {
+		fmt.Printf("Triggering Fly.io deployment with %s...\n", flyCmd)
+		cmd := exec.Command(flyCmd, "deploy")
+		cmd.Dir = targetDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("Failed to run '%s deploy': %v\n", flyCmd, err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Println("\nNext steps:")
+		fmt.Println("  1. Install flyctl: https://fly.io/docs/flyctl/install/")
+		fmt.Println("  2. fly auth login")
+		fmt.Printf("  3. fly apps create %s\n", appName)
+		fmt.Println("  4. fly deploy")
+	}
 }
 
 func generateRailwayConfig(targetDir, appName, srvFile string) {

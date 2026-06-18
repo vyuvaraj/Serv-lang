@@ -134,6 +134,39 @@ func TestNewAndDeployK8s(t *testing.T) {
 	}
 }
 
+func TestAICompilation(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test_ai_compilation_*.srv")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	srvContent := `
+ai "openai://gpt-4o-mini"
+server "8080"
+
+route "POST" "/ask" (req) {
+	let res = ai.complete(req.body)
+	let vec = ai.embed("text to embed")
+	return { "res": res, "vector": vec }
+}
+`
+	if _, err := tmpFile.WriteString(srvContent); err != nil {
+		t.Fatalf("failed to write srv file: %v", err)
+	}
+	tmpFile.Close()
+
+	binPath, err := buildServNoExit(tmpFile.Name(), "temp_ai_test.exe", "")
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	defer os.Remove(binPath)
+
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		t.Errorf("expected binary to be generated at %s", binPath)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || stringsContains(s, substr))
 }

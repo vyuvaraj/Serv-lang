@@ -110,8 +110,9 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 
 	cmd := exec.Command(goPath, "build", "-o", relOutPath, ".")
 	cmd.Dir = buildDir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	if target == "wasm" {
-		cmd.Env = append(os.Environ(), "GOOS=wasip1", "GOARCH=wasm")
+		cmd.Env = append(cmd.Env, "GOOS=wasip1", "GOARCH=wasm")
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -378,6 +379,7 @@ func runGoModTidy(buildDir string) error {
 	}
 	cmd := exec.Command(goPath, "mod", "tidy")
 	cmd.Dir = buildDir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
