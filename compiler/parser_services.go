@@ -36,6 +36,14 @@ func (p *Parser) parseMailStatement() Statement {
 	return stmt
 }
 
+func (p *Parser) parseStoreStatement() Statement {
+	stmt := &StoreStmt{Token: p.curToken}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	return stmt
+}
+
+
 
 
 func (p *Parser) parseServerStatement() Statement {

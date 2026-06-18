@@ -67,6 +67,7 @@ const (
 	TOKEN_WORKFLOW   TokenType = "WORKFLOW"
 	TOKEN_STREAM     TokenType = "STREAM"
 	TOKEN_YIELD      TokenType = "YIELD"
+	TOKEN_STORE      TokenType = "STORE"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -565,6 +566,7 @@ var keywords = map[string]TokenType{
 	"workflow":   TOKEN_WORKFLOW,
 	"stream":     TOKEN_STREAM,
 	"yield":      TOKEN_YIELD,
+	"store":      TOKEN_STORE,
 }
 
 func lookupIdent(ident string) TokenType {

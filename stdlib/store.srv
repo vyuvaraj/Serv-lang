@@ -1,0 +1,10 @@
+// Serv Standard Library: Multi-backend Storage Client
+// Import: import { put, get } from "stdlib/store.srv"
+
+export fn put(key: string, val: any) {
+    return store.put(key, val)
+}
+
+export fn get(key: string) -> any {
+    return store.get(key)
+}

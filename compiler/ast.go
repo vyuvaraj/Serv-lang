@@ -167,6 +167,17 @@ func (m *MailStmt) statementNode()       {}
 func (m *MailStmt) TokenLiteral() string { return m.Token.Literal }
 func (m *MailStmt) String() string       { return "mail " + m.Value.String() + "\n" }
 
+// Store Statement
+type StoreStmt struct {
+	Token Token
+	Value Expression
+}
+
+func (s *StoreStmt) statementNode()       {}
+func (s *StoreStmt) TokenLiteral() string { return s.Token.Literal }
+func (s *StoreStmt) String() string       { return "store " + s.Value.String() + "\n" }
+
+
 
 
 // Route Statement

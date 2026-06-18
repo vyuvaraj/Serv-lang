@@ -433,6 +433,8 @@ case *AiStmt:
 return c.genAiStmt(s)
 	case *MailStmt:
 		return c.genMailStmt(s)
+	case *StoreStmt:
+		return c.genStoreStmt(s)
 	case *AuthStmt:
 		return c.genAuthStmt(s)
 	case *ServerStmt:

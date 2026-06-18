@@ -496,5 +496,60 @@ func TestOpenAPIGeneration(t *testing.T) {
 	}
 }
 
+func TestStoreKeywordAndAdapter(t *testing.T) {
+	// 1. Verify parsing and codegen of store keyword
+	src := `
+	store "file://./tmp_bucket"
+	fn save() {
+		store.put("key123", "some payload")
+		let data = store.get("key123")
+	}
+	`
+	lexer := compiler.NewLexer(src)
+	parser := compiler.NewParser(lexer)
+	prog := parser.ParseProgram()
+	if len(parser.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", parser.Errors())
+	}
+
+	codegen := compiler.NewCodegen(prog)
+	generated, err := codegen.Generate()
+	if err != nil {
+		t.Fatalf("codegen error: %v", err)
+	}
+
+	if !strings.Contains(generated, `runtime.InitStore(fmt.Sprint("file://./tmp_bucket"))`) {
+		t.Errorf("expected generated code to initialize store, got: %s", generated)
+	}
+	if !strings.Contains(generated, `runtime.StorePut`) {
+		t.Errorf("expected generated code to call StorePut, got: %s", generated)
+	}
+	if !strings.Contains(generated, `runtime.StoreGet`) {
+		t.Errorf("expected generated code to call StoreGet, got: %s", generated)
+	}
+
+	// 2. Verify runtime Put & Get success path
+	tempDir, err := os.MkdirTemp("", "serv_store_test_dir")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	runtime.InitStore("file://" + tempDir)
+	_, err = runtime.StorePut("test_key.txt", "hello store")
+	if err != nil {
+		t.Errorf("expected no error for StorePut, got: %v", err)
+	}
+
+	val, err := runtime.StoreGet("test_key.txt")
+	if err != nil {
+		t.Errorf("expected no error for StoreGet, got: %v", err)
+	}
+	if val != "hello store" {
+		t.Errorf("expected value 'hello store', got: %v", val)
+	}
+}
+
+
 
 

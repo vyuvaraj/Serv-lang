@@ -107,6 +107,22 @@ func TestNewAndDeployK8s(t *testing.T) {
 		t.Error("expected main_test.srv to be created")
 	}
 
+	// 1.1 Test other templates
+	templates := []string{"worker", "event-processor", "full-stack"}
+	for _, templ := range templates {
+		d := filepath.Join(tmpDir, "test-"+templ)
+		createNewProject(d, templ)
+		if _, err := os.Stat(filepath.Join(d, "main.srv")); os.IsNotExist(err) {
+			t.Errorf("expected main.srv to be created for template %s", templ)
+		}
+		// Try parsing to verify syntax is valid
+		_, _, err := parseProject(filepath.Join(d, "main.srv"))
+		if err != nil {
+			t.Errorf("scaffolded project for template %s has invalid syntax: %v", templ, err)
+		}
+	}
+
+
 	// 2. Test deploy command for k8s target
 	deployServ(filepath.Join(projDir, "main.srv"), "k8s")
 

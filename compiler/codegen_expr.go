@@ -194,6 +194,14 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return "runtime.SendMail", nil
 			}
 		}
+		if objStr == "store" {
+			switch e.Field {
+			case "put":
+				return "runtime.StorePut", nil
+			case "get":
+				return "runtime.StoreGet", nil
+			}
+		}
 		if objStr == "wasm" {
 			switch e.Field {
 			case "readInput":
