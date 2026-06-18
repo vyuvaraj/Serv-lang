@@ -44,11 +44,13 @@ func deployServ(srvFile, target string) {
 		generateRailwayConfig(targetDir, appName, srvFile)
 	case "render":
 		generateRenderConfig(targetDir, appName, port, srvFile)
+	case "k8s", "kubernetes":
+		generateK8sConfig(targetDir, appName, port, srvFile)
 	case "docker":
 		dockerizeServ(srvFile)
 	default:
 		fmt.Printf("Unknown deploy target: %s\n", target)
-		fmt.Println("Supported targets: fly, railway, render, docker")
+		fmt.Println("Supported targets: fly, railway, render, k8s, docker")
 		os.Exit(1)
 	}
 }
@@ -201,4 +203,135 @@ CMD ["./service"]
 	fmt.Println("  1. Push to GitHub")
 	fmt.Println("  2. Connect the repo on https://dashboard.render.com")
 	fmt.Println("  3. Render auto-detects render.yaml and deploys")
+}
+
+func generateK8sConfig(targetDir, appName, port, srvFile string) {
+	configContent := fmt.Sprintf(`server:
+  port: "%s"
+log:
+  level: "info"
+  format: "text"
+`, port)
+	if existingConfig, err := os.ReadFile(filepath.Join(targetDir, "config.yml")); err == nil {
+		configContent = string(existingConfig)
+	} else if existingConfig, err := os.ReadFile(filepath.Join(targetDir, "serv.toml")); err == nil {
+		configContent = string(existingConfig)
+	}
+
+	// Indent the config content for yaml block scalar representation
+	lines := strings.Split(configContent, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = "    " + line
+		}
+	}
+	indentedConfig := strings.Join(lines, "\n")
+
+	configMapYAML := fmt.Sprintf(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: %s-config
+  labels:
+    app: %s
+data:
+  config.yml: |
+%s
+`, appName, appName, indentedConfig)
+
+	deploymentYAML := fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: %s
+  labels:
+    app: %s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: %s
+  template:
+    metadata:
+      labels:
+        app: %s
+    spec:
+      containers:
+        - name: %s
+          image: %s:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: %s
+          env:
+            - name: PORT
+              value: "%s"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config.yml
+              subPath: config.yml
+      volumes:
+        - name: config-volume
+          configMap:
+            name: %s-config
+`, appName, appName, appName, appName, appName, appName, port, port, appName)
+
+	serviceYAML := fmt.Sprintf(`apiVersion: v1
+kind: Service
+metadata:
+  name: %s
+  labels:
+    app: %s
+spec:
+  ports:
+    - port: %s
+      targetPort: %s
+      protocol: TCP
+  selector:
+    app: %s
+  type: ClusterIP
+`, appName, appName, port, port, appName)
+
+	dockerfile := fmt.Sprintf(`FROM golang:1.23-alpine AS builder
+WORKDIR /app
+COPY . .
+RUN go build -o serv.exe .
+RUN ./serv.exe build %s -o service
+
+FROM alpine:3.20
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+COPY --from=builder /app/service .
+EXPOSE %s
+CMD ["./service"]
+`, srvFile, port)
+
+	k8sDir := filepath.Join(targetDir, "k8s")
+	_ = os.MkdirAll(k8sDir, 0755)
+
+	depPath := filepath.Join(k8sDir, "deployment.yaml")
+	svcPath := filepath.Join(k8sDir, "service.yaml")
+	cmPath := filepath.Join(k8sDir, "configmap.yaml")
+	dockerPath := filepath.Join(targetDir, "Dockerfile")
+
+	if err := os.WriteFile(depPath, []byte(deploymentYAML), 0644); err != nil {
+		fmt.Printf("Failed to write deployment.yaml: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(svcPath, []byte(serviceYAML), 0644); err != nil {
+		fmt.Printf("Failed to write service.yaml: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(cmPath, []byte(configMapYAML), 0644); err != nil {
+		fmt.Printf("Failed to write configmap.yaml: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(dockerPath, []byte(dockerfile), 0644); err != nil {
+		fmt.Printf("Failed to write Dockerfile: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Generated Kubernetes deployment.yaml, service.yaml, configmap.yaml, and Dockerfile for '%s'\n", appName)
+	fmt.Println("\nNext steps:")
+	fmt.Println("  1. Build the Docker image:")
+	fmt.Printf("     docker build -t %s:latest .\n", appName)
+	fmt.Println("  2. Apply the manifests to your Kubernetes cluster:")
+	fmt.Println("     kubectl apply -f k8s/")
 }

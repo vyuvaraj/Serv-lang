@@ -77,13 +77,13 @@ func main() {
 
 	case "deploy":
 		deployCmd := flag.NewFlagSet("deploy", flag.ExitOnError)
-		targetFlag := deployCmd.String("target", "", "Deploy target: fly, railway, render, docker")
+		targetFlag := deployCmd.String("target", "", "Deploy target: fly, railway, render, k8s, docker")
 		if err := deployCmd.Parse(os.Args[2:]); err != nil {
 			fmt.Printf("Error parsing arguments: %v\n", err)
 			os.Exit(1)
 		}
 		if *targetFlag == "" {
-			fmt.Println("Usage: serv deploy --target <fly|railway|render|docker> [file.srv]")
+			fmt.Println("Usage: serv deploy --target <fly|railway|render|k8s|docker> [file.srv]")
 			os.Exit(1)
 		}
 		args := deployCmd.Args()
@@ -177,6 +177,20 @@ func main() {
 	case "init":
 		initProject()
 
+	case "new":
+		newCmd := flag.NewFlagSet("new", flag.ExitOnError)
+		templateFlag := newCmd.String("template", "api", "Template to scaffold: api, worker, event-processor, full-stack")
+		if err := newCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error parsing arguments: %v\n", err)
+			os.Exit(1)
+		}
+		args := newCmd.Args()
+		if len(args) < 1 {
+			fmt.Println("Usage: serv new <project-name> [--template <api|worker|event-processor|full-stack>]")
+			os.Exit(1)
+		}
+		createNewProject(args[0], *templateFlag)
+
 	case "debug":
 		targetFile := "."
 		if len(os.Args) >= 3 {
@@ -196,6 +210,7 @@ func printUsage() {
 	fmt.Println("Serv: A Programming Language for Background Services")
 	fmt.Println("Usage:")
 	fmt.Println("  serv init [name]                           Create a new Serv project")
+	fmt.Println("  serv new <name> [--template <template>]    Create a new Serv project from a template (api, worker, event-processor, full-stack)")
 	fmt.Println("  serv build <file.srv> [--target <target>] [-o <output>] Compile Serv code to target (native/wasm)")
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
 	fmt.Println("  serv test [--cover] <file.srv>             Run tests defined in a Serv file")
@@ -207,6 +222,6 @@ func printUsage() {
 	fmt.Println("  serv publish <package-dir>                 Publish a Serv module to the registry")
 	fmt.Println("  serv debug <file.srv>                       Debug a Serv file (requires dlv: go install github.com/go-delve/delve/cmd/dlv@latest)")
 	fmt.Println("  serv dockerize <file.srv>                  Generate a Dockerfile for the Serv service")
-	fmt.Println("  serv deploy --target <target> [file.srv]   Generate deploy config (fly, railway, render, docker)")
+	fmt.Println("  serv deploy --target <target> [file.srv]   Generate deploy config (fly, railway, render, k8s, docker)")
 	fmt.Println("  serv audit                                 Audit Go/Serv dependencies for vulnerabilities")
 }
