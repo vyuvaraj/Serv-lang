@@ -277,31 +277,84 @@ func getRegistryURL() string {
 }
 
 func installPackage(pkgName string) {
+	installPackageWithDeps(pkgName, make(map[string]bool), 0)
+}
+
+func installPackageWithDeps(pkgName string, visited map[string]bool, depth int) {
+	// Prevent circular dependency loops
+	if visited[pkgName] {
+		return
+	}
+	visited[pkgName] = true
+
+	// Strip version suffix if present (e.g. "jwt@1.0.0" -> "jwt")
+	name := pkgName
+	if idx := strings.Index(pkgName, "@"); idx > 0 {
+		name = pkgName[:idx]
+	}
+
+	// Check if already installed
+	targetDir := filepath.Join("packages", name)
+	if _, err := os.Stat(targetDir); err == nil {
+		if depth > 0 {
+			indent := strings.Repeat("  ", depth)
+			fmt.Printf("%s• %s (already installed)\n", indent, name)
+		}
+		return
+	}
+
 	registry := getRegistryURL()
-	url := fmt.Sprintf("%s/packages/%s.tar.gz", registry, pkgName)
-	fmt.Printf("Downloading package from %s...\n", url)
+	url := fmt.Sprintf("%s/packages/%s.tar.gz", registry, name)
+
+	indent := strings.Repeat("  ", depth)
+	if depth == 0 {
+		fmt.Printf("Downloading package from %s...\n", url)
+	} else {
+		fmt.Printf("%s↳ Installing dependency: %s\n", indent, name)
+	}
+
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Printf("Error connecting to registry: %v\n", err)
-		os.Exit(1)
+		fmt.Printf("%sError connecting to registry: %v\n", indent, err)
+		if depth == 0 {
+			os.Exit(1)
+		}
+		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Registry returned status %d\n", resp.StatusCode)
-		os.Exit(1)
+		fmt.Printf("%sRegistry returned status %d for package '%s'\n", indent, resp.StatusCode, name)
+		if depth == 0 {
+			os.Exit(1)
+		}
+		return
 	}
 
-	// Untar into packages/pkgName
-	targetDir := filepath.Join("packages", pkgName)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		fmt.Printf("Failed to create package directory: %v\n", err)
-		os.Exit(1)
-	}
-
-	gr, err := gzip.NewReader(resp.Body)
+	// Read full body to memory (needed for tar extraction)
+	bodyData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Failed to initialize gzip reader: %v\n", err)
-		os.Exit(1)
+		fmt.Printf("%sFailed to read response body: %v\n", indent, err)
+		if depth == 0 {
+			os.Exit(1)
+		}
+		return
+	}
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		fmt.Printf("%sFailed to create package directory: %v\n", indent, err)
+		if depth == 0 {
+			os.Exit(1)
+		}
+		return
+	}
+
+	gr, err := gzip.NewReader(bytes.NewReader(bodyData))
+	if err != nil {
+		fmt.Printf("%sFailed to initialize gzip reader: %v\n", indent, err)
+		if depth == 0 {
+			os.Exit(1)
+		}
+		return
 	}
 	defer gr.Close()
 
@@ -312,8 +365,11 @@ func installPackage(pkgName string) {
 			break
 		}
 		if err != nil {
-			fmt.Printf("Failed to read tar header: %v\n", err)
-			os.Exit(1)
+			fmt.Printf("%sFailed to read tar header: %v\n", indent, err)
+			if depth == 0 {
+				os.Exit(1)
+			}
+			return
 		}
 
 		// Prevent Zip Slip / path traversal
@@ -330,19 +386,87 @@ func installPackage(pkgName string) {
 			os.MkdirAll(filepath.Dir(dest), 0755)
 			f, err := os.OpenFile(dest, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(hdr.Mode))
 			if err != nil {
-				fmt.Printf("Failed to create file %s: %v\n", dest, err)
-				os.Exit(1)
+				fmt.Printf("%sFailed to create file %s: %v\n", indent, dest, err)
+				if depth == 0 {
+					os.Exit(1)
+				}
+				return
 			}
 			if _, err := io.Copy(f, tr); err != nil {
 				f.Close()
-				fmt.Printf("Failed to write file %s: %v\n", dest, err)
-				os.Exit(1)
+				fmt.Printf("%sFailed to write file %s: %v\n", indent, dest, err)
+				if depth == 0 {
+					os.Exit(1)
+				}
+				return
 			}
 			f.Close()
 		}
 	}
 
-	fmt.Printf("✓ Package '%s' successfully installed to %s/\n", pkgName, targetDir)
+	fmt.Printf("%s✓ Package '%s' installed to %s/\n", indent, name, targetDir)
+
+	// Resolve transitive dependencies from the installed package's serv.toml
+	deps := readPackageDependencies(targetDir)
+	if len(deps) > 0 {
+		fmt.Printf("%s  Resolving %d dependenc%s...\n", indent, len(deps), pluralSuffix(len(deps)))
+		for _, dep := range deps {
+			installPackageWithDeps(dep, visited, depth+1)
+		}
+	}
+}
+
+// readPackageDependencies reads serv.toml from an installed package directory
+// and returns the list of dependency identifiers (e.g. ["retry@1.0.0", "jwt@2.0.0"]).
+func readPackageDependencies(pkgDir string) []string {
+	tomlPath := filepath.Join(pkgDir, "serv.toml")
+	data, err := os.ReadFile(tomlPath)
+	if err != nil {
+		return nil
+	}
+
+	var deps []string
+	inDependencies := false
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.TrimSpace(line[1 : len(line)-1])
+			inDependencies = (section == "dependencies")
+			continue
+		}
+		if !inDependencies {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		k := strings.TrimSpace(parts[0])
+		v := strings.TrimSpace(parts[1])
+		// Strip quotes
+		if (strings.HasPrefix(v, "\"") && strings.HasSuffix(v, "\"")) ||
+			(strings.HasPrefix(v, "'") && strings.HasSuffix(v, "'")) {
+			v = v[1 : len(v)-1]
+		}
+		if k != "" && v != "" {
+			deps = append(deps, fmt.Sprintf("%s@%s", k, v))
+		} else if k != "" {
+			deps = append(deps, k)
+		}
+	}
+	return deps
+}
+
+func pluralSuffix(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 func publishPackage(pkgDir string) {

@@ -16,6 +16,7 @@ func createNewProject(name, template string) {
 	var mainSrv string
 	var configYml string
 	var testSrv string
+	var servToml string
 
 	configYml = `server:
   port: "8080"
@@ -139,7 +140,27 @@ route "GET" "/api/health" (req) {
 		os.Exit(1)
 	}
 
+	// Generate serv.toml manifest
+	servToml = fmt.Sprintf(`name = "%s"
+version = "0.1.0"
+entry = "main.srv"
+
+[dependencies]
+
+[env]
+PORT = "8080"
+LOG_LEVEL = "info"
+
+[env.development]
+PORT = "3000"
+LOG_LEVEL = "debug"
+`, name)
+
 	// Write files
+	if err := os.WriteFile(filepath.Join(name, "serv.toml"), []byte(servToml), 0644); err != nil {
+		fmt.Printf("Failed to write serv.toml: %v\n", err)
+		os.Exit(1)
+	}
 	if err := os.WriteFile(filepath.Join(name, "main.srv"), []byte(mainSrv), 0644); err != nil {
 		fmt.Printf("Failed to write main.srv: %v\n", err)
 		os.Exit(1)
@@ -156,9 +177,10 @@ route "GET" "/api/health" (req) {
 	fmt.Printf("✓ Created project: %s/ (template: %s)\n", name, template)
 	fmt.Println("")
 	fmt.Println("  Files:")
+	fmt.Println("    serv.toml      — Project manifest (name, version, deps)")
 	fmt.Println("    main.srv       — Your service source")
 	fmt.Println("    main_test.srv  — Test assertions")
-	fmt.Println("    config.yml     — Profile configuration")
+	fmt.Println("    config.yml     — Runtime configuration")
 	fmt.Println("")
 	fmt.Println("  Get started:")
 	fmt.Printf("    cd %s\n", name)

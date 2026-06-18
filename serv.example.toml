@@ -1,0 +1,167 @@
+# ============================================================================
+# serv.toml — Project Manifest for Serv-lang
+# ============================================================================
+#
+# This file defines a Serv project: its metadata, entry point, dependencies,
+# environment profiles, and deployment configuration.
+#
+# Place this file at the root of your project directory. When you run
+# `serv build ./` or `serv run ./`, the compiler reads this manifest to
+# locate the entry point and resolve dependencies.
+#
+# Minimal example (just 3 lines):
+#
+#   name = "my-service"
+#   version = "1.0.0"
+#   entry = "main.srv"
+#
+# Full reference below.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# [project] — Required metadata
+# ---------------------------------------------------------------------------
+
+# Human-readable project name. Used in logs, deploy configs, and registry.
+name = "task-api"
+
+# Semantic version. Used by ServRegistry for package resolution.
+version = "1.2.0"
+
+# Entry point file (relative to this directory). Default: "main.srv"
+# For single-file projects, this is the only .srv file.
+# For multi-file projects, this is the root file that imports others.
+entry = "main.srv"
+
+# Short description shown in ServRegistry search results.
+description = "A simple task management API built with Serv"
+
+# Author info (optional, shown in registry).
+author = "yourname"
+
+# License identifier.
+license = "MIT"
+
+# ---------------------------------------------------------------------------
+# [dependencies] — External packages from ServRegistry
+# ---------------------------------------------------------------------------
+# Install with: serv install <package-name>
+# Format: package_name = "version"
+#
+# Packages are resolved from the configured registry (default: ServRegistry).
+# Use `serv install jwt` to add a dependency and auto-update this section.
+
+[dependencies]
+jwt = "1.0.0"
+retry = "1.1.0"
+pagination = "1.0.0"
+
+# ---------------------------------------------------------------------------
+# [env] — Default environment variables
+# ---------------------------------------------------------------------------
+# These are injected into the compiled binary as defaults.
+# Override at runtime with actual environment variables.
+# Secrets should NOT be stored here — use env vars or a vault at runtime.
+
+[env]
+PORT = "8080"
+LOG_LEVEL = "info"
+LOG_FORMAT = "json"
+
+# ---------------------------------------------------------------------------
+# [env.development] — Development profile overrides
+# ---------------------------------------------------------------------------
+# Activated with: serv run main.srv --env development
+# Merges on top of [env] defaults.
+
+[env.development]
+PORT = "3000"
+LOG_LEVEL = "debug"
+LOG_FORMAT = "text"
+DATABASE_URL = "sqlite://dev.db"
+
+# ---------------------------------------------------------------------------
+# [env.staging] — Staging profile
+# ---------------------------------------------------------------------------
+# Activated with: serv run main.srv --env staging
+
+[env.staging]
+PORT = "8080"
+LOG_LEVEL = "info"
+DATABASE_URL = "postgres://staging-host:5432/tasks"
+CACHE_URL = "redis://staging-redis:6379"
+
+# ---------------------------------------------------------------------------
+# [env.production] — Production profile
+# ---------------------------------------------------------------------------
+# Activated with: serv run main.srv --env production
+
+[env.production]
+PORT = "8080"
+LOG_LEVEL = "warn"
+DATABASE_URL = "postgres://prod-host:5432/tasks"
+CACHE_URL = "redis://prod-redis:6379"
+BROKER_URL = "servqueue://prod-queue:61613"
+
+# ---------------------------------------------------------------------------
+# [deploy] — Deployment defaults
+# ---------------------------------------------------------------------------
+# Used by `serv deploy --target <target>` to generate deploy configs.
+
+[deploy]
+# Default deploy target (fly, railway, render, k8s, docker)
+target = "k8s"
+
+# Container image name (used in Dockerfile and k8s manifests)
+image = "ghcr.io/yourname/task-api"
+
+# Number of replicas for k8s deployment
+replicas = 2
+
+# Resource limits (used in k8s Deployment spec)
+memory = "256Mi"
+cpu = "500m"
+
+# ---------------------------------------------------------------------------
+# [deploy.k8s] — Kubernetes-specific overrides
+# ---------------------------------------------------------------------------
+
+[deploy.k8s]
+namespace = "default"
+service_type = "ClusterIP"
+
+# ---------------------------------------------------------------------------
+# [deploy.fly] — Fly.io-specific overrides
+# ---------------------------------------------------------------------------
+
+[deploy.fly]
+region = "iad"
+vm_memory = "256mb"
+vm_cpus = 1
+
+# ---------------------------------------------------------------------------
+# [servverse] — Servverse ecosystem wiring (optional)
+# ---------------------------------------------------------------------------
+# When deploying as part of a Servverse stack, these settings wire the
+# service into the ecosystem automatically. Alternatively, set the
+# SERVVERSE_DISCOVERY env var to a JSON manifest at runtime.
+
+[servverse]
+gate = "http://localhost:8080"
+store = "http://localhost:8081"
+queue = "http://localhost:8082"
+otlp_endpoint = "http://localhost:4318"
+
+# ---------------------------------------------------------------------------
+# [test] — Test runner configuration
+# ---------------------------------------------------------------------------
+
+[test]
+# Test timeout per test block (default: 30s)
+timeout = "30s"
+
+# Enable coverage by default
+cover = true
+
+# Filter pattern (empty = run all tests)
+filter = ""

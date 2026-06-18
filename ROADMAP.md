@@ -213,7 +213,7 @@ To align with the "Adapters First, Platform Second" strategy and widen the addre
 | 13.5 | **Turso/libSQL database adapter** | Small | `database "turso://db.turso.io"` — emerging edge database, high adoption signal. | [ ] |
 | 13.6 | **Redis Streams broker adapter** | Small | `broker "redis-stream://host:6379"` — common lightweight event streaming alternative. | [ ] |
 | 13.7 | **`store` keyword (multi-backend)** | Medium | `store "s3://bucket"`, `store "gcs://bucket"`, `store "r2://bucket"`, `store "local://./uploads"` with unified `store.put()` / `store.get()` API. | [x] |
-| 13.8 | **Canonical `serv.toml` example** | Small | Add a well-documented example `serv.toml` to the repo root showing multi-file projects, env profiles, and dependency locks. | [ ] |
+| 13.8 | **Canonical `serv.toml` example** | Small | Add a well-documented example `serv.toml` to the repo root showing multi-file projects, env profiles, and dependency locks. | [x] |
 | 13.9 | **VS Code Extension marketplace publish** | Small | Register publisher, package, and publish to Visual Studio Marketplace. Highest ROI discoverability item. | [ ] |
 | 13.10 | **Graceful shutdown in runtime** | Small | `signal.NotifyContext` pattern in generated `main.go` — drain connections, flush spans, close DB pools on SIGTERM. | [x] |
 | 13.11 | **Standardized error response contract** | Small | All generated HTTP handlers return `{"error": "msg", "code": "ERR_CODE", "trace_id": "..."}` on failure. | [x] |
