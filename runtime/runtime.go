@@ -379,10 +379,25 @@ func StartServer() interface{} {
 			}
 		}
 
+		parentTrace := r.Header.Get("traceparent")
+		var traceID string
+		if parentTrace != "" {
+			parts := strings.Split(parentTrace, "-")
+			if len(parts) >= 2 {
+				traceID = parts[1]
+			}
+		}
+
 		handler, params, limiter, pattern := matchRoute(r.Method, r.URL.Path)
 
 		if handler == nil {
-			http.NotFound(w, r)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":    "Not Found",
+				"code":     "ERR_ROUTE_NOT_FOUND",
+				"trace_id": traceID,
+			})
 			return
 		}
 
@@ -390,8 +405,9 @@ func StartServer() interface{} {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": 429,
-				"error":  "Too Many Requests",
+				"error":    "Too Many Requests",
+				"code":     "ERR_RATE_LIMIT_EXCEEDED",
+				"trace_id": traceID,
 			})
 			return
 		}
@@ -437,7 +453,6 @@ func StartServer() interface{} {
 		}
 
 		// OpenTelemetry: start request span
-		parentTrace := r.Header.Get("traceparent")
 		trace := TraceRequest(r.Method, r.URL.Path, parentTrace)
 		SetActiveTrace(trace)
 
@@ -457,6 +472,33 @@ func StartServer() interface{} {
 			w.Header().Set("traceparent", tp)
 		}
 
+		if ch, ok := res.(chan interface{}); ok {
+			flusher, isFlusher := w.(http.Flusher)
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("X-Accel-Buffering", "no")
+			w.WriteHeader(http.StatusOK)
+			if isFlusher {
+				flusher.Flush()
+			}
+			for item := range ch {
+				var payload string
+				if str, ok := item.(string); ok {
+					payload = str
+				} else {
+					b, _ := json.Marshal(item)
+					payload = string(b)
+				}
+				fmt.Fprintf(w, "data: %s\n\n", payload)
+				if isFlusher {
+					flusher.Flush()
+				}
+			}
+			EndTrace(trace, statusCode)
+			return
+		}
+
 		if resMap, ok := res.(map[string]interface{}); ok {
 			if s, hasStatus := resMap["status"]; hasStatus {
 				if code, ok := s.(int); ok && code >= 400 {
@@ -469,6 +511,7 @@ func StartServer() interface{} {
 		} else {
 			json.NewEncoder(w).Encode(res)
 		}
+
 
 		// OpenTelemetry: end request span
 		EndTrace(trace, statusCode)

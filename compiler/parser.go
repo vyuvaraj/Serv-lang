@@ -78,6 +78,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(TOKEN_FSTRING, p.parseFStringLiteral)
 	p.registerPrefix(TOKEN_CACHE, p.parseCacheIdentifier)
 	p.registerPrefix(TOKEN_AI, p.parseAiIdentifier)
+	p.registerPrefix(TOKEN_MAIL, p.parseMailIdentifier)
 	p.registerPrefix(TOKEN_WORKFLOW, p.parseWorkflowIdentifier)
 	p.registerPrefix(TOKEN_ASSERT, p.parseAssertExpression)
 	p.registerPrefix(TOKEN_TRUE, p.parseBooleanLiteral)
@@ -194,10 +195,19 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseLetStatement()
 	case TOKEN_RETURN:
 		return p.parseReturnStatement()
+	case TOKEN_YIELD:
+		return p.parseYieldStatement()
 	case TOKEN_FN:
 		return p.parseFnDeclaration()
 	case TOKEN_TRY:
 		return p.parseTryCatchStatement()
+	case TOKEN_MAIL:
+		if p.peekToken.Type == TOKEN_DOT {
+			return p.parseExpressionStatement()
+		}
+		return p.parseMailStatement()
+	case TOKEN_AUTH:
+		return p.parseAuthStatement()
 	case TOKEN_DATABASE:
 		return p.parseDatabaseStatement()
 	case TOKEN_CACHE:

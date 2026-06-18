@@ -13,6 +13,8 @@ const (
 	TOKEN_DURATION   TokenType = "DURATION"
 
 	// Keywords
+	TOKEN_AUTH       TokenType = "AUTH"
+	TOKEN_MAIL       TokenType = "MAIL"
 	TOKEN_BROKER     TokenType = "BROKER"
 	TOKEN_AI         TokenType = "AI"
 	TOKEN_SERVER     TokenType = "SERVER"
@@ -63,6 +65,8 @@ const (
 	TOKEN_MOCK       TokenType = "MOCK"
 	TOKEN_ACTOR      TokenType = "ACTOR"
 	TOKEN_WORKFLOW   TokenType = "WORKFLOW"
+	TOKEN_STREAM     TokenType = "STREAM"
+	TOKEN_YIELD      TokenType = "YIELD"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -501,6 +505,8 @@ func isDigit(ch byte) bool {
 }
 
 var keywords = map[string]TokenType{
+	"auth":      TOKEN_AUTH,
+	"mail":      TOKEN_MAIL,
 	"broker":    TOKEN_BROKER,
 	"ai":       TOKEN_AI,
 	"server":   TOKEN_SERVER,
@@ -557,6 +563,8 @@ var keywords = map[string]TokenType{
 	"mock":       TOKEN_MOCK,
 	"actor":      TOKEN_ACTOR,
 	"workflow":   TOKEN_WORKFLOW,
+	"stream":     TOKEN_STREAM,
+	"yield":      TOKEN_YIELD,
 }
 
 func lookupIdent(ident string) TokenType {

@@ -208,6 +208,9 @@ func main() {
 		}
 		runMonitor(target)
 
+	case "docs":
+		runDocs()
+
 	default:
 		printUsage()
 	}
@@ -218,6 +221,8 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  serv init [name]                           Create a new Serv project")
 	fmt.Println("  serv new <name> [--template <template>]    Create a new Serv project from a template (api, worker, event-processor, full-stack)")
+	fmt.Println("  serv docs generate <file.srv> [-o <out>]   Autogenerate OpenAPI 3.1 specifications from routes")
+
 	fmt.Println("  serv build <file.srv> [--target <target>] [-o <output>] Compile Serv code to target (native/wasm)")
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
 	fmt.Println("  serv test [--cover] <file.srv>             Run tests defined in a Serv file")

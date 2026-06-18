@@ -268,3 +268,7 @@ func (rl *routeRateLimiter) AllowStub() bool {
 	return rl.allow()
 }
 
+func MatchRouteStub(method, path string) (func(Request) interface{}, map[string]string, interface{}, string) {
+	h, p, l, pat := matchRoute(method, path)
+	return h, p, l, pat
+}

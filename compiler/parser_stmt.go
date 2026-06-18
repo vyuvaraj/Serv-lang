@@ -163,6 +163,14 @@ func (p *Parser) parseReturnStatement() Statement {
 	return stmt
 }
 
+func (p *Parser) parseYieldStatement() Statement {
+	stmt := &YieldStmt{Token: p.curToken}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	return stmt
+}
+
+
 // parseTestStatement parses a test block: test name { ... } or test "description" { ... }
 // Also supports: test "name" timeout 5s { ... }
 func (p *Parser) parseTestStatement() Statement {

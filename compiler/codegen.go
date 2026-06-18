@@ -431,6 +431,10 @@ case *BrokerStmt:
 return c.genBrokerStmt(s)
 case *AiStmt:
 return c.genAiStmt(s)
+	case *MailStmt:
+		return c.genMailStmt(s)
+	case *AuthStmt:
+		return c.genAuthStmt(s)
 	case *ServerStmt:
 		return c.genServerStmt(s)
 	case *CorsStmt:
@@ -473,6 +477,8 @@ case *LetStmt:
 return c.genLetStmt(s)
 case *ReturnStmt:
 return c.genReturnStmt(s)
+case *YieldStmt:
+return c.genYieldStmt(s)
 case *FnDecl:
 return c.genFnDecl(s)
 case *TryCatchStmt:

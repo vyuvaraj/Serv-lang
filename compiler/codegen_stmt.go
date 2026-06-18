@@ -352,6 +352,26 @@ func (c *Codegen) genServerStmt(s *ServerStmt) (string, error) {
 	return fmt.Sprintf("func init() {\n\truntime.InitServer(fmt.Sprint(%s))\n}\n\n", val), nil
 }
 
+func (c *Codegen) genAuthStmt(s *AuthStmt) (string, error) {
+	val, err := c.genExpression(s.Value)
+	if err != nil {
+		return "", err
+	}
+	c.imports[`"fmt"`] = true
+	return fmt.Sprintf("func init() {\n\truntime.InitAuth(fmt.Sprint(%s))\n}\n\n", val), nil
+}
+
+func (c *Codegen) genMailStmt(s *MailStmt) (string, error) {
+	val, err := c.genExpression(s.Value)
+	if err != nil {
+		return "", err
+	}
+	c.imports[`"fmt"`] = true
+	return fmt.Sprintf("func init() {\n\truntime.InitMail(fmt.Sprint(%s))\n}\n\n", val), nil
+}
+
+
+
 func (c *Codegen) genCorsStmt(s *CorsStmt) (string, error) {
 	var origins []string
 	for _, o := range s.Origins {
@@ -421,9 +441,36 @@ func (c *Codegen) genRouteStmt(s *RouteStmt) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(s.Middlewares) > 0 {
+
+	if s.Stream {
+		bodyStr = fmt.Sprintf("{\n\t_streamChan := make(chan interface{})\n\tgo func() {\n\t\tdefer close(_streamChan)\n\t\tfunc() %s()\n\t}()\n\treturn _streamChan\n}", bodyStr)
+	}
+
+
+	middlewares := s.Middlewares
+	hasAuthStmt := false
+	for _, stmt := range c.program.Statements {
+		if _, ok := stmt.(*AuthStmt); ok {
+			hasAuthStmt = true
+			break
+		}
+	}
+	if hasAuthStmt {
+		alreadyHasAuth := false
+		for _, mw := range middlewares {
+			if mw == "auth" {
+				alreadyHasAuth = true
+				break
+			}
+		}
+		if !alreadyHasAuth {
+			middlewares = append([]string{"auth"}, middlewares...)
+		}
+	}
+
+	if len(middlewares) > 0 {
 		var middlewareNames []string
-		for _, mw := range s.Middlewares {
+		for _, mw := range middlewares {
 			middlewareNames = append(middlewareNames, fmt.Sprintf("%q", mw))
 		}
 		return fmt.Sprintf("func init() {\n\truntime.AddRouteWithMiddleware(%q, %q, %d, %q, []string{%s}, func(%s runtime.Request) interface{} %s)\n}\n\n",
@@ -1057,6 +1104,15 @@ func (c *Codegen) genReturnStmt(s *ReturnStmt) (string, error) {
 
 	return fmt.Sprintf("return %s\n", val), nil
 }
+
+func (c *Codegen) genYieldStmt(s *YieldStmt) (string, error) {
+	val, err := c.genExpression(s.Value)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("_streamChan <- %s\n", val), nil
+}
+
 
 func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 	c.inFunction = true

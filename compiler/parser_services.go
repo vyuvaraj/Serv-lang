@@ -22,6 +22,22 @@ func (p *Parser) parseAiStatement() Statement {
 	return stmt
 }
 
+func (p *Parser) parseAuthStatement() Statement {
+	stmt := &AuthStmt{Token: p.curToken}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	return stmt
+}
+
+func (p *Parser) parseMailStatement() Statement {
+	stmt := &MailStmt{Token: p.curToken}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+	return stmt
+}
+
+
+
 func (p *Parser) parseServerStatement() Statement {
 	stmt := &ServerStmt{Token: p.curToken}
 	p.nextToken()
@@ -110,6 +126,11 @@ func (p *Parser) parseRouteStatement() Statement {
 		if !p.expectPeek(TOKEN_RBRACKET) {
 			return nil
 		}
+	}
+
+	if p.peekToken.Type == TOKEN_STREAM {
+		p.nextToken()
+		stmt.Stream = true
 	}
 
 	if !p.expectPeek(TOKEN_LBRACE) {

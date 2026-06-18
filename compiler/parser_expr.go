@@ -493,6 +493,11 @@ func (p *Parser) parseAiIdentifier() Expression {
 	return &Identifier{Token: p.curToken, Value: "ai"}
 }
 
+func (p *Parser) parseMailIdentifier() Expression {
+	return &Identifier{Token: p.curToken, Value: "mail"}
+}
+
+
 // parseWorkflowIdentifier allows the `workflow` keyword to be used in
 // expression context as an identifier, e.g. workflow.start("Name", param).
 func (p *Parser) parseWorkflowIdentifier() Expression {

@@ -147,6 +147,28 @@ func (c *CacheStmt) statementNode()       {}
 func (c *CacheStmt) TokenLiteral() string { return c.Token.Literal }
 func (c *CacheStmt) String() string       { return "cache " + c.Value.String() + "\n" }
 
+// Auth Statement
+type AuthStmt struct {
+	Token Token
+	Value Expression
+}
+
+func (a *AuthStmt) statementNode()       {}
+func (a *AuthStmt) TokenLiteral() string { return a.Token.Literal }
+func (a *AuthStmt) String() string       { return "auth " + a.Value.String() + "\n" }
+
+// Mail Statement
+type MailStmt struct {
+	Token Token
+	Value Expression
+}
+
+func (m *MailStmt) statementNode()       {}
+func (m *MailStmt) TokenLiteral() string { return m.Token.Literal }
+func (m *MailStmt) String() string       { return "mail " + m.Value.String() + "\n" }
+
+
+
 // Route Statement
 type RouteStmt struct {
 	Token       Token
@@ -157,6 +179,7 @@ type RouteStmt struct {
 	LimitRate   int
 	LimitPeriod string
 	Middlewares []string // middleware names from "use [auth, logging]"
+	Stream      bool
 }
 
 func (r *RouteStmt) statementNode()       {}
@@ -422,6 +445,17 @@ type ReturnStmt struct {
 func (r *ReturnStmt) statementNode()       {}
 func (r *ReturnStmt) TokenLiteral() string { return r.Token.Literal }
 func (r *ReturnStmt) String() string       { return "return " + r.Value.String() + "\n" }
+
+// Yield Statement
+type YieldStmt struct {
+	Token Token
+	Value Expression
+}
+
+func (y *YieldStmt) statementNode()       {}
+func (y *YieldStmt) TokenLiteral() string { return y.Token.Literal }
+func (y *YieldStmt) String() string       { return "yield " + y.Value.String() + "\n" }
+
 
 // Block Statement
 type BlockStmt struct {
