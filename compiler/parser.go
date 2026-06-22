@@ -313,6 +313,11 @@ func (p *Parser) expectPeek(t TokenType) bool {
 		p.nextToken()
 		return true
 	}
+	if t == TOKEN_IDENT && p.peekToken.Type == TOKEN_SEARCH {
+		p.nextToken()
+		p.curToken.Type = TOKEN_IDENT
+		return true
+	}
 	p.peekError(t)
 	return false
 }
