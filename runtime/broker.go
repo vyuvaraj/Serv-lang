@@ -17,6 +17,7 @@ import (
 	"github.com/go-stomp/stomp/v3"
 	"github.com/nats-io/nats.go"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -33,6 +34,7 @@ var (
 	kafkaWriterMap  = make(map[string]*kafka.Writer)
 	kafkaWriterMu   sync.Mutex
 	stompConn       *stomp.Conn
+	redisBrokerClient     *redis.Client
 
 	// Fallback In-memory Broker
 	subscribers   = make(map[string][]func(string))
@@ -162,6 +164,37 @@ func InitBroker(url string) {
 		} else {
 			LogInfo("Connected to STOMP/ServQueue broker successfully at ", addr)
 		}
+	} else if strings.HasPrefix(url, "redis://") || strings.HasPrefix(url, "redis-stream://") {
+		addr := url
+		if strings.HasPrefix(url, "redis://") {
+			addr = strings.TrimPrefix(url, "redis://")
+		} else {
+			addr = strings.TrimPrefix(url, "redis-stream://")
+		}
+		var password string
+		if strings.Contains(addr, "@") {
+			parts := strings.SplitN(addr, "@", 2)
+			creds := parts[0]
+			addr = parts[1]
+			if strings.Contains(creds, ":") {
+				password = strings.SplitN(creds, ":", 2)[1]
+			} else {
+				password = creds
+			}
+		}
+		redisBrokerClient = redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Password: password,
+			DB:       0,
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := redisBrokerClient.Ping(ctx).Err(); err != nil {
+			LogWarn("Failed to connect to Redis broker: ", err, " - Falling back to in-memory broker")
+			redisBrokerClient = nil
+		} else {
+			LogInfo("Connected to Redis broker successfully at ", addr)
+		}
 	}
 }
 
@@ -260,6 +293,35 @@ func Subscribe(topic string, callback func(string)) {
 			}()
 			return
 		}
+	}
+
+	if redisBrokerClient != nil {
+		go func() {
+			lastID := "$"
+			for {
+				ctx := context.Background()
+				streams, err := redisBrokerClient.XRead(ctx, &redis.XReadArgs{
+					Streams: []string{topic, lastID},
+					Count:   10,
+					Block:   0,
+				}).Result()
+
+				if err != nil {
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
+				for _, stream := range streams {
+					for _, msg := range stream.Messages {
+						lastID = msg.ID
+						payloadVal, _ := msg.Values["payload"].(string)
+						traceparentVal, _ := msg.Values["traceparent"].(string)
+						handleIncomingMessage(traceparentVal, payloadVal, callback, topic)
+					}
+				}
+			}
+		}()
+		return
 	}
 
 	// In-memory fallback Pub/Sub
@@ -450,7 +512,25 @@ func Publish(topic string, msg interface{}) {
 		}
 	}
 
-	// 6. In-memory Fallback
+	// 6. Redis Publish
+	if redisBrokerClient != nil {
+		values := map[string]interface{}{
+			"payload": msgStr,
+		}
+		if traceparentVal != "" {
+			values["traceparent"] = traceparentVal
+		}
+		ctx := context.Background()
+		err := redisBrokerClient.XAdd(ctx, &redis.XAddArgs{
+			Stream: topic,
+			Values: values,
+		}).Err()
+		if err == nil {
+			return
+		}
+	}
+
+	// 7. In-memory Fallback
 	startPubSubWorkers()
 	subscribersMu.RLock()
 	subs := subscribers[topic]
