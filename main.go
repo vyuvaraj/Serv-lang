@@ -211,6 +211,9 @@ func main() {
 	case "docs":
 		runDocs()
 
+	case "generate":
+		runGenerate()
+
 	default:
 		printUsage()
 	}
@@ -222,6 +225,7 @@ func printUsage() {
 	fmt.Println("  serv init [name]                           Create a new Serv project")
 	fmt.Println("  serv new <name> [--template <template>]    Create a new Serv project from a template (api, worker, event-processor, full-stack)")
 	fmt.Println("  serv docs generate <file.srv> [-o <out>]   Autogenerate OpenAPI 3.1 specifications from routes")
+	fmt.Println("  serv generate client <file.srv> [--lang <lang>] [-o <out>] Autogenerate client SDKs (typescript/python/go) from routes")
 
 	fmt.Println("  serv build <file.srv> [--target <target>] [-o <output>] Compile Serv code to target (native/wasm)")
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
