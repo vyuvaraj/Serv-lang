@@ -2,13 +2,17 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -549,6 +553,157 @@ func TestStoreKeywordAndAdapter(t *testing.T) {
 		t.Errorf("expected value 'hello store', got: %v", val)
 	}
 }
+
+func TestOidcAndRoleGuards(t *testing.T) {
+	// 1. Verify parser/codegen of auth.role and auth.scope
+	src := `
+	auth "oidc://localhost:12345"
+	route "GET" "/secure-role" (req) use [auth.role("admin")] {
+		return "role-ok"
+	}
+	route "GET" "/secure-scope" (req) use [auth.scope("write:items")] {
+		return "scope-ok"
+	}
+	`
+	lexer := compiler.NewLexer(src)
+	parser := compiler.NewParser(lexer)
+	prog := parser.ParseProgram()
+	if len(parser.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", parser.Errors())
+	}
+
+	codegen := compiler.NewCodegen(prog)
+	generated, err := codegen.Generate()
+	if err != nil {
+		t.Fatalf("codegen error: %v", err)
+	}
+
+	if !strings.Contains(generated, `"auth.role(\"admin\")"`) {
+		t.Errorf("expected auth.role middleware registered in codegen, got: %s", generated)
+	}
+	if !strings.Contains(generated, `"auth.scope(\"write:items\")"`) {
+		t.Errorf("expected auth.scope middleware registered in codegen, got: %s", generated)
+	}
+
+	// 2. Setup mock OIDC Discovery and JWKS Server
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+	kid := "test-key-id"
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration") {
+			w.Header().Set("Content-Type", "application/json")
+			// JwksURI must point back to this test server
+			fmt.Fprintf(w, `{"jwks_uri": %q}`, "http://"+r.Host+"/certs")
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/certs") {
+			w.Header().Set("Content-Type", "application/json")
+			nStr := base64.RawURLEncoding.EncodeToString(privKey.N.Bytes())
+			eBytes := big.NewInt(int64(privKey.E)).Bytes()
+			eStr := base64.RawURLEncoding.EncodeToString(eBytes)
+			fmt.Fprintf(w, `{"keys":[{"kty":"RSA","use":"sig","kid":%q,"alg":"RS256","n":%q,"e":%q}]}`, kid, nStr, eStr)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mockServer.Close()
+
+	// Initialize runtime auth using mock server URL
+	runtime.InitAuth("oidc://" + strings.TrimPrefix(mockServer.URL, "http://"))
+
+	// Setup routes in runtime
+	runtime.AddRouteWithMiddleware("GET", "/secure-role", 0, "", []string{"auth", "auth.role(\"admin\")"}, func(req runtime.Request) interface{} {
+		return "role-ok"
+	})
+	runtime.AddRouteWithMiddleware("GET", "/secure-scope", 0, "", []string{"auth", "auth.scope(\"write:items\")"}, func(req runtime.Request) interface{} {
+		return "scope-ok"
+	})
+
+	// Test request runner
+	runRequest := func(path, token string) (int, string) {
+		req := runtime.Request{
+			Method:  "GET",
+			Path:    path,
+			Headers: map[string]string{"Authorization": "Bearer " + token},
+			Params:  make(map[string]string),
+		}
+		// Dispatch route using test handler
+		h, p, _, _ := runtime.MatchRouteStub("GET", path)
+		if h == nil {
+			return 404, "Not Found"
+		}
+		req.Params = p
+		res := h(req)
+		
+		if mapRes, ok := res.(map[string]interface{}); ok {
+			statusVal := mapRes["status"]
+			if statusInt, ok := statusVal.(int); ok {
+				return statusInt, fmt.Sprint(mapRes["message"])
+			}
+		}
+		if strRes, ok := res.(string); ok {
+			return 200, strRes
+		}
+		return 200, ""
+	}
+
+	// Sign valid/invalid tokens and run assertions
+	validClaims := map[string]interface{}{
+		"iss":   mockServer.URL,
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"roles": []interface{}{"admin", "user"},
+		"scope": "read:items write:items",
+	}
+	invalidClaims := map[string]interface{}{
+		"iss":   mockServer.URL,
+		"exp":   time.Now().Add(time.Hour).Unix(),
+		"roles": []interface{}{"guest"},
+		"scope": "read:items",
+	}
+
+	validToken := generateRS256JWT(validClaims, privKey, kid)
+	invalidToken := generateRS256JWT(invalidClaims, privKey, kid)
+
+	// A. Role Route Checks
+	st, body := runRequest("/secure-role", validToken)
+	if st != 200 || body != "role-ok" {
+		t.Errorf("expected 200 role-ok, got status %d, body %s", st, body)
+	}
+
+	st, body = runRequest("/secure-role", invalidToken)
+	if st != 403 {
+		t.Errorf("expected 403 Forbidden, got status %d, body %s", st, body)
+	}
+
+	// B. Scope Route Checks
+	st, body = runRequest("/secure-scope", validToken)
+	if st != 200 || body != "scope-ok" {
+		t.Errorf("expected 200 scope-ok, got status %d, body %s", st, body)
+	}
+
+	st, body = runRequest("/secure-scope", invalidToken)
+	if st != 403 {
+		t.Errorf("expected 403 Forbidden, got status %d, body %s", st, body)
+	}
+}
+
+func generateRS256JWT(claims map[string]interface{}, privateKey *rsa.PrivateKey, kid string) string {
+	header := fmt.Sprintf(`{"alg":"RS256","typ":"JWT","kid":%q}`, kid)
+	headerEnc := base64.RawURLEncoding.EncodeToString([]byte(header))
+	claimsBytes, _ := json.Marshal(claims)
+	claimsEnc := base64.RawURLEncoding.EncodeToString(claimsBytes)
+
+	signingInput := headerEnc + "." + claimsEnc
+	hashed := sha256.Sum256([]byte(signingInput))
+	sig, _ := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hashed[:])
+	sigEnc := base64.RawURLEncoding.EncodeToString(sig)
+
+	return signingInput + "." + sigEnc
+}
+
 
 
 

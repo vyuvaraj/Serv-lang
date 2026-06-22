@@ -544,3 +544,8 @@ func (p *Parser) parseSpawnExpression() Expression {
 	expr.Call = p.parseExpression(LOWEST)
 	return expr
 }
+
+func (p *Parser) parseAuthIdentifier() Expression {
+	return &Identifier{Token: p.curToken, Value: "auth"}
+}
+

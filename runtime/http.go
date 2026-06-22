@@ -3,6 +3,7 @@
 package runtime
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -106,6 +107,76 @@ func AddRouteWithMiddleware(method, path string, limitRate int, limitPeriod stri
 		for _, name := range middlewareNames {
 			mw, exists := middlewareRegistry[name]
 			if !exists {
+				// Dynamic role guard parsing
+				if strings.HasPrefix(name, "auth.role(") && strings.HasSuffix(name, ")") {
+					roleVal := strings.TrimPrefix(name, "auth.role(")
+					roleVal = strings.TrimSuffix(roleVal, ")")
+					roleVal = strings.Trim(roleVal, `"'`) // remove quotes
+					
+					userRoles := req.Params["auth_role"]
+					if userRoles == "" {
+						userRoles = req.Params["auth_roles"]
+					}
+					if userRoles == "" {
+						userRoles = req.Params["auth_realm_access.roles"]
+					}
+					
+					found := false
+					for _, r := range strings.Split(userRoles, ",") {
+						if strings.TrimSpace(r) == roleVal {
+							found = true
+							break
+						}
+					}
+					if !found {
+						middlewareRegistryMu.RUnlock()
+						return map[string]interface{}{
+							"status": 403,
+							"error":  "Forbidden",
+							"code":   "ERR_FORBIDDEN",
+							"message": fmt.Sprintf("Missing required role: %s", roleVal),
+						}
+					}
+					continue
+				}
+
+				// Dynamic scope guard parsing
+				if strings.HasPrefix(name, "auth.scope(") && strings.HasSuffix(name, ")") {
+					scopeVal := strings.TrimPrefix(name, "auth.scope(")
+					scopeVal = strings.TrimSuffix(scopeVal, ")")
+					scopeVal = strings.Trim(scopeVal, `"'`) // remove quotes
+					
+					userScopes := req.Params["auth_scope"]
+					if userScopes == "" {
+						userScopes = req.Params["auth_scp"]
+					}
+					if userScopes == "" {
+						userScopes = req.Params["auth_scopes"]
+					}
+					
+					found := false
+					sep := ","
+					if strings.Contains(userScopes, " ") && !strings.Contains(userScopes, ",") {
+						sep = " "
+					}
+					for _, s := range strings.Split(userScopes, sep) {
+						if strings.TrimSpace(s) == scopeVal {
+							found = true
+							break
+						}
+					}
+					if !found {
+						middlewareRegistryMu.RUnlock()
+						return map[string]interface{}{
+							"status": 403,
+							"error":  "Forbidden",
+							"code":   "ERR_FORBIDDEN",
+							"message": fmt.Sprintf("Missing required scope: %s", scopeVal),
+						}
+					}
+					continue
+				}
+
 				LogWarn("Middleware not found: ", name)
 				continue
 			}

@@ -131,8 +131,9 @@ func (p *Parser) parseRouteStatement() Statement {
 		stmt.Middlewares = []string{}
 		for p.peekToken.Type != TOKEN_RBRACKET && p.peekToken.Type != TOKEN_EOF {
 			p.nextToken()
-			if p.curToken.Type == TOKEN_IDENT || isKeywordToken(p.curToken.Type) {
-				stmt.Middlewares = append(stmt.Middlewares, p.curToken.Literal)
+			expr := p.parseExpression(LOWEST)
+			if expr != nil {
+				stmt.Middlewares = append(stmt.Middlewares, expr.String())
 			}
 			if p.peekToken.Type == TOKEN_COMMA {
 				p.nextToken()
