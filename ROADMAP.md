@@ -209,17 +209,17 @@ To align with the "Adapters First, Platform Second" strategy and widen the addre
 | 13.1 | **`auth` keyword & adapter** | Medium | `auth "keycloak://host/realm"`, `auth "auth0://domain"`, `auth "oidc://issuer"` connection strings. Middleware auto-validates tokens via configured provider. | [x] |
 | 13.2 | **`search` keyword & adapter** | Medium | `search "meilisearch://host:7700/index"`, `search "elastic://host:9200/index"` with `search.query()` and `search.index()` APIs. | [ ] |
 | 13.3 | **`mail` keyword & adapter** | Small | `mail "smtp://host:587"`, `mail "ses://us-east-1"`, `mail "sendgrid://key"` with `mail.send()` API. | [x] |
-| 13.4 | **MySQL database adapter** | Small | Add MySQL driver to `runtime/db.go` via `database "mysql://..."` connection string. | [ ] |
+| 13.4 | **MySQL database adapter** | Small | Add MySQL driver to `runtime/db.go` via `database "mysql://..."` connection string. | [x] |
 | 13.5 | **Turso/libSQL database adapter** | Small | `database "turso://db.turso.io"` — emerging edge database, high adoption signal. | [ ] |
-| 13.6 | **Redis Streams broker adapter** | Small | `broker "redis-stream://host:6379"` — common lightweight event streaming alternative. | [ ] |
+| 13.6 | **Redis Streams broker adapter** | Small | `broker "redis-stream://host:6379"` — common lightweight event streaming alternative. | [x] |
 | 13.7 | **`store` keyword (multi-backend)** | Medium | `store "s3://bucket"`, `store "gcs://bucket"`, `store "r2://bucket"`, `store "local://./uploads"` with unified `store.put()` / `store.get()` API. | [x] |
 | 13.8 | **Canonical `serv.toml` example** | Small | Add a well-documented example `serv.toml` to the repo root showing multi-file projects, env profiles, and dependency locks. | [x] |
 | 13.9 | **VS Code Extension marketplace publish** | Small | Register publisher, package, and publish to Visual Studio Marketplace. Highest ROI discoverability item. | [ ] |
 | 13.10 | **Graceful shutdown in runtime** | Small | `signal.NotifyContext` pattern in generated `main.go` — drain connections, flush spans, close DB pools on SIGTERM. | [x] |
 | 13.11 | **Standardized error response contract** | Small | All generated HTTP handlers return `{"error": "msg", "code": "ERR_CODE", "trace_id": "..."}` on failure. | [x] |
 | 13.12 | **API versioning helpers** | Small | `route "GET" "/v1/users"` grouping via `version "v1" { ... }` block syntax or stdlib helper. | [ ] |
-| 13.13 | **Full OIDC discovery & JWKS validation** | Medium | For `auth "oidc://issuer"`, auto-fetch `/.well-known/openid-configuration`, cache JWKS public keys, validate RS256/ES256 signatures, and support key rotation. Currently only validates issuer claim. | [ ] |
-| 13.14 | **Auth role/scope guards** | Small | `route "GET" "/admin" (req) use [auth.role("admin")]` — compile-time syntax for role-based route access using JWT claims. | [ ] |
+| 13.13 | **Full OIDC discovery & JWKS validation** | Medium | For `auth "oidc://issuer"`, auto-fetch `/.well-known/openid-configuration`, cache JWKS public keys, validate RS256/ES256 signatures, and support key rotation. Currently only validates issuer claim. | [x] |
+| 13.14 | **Auth role/scope guards** | Small | `route "GET" "/admin" (req) use [auth.role("admin")]` — compile-time syntax for role-based route access using JWT claims. | [x] |
 
 ---
 
@@ -232,7 +232,7 @@ These items take Serv from a capable service language to a **category-defining**
 | 14.1 | **Compile-time dependency injection** | Large | Declare service dependencies as interfaces, auto-wire implementations via `serv.toml` bindings. Enables testable architectures without runtime reflection. | [ ] |
 | 14.2 | **Hot-reload without restart (`serv run --hot`)** | Large | On `.srv` file save, recompile and swap the running binary via SO/DLL injection or process replacement with socket handoff. Zero-downtime local development. | [ ] |
 | 14.3 | **OpenAPI spec auto-generation** | Medium | `serv docs generate` emits a complete OpenAPI 3.1 spec from route declarations, request/response types, and middleware annotations. | [x] |
-| 14.4 | **Client SDK code generation** | Large | `serv generate client --lang typescript` / `--lang python` / `--lang go` emits typed API client libraries from route declarations. No OpenAPI intermediary needed. | [ ] |
+| 14.4 | **Client SDK code generation** | Large | `serv generate client --lang typescript` / `--lang python` / `--lang go` emits typed API client libraries from route declarations. No OpenAPI intermediary needed. | [x] |
 | 14.5 | **Incremental compilation** | Large | Cache AST and codegen artifacts per-file. Only recompile changed files and their dependents. Critical for large multi-file projects (>50 files). | [ ] |
 | 14.6 | **Effect system (side-effect tracking)** | Large | Annotate functions as `pure`, `io`, or `async`. Compiler enforces that `pure` functions cannot call `io` functions. Enables safe parallelization and easier testing. | [ ] |
 | 14.7 | **`pipe` operator** | Small | `data |> transform() |> validate() |> save()` — sugar for function chaining. High readability for data transformation pipelines. | [ ] |
