@@ -621,9 +621,13 @@ func announceRoutesToServGate() {
 	if host == "" {
 		host = "localhost"
 	}
-	targetBase := fmt.Sprintf("http://%s:%s", host, serverPort)
+	port := serverPort
+	if extPort := os.Getenv("SERV_EXTERNAL_PORT"); extPort != "" {
+		port = extPort
+	}
+	targetBase := fmt.Sprintf("http://%s:%s", host, port)
 	if tlsEnabled {
-		targetBase = fmt.Sprintf("https://%s:%s", host, serverPort)
+		targetBase = fmt.Sprintf("https://%s:%s", host, port)
 	}
 	
 	client := &http.Client{Timeout: 3 * time.Second}

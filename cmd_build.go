@@ -5,9 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -816,4 +819,286 @@ func parseProject(srvFile string) (string, *compiler.Program, error) {
 		}
 	}
 	return absPath, program, nil
+}
+
+// TCPProxy proxies raw TCP connections from a listen address to a dynamically swapped target address.
+type TCPProxy struct {
+	mu          sync.RWMutex
+	targetAddr  string
+	listener    net.Listener
+	activeConns sync.WaitGroup
+}
+
+func NewTCPProxy(listenAddr, targetAddr string) (*TCPProxy, error) {
+	l, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return nil, err
+	}
+	p := &TCPProxy{
+		targetAddr: targetAddr,
+		listener:   l,
+	}
+	return p, nil
+}
+
+func (p *TCPProxy) SetTarget(targetAddr string) {
+	p.mu.Lock()
+	p.targetAddr = targetAddr
+	p.mu.Unlock()
+}
+
+func (p *TCPProxy) Start() {
+	for {
+		conn, err := p.listener.Accept()
+		if err != nil {
+			return // listener closed
+		}
+		go p.handleConnection(conn)
+	}
+}
+
+func (p *TCPProxy) Close() {
+	p.listener.Close()
+}
+
+func (p *TCPProxy) handleConnection(src net.Conn) {
+	defer src.Close()
+
+	p.mu.RLock()
+	target := p.targetAddr
+	p.mu.RUnlock()
+
+	dst, err := net.Dial("tcp", target)
+	if err != nil {
+		return
+	}
+	defer dst.Close()
+
+	// Bidirectional copy
+	errChan := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(dst, src)
+		errChan <- err
+	}()
+	go func() {
+		_, err := io.Copy(src, dst)
+		errChan <- err
+	}()
+	<-errChan
+}
+
+func getFreePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+func runServHot(srvFile string, env string) {
+	fmt.Printf("Starting Serv in Zero-Downtime Hot-Reload Mode: %s...\n", srvFile)
+
+	// 1. Parse the project to check if it has a server statement
+	_, program, err := parseProject(srvFile)
+	if err != nil {
+		fmt.Printf("Parsing failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	targetPort := ""
+	for _, stmt := range program.Statements {
+		if s, ok := stmt.(*compiler.ServerStmt); ok {
+			// Extract port string from expression if possible
+			if strLit, ok := s.Value.(*compiler.StringLiteral); ok {
+				targetPort = strLit.Value
+			} else if intLit, ok := s.Value.(*compiler.IntegerLiteral); ok {
+				targetPort = fmt.Sprintf("%d", intLit.Value)
+			} else if ident, ok := s.Value.(*compiler.Identifier); ok {
+				targetPort = ident.Value
+			}
+			break
+		}
+	}
+
+	if targetPort == "" {
+		targetPort = "8080" // default fallback
+	}
+
+	// Normalize port (ensure it has colon prefix)
+	if !strings.HasPrefix(targetPort, ":") && !strings.Contains(targetPort, "servgate://") {
+		if _, err := strconv.Atoi(targetPort); err == nil {
+			targetPort = ":" + targetPort
+		}
+	}
+	
+	listenAddr := targetPort
+	if strings.HasPrefix(targetPort, "servgate://") {
+		urlStr := strings.TrimPrefix(targetPort, "servgate://")
+		localPort := "8085"
+		if idx := strings.Index(urlStr, "?"); idx != -1 {
+			params := urlStr[idx+1:]
+			for _, p := range strings.Split(params, "&") {
+				kv := strings.Split(p, "=")
+				if len(kv) == 2 && kv[0] == "port" {
+					localPort = kv[1]
+				}
+			}
+		}
+		listenAddr = ":" + localPort
+	}
+
+	if !strings.HasPrefix(listenAddr, ":") {
+		listenAddr = ":8080"
+	}
+
+	fmt.Printf("[HOT] Proxy will listen on %s\n", listenAddr)
+
+	var proxy *TCPProxy
+	var currentCmd *exec.Cmd
+
+	startNewInstance := func() (*exec.Cmd, string, error) {
+		binPath, err := buildServNoExit(srvFile, "hot_service.exe", "")
+		if err != nil {
+			return nil, "", err
+		}
+
+		freePort, err := getFreePort()
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to find free port: %w", err)
+		}
+		childAddr := fmt.Sprintf("127.0.0.1:%d", freePort)
+
+		cmd := exec.Command(binPath)
+		cmd.Env = os.Environ()
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", freePort))
+		externalPortOnly := strings.TrimPrefix(listenAddr, ":")
+		cmd.Env = append(cmd.Env, fmt.Sprintf("SERV_EXTERNAL_PORT=%s", externalPortOnly))
+		if env != "" {
+			cmd.Env = append(cmd.Env, "SERV_ENV="+env)
+		}
+
+		stdoutPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, "", err
+		}
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			return nil, "", err
+		}
+
+		if err := cmd.Start(); err != nil {
+			return nil, "", err
+		}
+
+		rewriter := NewStackTraceRewriter(srvFile)
+		go rewriter.Rewrite(stdoutPipe, os.Stdout)
+		go rewriter.Rewrite(stderrPipe, os.Stderr)
+
+		dialAddr := fmt.Sprintf("127.0.0.1:%d", freePort)
+		success := false
+		for i := 0; i < 20; i++ {
+			time.Sleep(100 * time.Millisecond)
+			conn, err := net.DialTimeout("tcp", dialAddr, 50*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				success = true
+				break
+			}
+		}
+
+		if !success {
+			cmd.Process.Kill()
+			cmd.Wait()
+			return nil, "", fmt.Errorf("child process did not start listening in time")
+		}
+
+		return cmd, childAddr, nil
+	}
+
+	cmd, childAddr, err := startNewInstance()
+	if err != nil {
+		fmt.Printf("[HOT] Initial start failed: %v\n", err)
+		os.Exit(1)
+	}
+	currentCmd = cmd
+
+	proxy, err = NewTCPProxy(listenAddr, childAddr)
+	if err != nil {
+		fmt.Printf("[HOT] Failed to start proxy: %v\n", err)
+		if currentCmd != nil && currentCmd.Process != nil {
+			currentCmd.Process.Kill()
+		}
+		os.Exit(1)
+	}
+	go proxy.Start()
+	fmt.Printf("[HOT] Proxy started on %s -> %s\n", listenAddr, childAddr)
+
+	defer func() {
+		if proxy != nil {
+			proxy.Close()
+		}
+		if currentCmd != nil && currentCmd.Process != nil {
+			currentCmd.Process.Kill()
+		}
+	}()
+
+	watchDir := filepath.Dir(srvFile)
+	lastMods := getFileModTimes(watchDir)
+
+	for {
+		time.Sleep(500 * time.Millisecond)
+		currentMods := getFileModTimes(watchDir)
+
+		changed := false
+		for path, mtime := range currentMods {
+			oldTime, exists := lastMods[path]
+			if !exists || mtime.After(oldTime) {
+				changed = true
+				break
+			}
+		}
+
+		if !changed && len(currentMods) != len(lastMods) {
+			changed = true
+		}
+
+		if changed {
+			lastMods = currentMods
+			fmt.Println("[HOT] File change detected. Triggering hot-reload...")
+
+			newCmd, newChildAddr, err := startNewInstance()
+			if err != nil {
+				fmt.Printf("[HOT] Hot-reload failed to compile or start: %v\n", err)
+				continue
+			}
+
+			proxy.SetTarget(newChildAddr)
+			fmt.Printf("[HOT] Hot-swapped proxy target: %s\n", newChildAddr)
+
+			oldCmd := currentCmd
+			currentCmd = newCmd
+
+			go func(c *exec.Cmd) {
+				if c != nil && c.Process != nil {
+					err := c.Process.Signal(os.Interrupt)
+					if err != nil {
+						c.Process.Kill()
+					}
+					
+					done := make(chan struct{})
+					go func() {
+						c.Wait()
+						close(done)
+					}()
+					
+					select {
+					case <-done:
+					case <-time.After(5 * time.Second):
+						c.Process.Kill()
+					}
+				}
+			}(oldCmd)
+		}
+	}
 }

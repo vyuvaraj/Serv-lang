@@ -45,7 +45,8 @@ func main() {
 
 	case "run":
 		runCmd := flag.NewFlagSet("run", flag.ExitOnError)
-		watchFlag := runCmd.Bool("watch", false, "Watch files and hot-reload")
+		watchFlag := runCmd.Bool("watch", false, "Watch files and restart")
+		hotFlag := runCmd.Bool("hot", false, "Watch files and hot-reload without restart (zero downtime)")
 		profileFlag := runCmd.Bool("profile", false, "Enable CPU and memory profiling")
 		envFlag := runCmd.String("env", "", "Environment profile (e.g., staging, production)")
 		if err := runCmd.Parse(os.Args[2:]); err != nil {
@@ -57,7 +58,9 @@ func main() {
 			args = []string{"."}
 		}
 
-		if *watchFlag {
+		if *hotFlag {
+			runServHot(args[0], *envFlag)
+		} else if *watchFlag {
 			runServWatch(args[0], *envFlag)
 		} else {
 			runServ(args[0], args[1:], *profileFlag, *envFlag)
