@@ -207,7 +207,7 @@ To align with the "Adapters First, Platform Second" strategy and widen the addre
 | # | Item | Effort | Description | Status |
 |---|------|--------|-------------|--------|
 | 13.1 | **`auth` keyword & adapter** | Medium | `auth "keycloak://host/realm"`, `auth "auth0://domain"`, `auth "oidc://issuer"` connection strings. Middleware auto-validates tokens via configured provider. | [x] |
-| 13.2 | **`search` keyword & adapter** | Medium | `search "meilisearch://host:7700/index"`, `search "elastic://host:9200/index"` with `search.query()` and `search.index()` APIs. | [ ] |
+| 13.2 | **`search` keyword & adapter** | Medium | `search "meilisearch://host:7700/index"`, `search "elastic://host:9200/index"` with `search.query()` and `search.index()` APIs. | [x] |
 | 13.3 | **`mail` keyword & adapter** | Small | `mail "smtp://host:587"`, `mail "ses://us-east-1"`, `mail "sendgrid://key"` with `mail.send()` API. | [x] |
 | 13.4 | **MySQL database adapter** | Small | Add MySQL driver to `runtime/db.go` via `database "mysql://..."` connection string. | [x] |
 | 13.5 | **Turso/libSQL database adapter** | Small | `database "turso://db.turso.io"` — emerging edge database, high adoption signal. | [ ] |

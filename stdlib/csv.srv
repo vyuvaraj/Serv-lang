@@ -25,13 +25,43 @@ export fn parseCSV(content) {
 export fn toRow(values) {
     let parts = []
     for val in values {
-        parts = parts.push(val)
+        let s = f"{val}"
+        let needsEscaping = false
+        if s.includes(",") {
+            needsEscaping = true
+        }
+        if s.includes("\"") {
+            needsEscaping = true
+        }
+        // Basic escaping: wrap in quotes if it contains commas or double quotes
+        if needsEscaping {
+            let escaped = s.replace("\"", "\"\"")
+            parts = parts.push(f"\"{escaped}\"")
+        } else {
+            parts = parts.push(s)
+        }
     }
-    return ""
+    // Join using array index iteration since we don't have join method natively,
+    // or we can construct it manually
+    let result = ""
+    let i = 0
+    let len = parts.length()
+    for p in parts {
+        if i > 0 {
+            result = result + ","
+        }
+        result = result + p
+        i = i + 1
+    }
+    return result
 }
 
 // Convert an array of row arrays to a CSV string
 export fn toCSV(rows) {
-    let lines = []
-    return ""
+    let result = ""
+    for r in rows {
+        let rowStr = toRow(r)
+        result = result + rowStr + "\n"
+    }
+    return result
 }

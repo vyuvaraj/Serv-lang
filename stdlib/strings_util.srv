@@ -46,3 +46,25 @@ export fn repeat(text, count) {
 export fn matches(text, pattern) {
     return text.includes(pattern)
 }
+
+// Pad a string on the left with a padding character up to a target length
+export fn padLeft(text, targetLen, padChar) {
+    let s = f"{text}"
+    let diff = targetLen - s.length()
+    if diff <= 0 {
+        return s
+    }
+    let padding = padChar.repeat(diff)
+    return padding + s
+}
+
+// Pad a string on the right with a padding character up to a target length
+export fn padRight(text, targetLen, padChar) {
+    let s = f"{text}"
+    let diff = targetLen - s.length()
+    if diff <= 0 {
+        return s
+    }
+    let padding = padChar.repeat(diff)
+    return s + padding
+}

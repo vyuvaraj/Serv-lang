@@ -183,3 +183,43 @@ test "search adapter integration test" {
 	runTests(tmpFile.Name(), false, "")
 }
 
+func TestCsvAndStringPadHelpers(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test_csv_pad_*.srv")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	srvContent := `
+import { parseCSV, toCSV, parseRow, toRow } from "stdlib/csv.srv"
+import { padLeft, padRight } from "stdlib/strings_util.srv"
+
+test "CSV and padding helpers integration test" {
+	// Test CSV row formatting
+	let row = toRow(["a", "b,c", "d\"e"])
+	assert row == "a,\"b,c\",\"d\"\"e\""
+
+	let parsed = parseRow(row)
+	assert parsed.length() == 4
+	assert parsed[0] == "a"
+
+	// Test CSV full formatting
+	let csvStr = toCSV([["name", "age"], ["Alice", 30]])
+	assert csvStr == "name,age\nAlice,30\n"
+
+	// Test Padding helpers
+	let paddedL = padLeft("123", 5, "0")
+	assert paddedL == "00123"
+
+	let paddedR = padRight("abc", 6, "-")
+	assert paddedR == "abc---"
+}
+`
+	if _, err := tmpFile.WriteString(srvContent); err != nil {
+		t.Fatalf("failed to write srv file: %v", err)
+	}
+	tmpFile.Close()
+
+	runTests(tmpFile.Name(), false, "")
+}
+

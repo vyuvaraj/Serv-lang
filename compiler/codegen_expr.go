@@ -527,7 +527,7 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				case "push":
 					if len(e.Arguments) == 1 {
 						elemStr, _ := c.genExpression(e.Arguments[0])
-						collectionResult = fmt.Sprintf("runtime.Push(%s, %s)", objStr, elemStr)
+						collectionResult = fmt.Sprintf("runtime.Push(%s, %s).([]interface{})", objStr, elemStr)
 						isCollectionMethod = true
 					}
 				case "contains":
