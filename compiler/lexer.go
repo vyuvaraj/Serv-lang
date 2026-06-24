@@ -69,6 +69,10 @@ const (
 	TOKEN_STREAM     TokenType = "STREAM"
 	TOKEN_YIELD      TokenType = "YIELD"
 	TOKEN_STORE      TokenType = "STORE"
+	TOKEN_VERSION    TokenType = "VERSION"
+	TOKEN_RESILIENT  TokenType = "RESILIENT"
+	TOKEN_RETRIES    TokenType = "RETRIES"
+	TOKEN_CIRCUIT_BREAKER TokenType = "CIRCUIT_BREAKER"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -254,6 +258,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = TOKEN_PERCENT
 		tok.Literal = string(l.ch)
 	case '&':
+		if l.peekChar() == '&' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_AND
+			tok.Literal = "&&"
+			return tok
+		}
 		tok.Type = TOKEN_AMPERSAND
 		tok.Literal = string(l.ch)
 	case '|':
@@ -262,6 +273,12 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			tok.Type = TOKEN_PIPE_ARROW
 			tok.Literal = "|>"
+			return tok
+		} else if l.peekChar() == '|' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_OR
+			tok.Literal = "||"
 			return tok
 		}
 		tok.Type = TOKEN_PIPE
@@ -450,7 +467,12 @@ func (l *Lexer) readNumberOrDurationOrFloat() (string, TokenType) {
 		}
 		return l.input[position:l.position], TOKEN_FLOAT
 	}
-	// Check if this is a duration literal (e.g., 5s, 10m, 2h)
+	// Check if this is a duration literal (e.g., 5s, 10m, 2h, 50ms)
+	if l.ch == 'm' && l.peekChar() == 's' {
+		l.readChar() // consume 'm'
+		l.readChar() // consume 's'
+		return l.input[position:l.position], TOKEN_DURATION
+	}
 	if l.ch == 's' || l.ch == 'm' || l.ch == 'h' {
 		l.readChar()
 		return l.input[position:l.position], TOKEN_DURATION
@@ -577,6 +599,10 @@ var keywords = map[string]TokenType{
 	"stream":     TOKEN_STREAM,
 	"yield":      TOKEN_YIELD,
 	"store":      TOKEN_STORE,
+	"version":    TOKEN_VERSION,
+	"resilient":  TOKEN_RESILIENT,
+	"retries":    TOKEN_RETRIES,
+	"circuit_breaker": TOKEN_CIRCUIT_BREAKER,
 }
 
 func lookupIdent(ident string) TokenType {

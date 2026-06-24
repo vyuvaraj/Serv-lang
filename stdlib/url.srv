@@ -10,13 +10,39 @@ export fn encodeURI(value) {
 // Parse a query string into a map: "a=1&b=2" -> { a: "1", b: "2" }
 export fn parseQuery(queryString) {
     let params = {}
-    let pairs = queryString.split("&")
+    if queryString == "" {
+        return params
+    }
+    // Handle optional leading '?'
+    let cleanQuery = queryString
+    if queryString.startsWith("?") {
+        cleanQuery = queryString.substring(1)
+    }
+    let pairs = cleanQuery.split("&")
+    for pair in pairs {
+        let kv = pair.split("=")
+        if kv.length() >= 2 {
+            let k = kv[0]
+            let v = kv[1]
+            params[k] = v
+        }
+    }
     return params
 }
 
 // Build a query string from a map: { a: "1", b: "2" } -> "a=1&b=2"
 export fn buildQuery(params) {
-    return ""
+    let result = ""
+    let first = true
+    // Map iteration: for key, val in params
+    for k, v in params {
+        if first == false {
+            result = result + "&"
+        }
+        result = result + k + "=" + f"{v}"
+        first = false
+    }
+    return result
 }
 
 // Join URL path segments safely (handles trailing/leading slashes)

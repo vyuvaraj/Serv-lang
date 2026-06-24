@@ -929,6 +929,8 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 				return fmt.Sprintf("(%s != nil)", rightStr), nil
 			}
 			return fmt.Sprintf("!runtime.Equal(%s, %s)", leftStr, rightStr), nil
+		case "||", "&&":
+			return fmt.Sprintf("(isTruthy(%s) %s isTruthy(%s))", leftStr, e.Operator, rightStr), nil
 		case "<", ">", "<=", ">=":
 			return fmt.Sprintf("runtime.Compare(%s, %s, %q)", leftStr, rightStr, e.Operator), nil
 		default:
@@ -985,6 +987,30 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 			}
 		}
 		return fmt.Sprintf("%s = %s", name, valStr), nil
+
+	case *IndexAssignExpr:
+		leftStr, err := c.genExpression(e.Left.Left)
+		if err != nil {
+			return "", err
+		}
+		idxStr, err := c.genExpression(e.Left.Index)
+		if err != nil {
+			return "", err
+		}
+		valStr, err := c.genExpression(e.Value)
+		if err != nil {
+			return "", err
+		}
+		// If Left has a known typed slice/map, or is in-memory fallback SafeMap
+		leftType := c.getExpressionType(e.Left.Left)
+		if strings.HasPrefix(leftType, "[]") {
+			// Slice index assign: arr[idx] = val
+			return fmt.Sprintf("%s[%s] = %s", leftStr, idxStr, valStr), nil
+		}
+		// SafeMap or regular map[string]interface{} setting
+		// If it's a map or SafeMap, use runtime.MapSet helper
+		c.imports[`"serv/runtime"`] = true
+		return fmt.Sprintf("runtime.MapSet(%s, %s, %s)", leftStr, idxStr, valStr), nil
 
 	case *CompoundAssignExpr:
 		valStr, err := c.genExpression(e.Value)

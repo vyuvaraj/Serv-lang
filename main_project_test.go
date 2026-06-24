@@ -34,7 +34,7 @@ fn useValue() -> int {
 
 	// Compile the directory
 	outBin := "test_service.exe"
-	binPath, err := buildServNoExit(tmpDir, outBin, "")
+	binPath, err := buildServNoExit(tmpDir, outBin, "", "", "")
 	if err != nil {
 		t.Fatalf("failed to build directory: %v", err)
 	}
@@ -73,7 +73,7 @@ fn someFunc() -> int {
 
 	// Compile the directory
 	outBin := "test_service_manifest.exe"
-	binPath, err := buildServNoExit(tmpDir, outBin, "")
+	binPath, err := buildServNoExit(tmpDir, outBin, "", "", "")
 	if err != nil {
 		t.Fatalf("failed to build directory via manifest: %v", err)
 	}
@@ -172,7 +172,7 @@ route "POST" "/ask" (req) {
 	}
 	tmpFile.Close()
 
-	binPath, err := buildServNoExit(tmpFile.Name(), "temp_ai_test.exe", "")
+	binPath, err := buildServNoExit(tmpFile.Name(), "temp_ai_test.exe", "", "", "")
 	if err != nil {
 		t.Fatalf("Build failed: %v", err)
 	}

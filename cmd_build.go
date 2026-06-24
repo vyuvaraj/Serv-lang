@@ -18,8 +18,8 @@ import (
 	"serv/compiler"
 )
 
-func buildServ(srvFile, outputBinary, target string) string {
-	absPath, err := buildServNoExit(srvFile, outputBinary, target)
+func buildServ(srvFile, outputBinary, target, goos, goarch string) string {
+	absPath, err := buildServNoExit(srvFile, outputBinary, target, goos, goarch)
 	if err != nil {
 		fmt.Printf("Build failed: %v\n", err)
 		os.Exit(1)
@@ -28,7 +28,7 @@ func buildServ(srvFile, outputBinary, target string) string {
 	return absPath
 }
 
-func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
+func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string, error) {
 	absPath, program, err := parseProject(srvFile)
 	if err != nil {
 		return "", err
@@ -105,7 +105,12 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 		return "", fmt.Errorf("cannot find Go compiler: %w", err)
 	}
 
-	targetOutPath := filepath.Join(filepath.Dir(absPath), outputBinary)
+	var targetOutPath string
+	if filepath.IsAbs(outputBinary) {
+		targetOutPath = outputBinary
+	} else {
+		targetOutPath = filepath.Join(filepath.Dir(absPath), outputBinary)
+	}
 	relOutPath, err := filepath.Rel(buildDir, targetOutPath)
 	if err != nil {
 		relOutPath = targetOutPath
@@ -117,6 +122,12 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 	cmd.Env = append(cmd.Env, "GOWORK=off")
 	if target == "wasm" {
 		cmd.Env = append(cmd.Env, "GOOS=wasip1", "GOARCH=wasm")
+	}
+	if goos != "" {
+		cmd.Env = append(cmd.Env, "GOOS="+goos)
+	}
+	if goarch != "" {
+		cmd.Env = append(cmd.Env, "GOARCH="+goarch)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -134,6 +145,12 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 				if target == "wasm" {
 					retryCmd.Env = append(retryCmd.Env, "GOOS=wasip1", "GOARCH=wasm")
 				}
+				if goos != "" {
+					retryCmd.Env = append(retryCmd.Env, "GOOS="+goos)
+				}
+				if goarch != "" {
+					retryCmd.Env = append(retryCmd.Env, "GOARCH="+goarch)
+				}
 				retryCmd.Stderr = &stderr
 				if retryErr := retryCmd.Run(); retryErr == nil {
 					return filepath.Join(filepath.Dir(absPath), outputBinary), nil
@@ -147,7 +164,7 @@ func buildServNoExit(srvFile, outputBinary, target string) (string, error) {
 }
 
 func runServ(srvFile string, extraArgs []string, profile bool, env string) {
-	binPath, err := buildServNoExit(srvFile, "temp_service.exe", "")
+	binPath, err := buildServNoExit(srvFile, "temp_service.exe", "", "", "")
 	if err != nil {
 		fmt.Printf("Build failed: %v\n", err)
 		os.Exit(1)
@@ -215,7 +232,7 @@ func runServWatch(srvFile string, env string) {
 			cmd.Wait()
 		}
 
-		binPath, err := buildServNoExit(srvFile, "watch_service.exe", "")
+		binPath, err := buildServNoExit(srvFile, "watch_service.exe", "", "", "")
 		if err != nil {
 			fmt.Printf("[WATCH] Rebuild failed:\n%v\n", err)
 			return
@@ -599,7 +616,6 @@ func parseWithDependencies(filePath string, visited map[string]int) (*compiler.P
 				// Selective import validation
 				subExports := make(map[string]bool)  // name -> isExported
 				subDefined := make(map[string]bool)  // name -> exists
-				structNames := make(map[string]bool) // imported struct names
 
 				// Identify defined and exported symbols in the subProgram
 				for _, subStmt := range subProgram.Statements {
@@ -622,80 +638,16 @@ func parseWithDependencies(filePath string, visited map[string]int) (*compiler.P
 						return nil, fmt.Errorf("cannot import non-exported symbol '%s' from '%s'", n, imp.Path)
 					}
 				}
+			}
 
-				// Collect imported struct names to auto-include their methods
-				for _, subStmt := range subProgram.Statements {
-					name := statementName(subStmt)
-					if name == "" {
-						continue
-					}
-					inner := subStmt
+			// Include all non-named statements + all exported named statements (unwrapped)
+			for _, subStmt := range subProgram.Statements {
+				name := statementName(subStmt)
+				if name == "" {
+					mergedStatements = append(mergedStatements, subStmt)
+				} else {
 					if exp, ok := subStmt.(*compiler.ExportStmt); ok {
-						inner = exp.Inner
-					}
-
-					// If this name is explicitly imported and is a Struct
-					var isStruct bool
-					for _, importedName := range imp.Names {
-						if importedName == name {
-							if _, ok := inner.(*compiler.StructDecl); ok {
-								isStruct = true
-							}
-							break
-						}
-					}
-					if isStruct {
-						structNames[name] = true
-					}
-				}
-
-				// Merge imported statements
-				for _, subStmt := range subProgram.Statements {
-					name := statementName(subStmt)
-
-					// Non-named statements are always included (they might be transitive routes/background workers/etc.)
-					if name == "" {
-						mergedStatements = append(mergedStatements, subStmt)
-						continue
-					}
-
-					inner := subStmt
-					isExported := false
-					if exp, ok := subStmt.(*compiler.ExportStmt); ok {
-						inner = exp.Inner
-						isExported = true
-					}
-
-					// Include if name is in the import list
-					isImported := false
-					for _, importedName := range imp.Names {
-						if importedName == name {
-							isImported = true
-							break
-						}
-					}
-					if isImported {
-						mergedStatements = append(mergedStatements, inner)
-						continue
-					}
-
-					// Auto-include exported methods for imported struct types
-					if method, ok := inner.(*compiler.MethodDecl); ok {
-						if structNames[method.TypeName] && isExported {
-							mergedStatements = append(mergedStatements, inner)
-						}
-					}
-				}
-			} else {
-				// Wildcard import: include all non-named statements + explicitly exported named statements
-				for _, subStmt := range subProgram.Statements {
-					name := statementName(subStmt)
-					if name == "" {
-						mergedStatements = append(mergedStatements, subStmt)
-					} else {
-						if exp, ok := subStmt.(*compiler.ExportStmt); ok {
-							mergedStatements = append(mergedStatements, exp.Inner)
-						}
+						mergedStatements = append(mergedStatements, exp.Inner)
 					}
 				}
 			}
@@ -958,7 +910,7 @@ func runServHot(srvFile string, env string) {
 	var currentCmd *exec.Cmd
 
 	startNewInstance := func() (*exec.Cmd, string, error) {
-		binPath, err := buildServNoExit(srvFile, "hot_service.exe", "")
+		binPath, err := buildServNoExit(srvFile, "hot_service.exe", "", "", "")
 		if err != nil {
 			return nil, "", err
 		}

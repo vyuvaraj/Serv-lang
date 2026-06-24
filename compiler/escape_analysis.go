@@ -265,6 +265,10 @@ func analyzeExprEscape(expr Expression, scope *escapeScope, nextGoroutine func()
 		analyzeExprEscape(e.Object, scope, nextGoroutine)
 		analyzeExprEscape(e.Value, scope, nextGoroutine)
 
+	case *IndexAssignExpr:
+		analyzeExprEscape(e.Left, scope, nextGoroutine)
+		analyzeExprEscape(e.Value, scope, nextGoroutine)
+
 	case *FnLiteral:
 		// Closures / Arrow Functions are function boundaries
 		fnScope := newEscapeScope(scope, scope.goroutine)

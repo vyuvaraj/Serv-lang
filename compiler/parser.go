@@ -10,6 +10,7 @@ const (
 	LOWEST
 	ASSIGN  // =
 	PIPE    // |>
+	LOGICAL // ||, &&
 	COMPARE // ==, !=, <, >, <=, >=
 	SUM     // +
 	PRODUCT // *
@@ -20,6 +21,8 @@ const (
 
 var precedences = map[TokenType]int{
 	TOKEN_PIPE_ARROW:      PIPE,
+	TOKEN_OR:              LOGICAL,
+	TOKEN_AND:             LOGICAL,
 	TOKEN_ARROW:           ASSIGN,
 	TOKEN_ASSIGN:          ASSIGN,
 	TOKEN_PLUS_ASSIGN:     ASSIGN,
@@ -55,6 +58,7 @@ type Parser struct {
 	curToken  Token
 	peekToken Token
 	errors    []string
+	currentVersionPrefix string
 
 	prefixParseFns map[TokenType]prefixParseFn
 	infixParseFns  map[TokenType]infixParseFn
@@ -127,6 +131,8 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_PERCENT_ASSIGN, p.parseCompoundAssignExpression)
 	p.registerInfix(TOKEN_ARROW, p.parseArrowFunction)
 	p.registerInfix(TOKEN_QUESTION, p.parseErrorPropExpression)
+	p.registerInfix(TOKEN_OR, p.parseInfixExpression)
+	p.registerInfix(TOKEN_AND, p.parseInfixExpression)
 
 	// Read two tokens so curToken and peekToken are both set
 	p.nextToken()
@@ -203,6 +209,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseReturnStatement()
 	case TOKEN_YIELD:
 		return p.parseYieldStatement()
+	case TOKEN_VERSION:
+		return p.parseVersionBlock()
+	case TOKEN_RESILIENT:
+		return p.parseFnDeclaration()
 	case TOKEN_FN:
 		return p.parseFnDeclaration()
 	case TOKEN_TRY:

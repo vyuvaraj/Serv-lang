@@ -64,7 +64,7 @@ func ForEach(slice interface{}, callback func(interface{}) interface{}) interfac
 }
 
 // Length returns the length of a slice or string.
-func Length(val interface{}) interface{} {
+func Length(val interface{}) int {
 	if val == nil {
 		return 0
 	}

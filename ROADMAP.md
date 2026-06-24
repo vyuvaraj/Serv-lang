@@ -210,14 +210,14 @@ To align with the "Adapters First, Platform Second" strategy and widen the addre
 | 13.2 | **`search` keyword & adapter** | Medium | `search "meilisearch://host:7700/index"`, `search "elastic://host:9200/index"` with `search.query()` and `search.index()` APIs. | [x] |
 | 13.3 | **`mail` keyword & adapter** | Small | `mail "smtp://host:587"`, `mail "ses://us-east-1"`, `mail "sendgrid://key"` with `mail.send()` API. | [x] |
 | 13.4 | **MySQL database adapter** | Small | Add MySQL driver to `runtime/db.go` via `database "mysql://..."` connection string. | [x] |
-| 13.5 | **Turso/libSQL database adapter** | Small | `database "turso://db.turso.io"` — emerging edge database, high adoption signal. | [ ] |
+| 13.5 | **Turso/libSQL database adapter** | Small | `database "turso://db.turso.io"` — emerging edge database, high adoption signal. | [x] |
 | 13.6 | **Redis Streams broker adapter** | Small | `broker "redis-stream://host:6379"` — common lightweight event streaming alternative. | [x] |
 | 13.7 | **`store` keyword (multi-backend)** | Medium | `store "s3://bucket"`, `store "gcs://bucket"`, `store "r2://bucket"`, `store "local://./uploads"` with unified `store.put()` / `store.get()` API. | [x] |
 | 13.8 | **Canonical `serv.toml` example** | Small | Add a well-documented example `serv.toml` to the repo root showing multi-file projects, env profiles, and dependency locks. | [x] |
 | 13.9 | **VS Code Extension marketplace publish** | Small | Register publisher, package, and publish to Visual Studio Marketplace. Highest ROI discoverability item. | [x] |
 | 13.10 | **Graceful shutdown in runtime** | Small | `signal.NotifyContext` pattern in generated `main.go` — drain connections, flush spans, close DB pools on SIGTERM. | [x] |
 | 13.11 | **Standardized error response contract** | Small | All generated HTTP handlers return `{"error": "msg", "code": "ERR_CODE", "trace_id": "..."}` on failure. | [x] |
-| 13.12 | **API versioning helpers** | Small | `route "GET" "/v1/users"` grouping via `version "v1" { ... }` block syntax or stdlib helper. | [ ] |
+| 13.12 | **API versioning helpers** | Small | `route "GET" "/v1/users"` grouping via `version "v1" { ... }` block syntax or stdlib helper. | [x] |
 | 13.13 | **Full OIDC discovery & JWKS validation** | Medium | For `auth "oidc://issuer"`, auto-fetch `/.well-known/openid-configuration`, cache JWKS public keys, validate RS256/ES256 signatures, and support key rotation. Currently only validates issuer claim. | [x] |
 | 13.14 | **Auth role/scope guards** | Small | `route "GET" "/admin" (req) use [auth.role("admin")]` — compile-time syntax for role-based route access using JWT claims. | [x] |
 
@@ -239,10 +239,10 @@ These items take Serv from a capable service language to a **category-defining**
 | 14.8 | **Pattern matching on types** | Medium | `match value { case s: string => ..., case n: int => ..., case User { name } => ... }` — destructuring match with type narrowing. | [ ] |
 | 14.9 | **Compile-time macros** | Large | `@derive(Serialize, Validate)` annotations that generate boilerplate at compile time — similar to Rust derive or Java annotation processors. | [ ] |
 | 14.10 | **REPL with hot service context** | Medium | `serv repl --attach localhost:8080` connects to a running service and evaluates expressions against live state — inspect DB, cache, and variables interactively. | [ ] |
-| 14.11 | **Language-level circuit breaker** | Small | `resilient fn callPayment() retries 3 timeout 5s circuit_breaker { ... }` — declarative resiliency annotations on function signatures, compiled to runtime wrappers. | [ ] |
+| 14.11 | **Language-level circuit breaker** | Small | `resilient fn callPayment() retries 3 timeout 5s circuit_breaker { ... }` — declarative resiliency annotations on function signatures, compiled to runtime wrappers. | [x] |
 | 14.12 | **Streaming response support** | Medium | `route "GET" "/events" (req) stream { yield { data: "ping" }; every 1s { yield heartbeat() } }` — SSE/chunked streaming as a first-class route type. | [x] |
 | 14.13 | **GraphQL endpoint declaration** | Large | `graphql "/api" { type Query { users: [User] } resolver users() { ... } }` — native GraphQL schema + resolver syntax compiled to a performant Go handler. | [ ] |
-| 14.14 | **Cross-compilation targets** | Medium | `serv build --os linux --arch arm64` — cross-compile from any host to any Go-supported target. Enables edge/IoT deployment from a single dev machine. | [ ] |
+| 14.14 | **Cross-compilation targets** | Medium | `serv build --os linux --arch arm64` — cross-compile from any host to any Go-supported target. Enables edge/IoT deployment from a single dev machine. | [x] |
 | 14.15 | **Language server code actions** | Medium | Quick-fix suggestions in the LSP: "Extract to function", "Add error handling", "Generate test stub", "Wrap in try/catch". Moves beyond diagnostics into active refactoring assistance. | [ ] |
 
 ---

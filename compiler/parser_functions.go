@@ -1,6 +1,17 @@
 package compiler
 
+import (
+	"strconv"
+)
+
 func (p *Parser) parseFnDeclaration() Statement {
+	isResilient := false
+	if p.curToken.Type == TOKEN_RESILIENT {
+		isResilient = true
+		if !p.expectPeek(TOKEN_FN) {
+			return nil
+		}
+	}
 	fnToken := p.curToken
 
 	if !p.expectPeek(TOKEN_IDENT) {
@@ -19,7 +30,7 @@ func (p *Parser) parseFnDeclaration() Statement {
 	}
 
 	// Regular function declaration
-	stmt := &FnDecl{Token: fnToken}
+	stmt := &FnDecl{Token: fnToken, IsResilient: isResilient}
 	stmt.Name = firstName
 
 	// Optional type parameters: fn name[T, U](...) or fn name[T: Comparable, U: Numeric](...)
@@ -90,6 +101,26 @@ func (p *Parser) parseFnDeclaration() Statement {
 		p.nextToken() // skip '->'
 		p.nextToken() // type identifier
 		stmt.ReturnType = p.parseTypeAnnotation()
+	}
+
+	for {
+		if p.peekToken.Type == TOKEN_RETRIES {
+			p.nextToken() // consume 'retries'
+			if !p.expectPeek(TOKEN_INT) {
+				return nil
+			}
+			val, _ := strconv.Atoi(p.curToken.Literal)
+			stmt.Retries = val
+		} else if p.peekToken.Type == TOKEN_TIMEOUT {
+			p.nextToken() // consume 'timeout'
+			p.nextToken() // consume duration/int/ident
+			stmt.Timeout = p.curToken.Literal
+		} else if p.peekToken.Type == TOKEN_CIRCUIT_BREAKER {
+			p.nextToken() // consume 'circuit_breaker'
+			stmt.HasCircuitBreaker = true
+		} else {
+			break
+		}
 	}
 
 	if !p.expectPeek(TOKEN_LBRACE) {

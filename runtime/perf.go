@@ -86,46 +86,46 @@ func Equal(a, b interface{}) bool {
 
 // Compare performs ordered comparison (<, >, <=, >=) on two interface{} values.
 func Compare(a, b interface{}, op string) bool {
-	switch av := a.(type) {
-	case int:
-		bv, ok := b.(int)
-		if !ok { return false }
-		switch op {
-		case "<": return av < bv
-		case ">": return av > bv
-		case "<=": return av <= bv
-		case ">=": return av >= bv
+	if aNum, okA := toFloat64Val(a); okA {
+		if bNum, okB := toFloat64Val(b); okB {
+			switch op {
+			case "<": return aNum < bNum
+			case ">": return aNum > bNum
+			case "<=": return aNum <= bNum
+			case ">=": return aNum >= bNum
+			}
+			return false
 		}
-	case int64:
-		bv, ok := b.(int64)
-		if !ok { return false }
-		switch op {
-		case "<": return av < bv
-		case ">": return av > bv
-		case "<=": return av <= bv
-		case ">=": return av >= bv
-		}
-	case float64:
-		bv, ok := b.(float64)
-		if !ok { return false }
-		switch op {
-		case "<": return av < bv
-		case ">": return av > bv
-		case "<=": return av <= bv
-		case ">=": return av >= bv
-		}
-	case string:
-		bv, ok := b.(string)
-		if !ok { return false }
-		switch op {
-		case "<": return av < bv
-		case ">": return av > bv
-		case "<=": return av <= bv
-		case ">=": return av >= bv
+	}
+	if av, okA := a.(string); okA {
+		if bv, okB := b.(string); okB {
+			switch op {
+			case "<": return av < bv
+			case ">": return av > bv
+			case "<=": return av <= bv
+			case ">=": return av >= bv
+			}
 		}
 	}
 	return false
 }
+
+func toFloat64Val(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	case float32:
+		return float64(val), true
+	}
+	return 0, false
+}
+
 
 // Arith performs arithmetic on two interface{} values.
 func Arith(a, b interface{}, op string) interface{} {
@@ -403,5 +403,20 @@ func IndexAccess(val interface{}, index interface{}) interface{} {
 		}
 	}
 	return nil
+}
+
+// MapSet updates a key-value pair in a SafeMap or standard map[string]interface{}.
+func MapSet(val interface{}, key interface{}, value interface{}) interface{} {
+	if val == nil || key == nil {
+		return nil
+	}
+	keyStr := fmt.Sprint(key)
+	switch v := val.(type) {
+	case *SafeMap:
+		v.Set(keyStr, value)
+	case map[string]interface{}:
+		v[keyStr] = value
+	}
+	return val
 }
 

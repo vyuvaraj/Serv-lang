@@ -223,3 +223,46 @@ test "CSV and padding helpers integration test" {
 	runTests(tmpFile.Name(), false, "")
 }
 
+func TestTursoJwtAndUrlHelpers(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "test_turso_jwt_url_*.srv")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	srvContent := `
+database "turso://localhost:8080?token=mockjwt"
+
+import { jwtEncode, jwtIsExpired } from "stdlib/jwt.srv"
+import { parseQuery, buildQuery, extractPath } from "stdlib/url.srv"
+
+test "Turso, JWT expiry, and URL helpers test" {
+	// JWT expiration check test
+	let expiredToken = jwtEncode({"exp": 1000}, "mysecret")
+	assert jwtIsExpired(expiredToken) == true
+
+	let activeToken = jwtEncode({"exp": 9999999999}, "mysecret")
+	assert jwtIsExpired(activeToken) == false
+
+	// URL helper tests
+	let qMap = parseQuery("?x=10&y=hello")
+	assert qMap.x == "10"
+	assert qMap.y == "hello"
+
+	let qStr = buildQuery({"name": "Alice", "role": "admin"})
+	assert qStr.length() == 21
+	assert qStr.includes("name=Alice")
+	assert qStr.includes("role=admin")
+
+	let pth = extractPath("https://servverse.io/docs/intro")
+	assert pth == "/docs/intro"
+}
+`
+	if _, err := tmpFile.WriteString(srvContent); err != nil {
+		t.Fatalf("failed to write srv file: %v", err)
+	}
+	tmpFile.Close()
+
+	runTests(tmpFile.Name(), false, "")
+}
+

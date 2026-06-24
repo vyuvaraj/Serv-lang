@@ -27,5 +27,11 @@ export fn jwtIsExpired(token) {
     if payload == nil {
         return true
     }
-    return false
+    let exp = payload?.exp
+    if exp == nil {
+        return false
+    }
+    // Compare unix timestamp from time.unix()
+    let nowUnix = time.unix()
+    return nowUnix > exp
 }

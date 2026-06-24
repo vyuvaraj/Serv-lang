@@ -413,8 +413,13 @@ func (p *Parser) parseAssignmentExpression(left Expression) Expression {
 		p.nextToken()
 		expr.Value = p.parseExpression(LOWEST)
 		return expr
+	case *IndexExpr:
+		expr := &IndexAssignExpr{Token: p.curToken, Left: l}
+		p.nextToken()
+		expr.Value = p.parseExpression(LOWEST)
+		return expr
 	default:
-		p.addError("left side of assignment must be an identifier or member expression")
+		p.addError("left side of assignment must be an identifier, member expression, or index expression")
 		return nil
 	}
 }

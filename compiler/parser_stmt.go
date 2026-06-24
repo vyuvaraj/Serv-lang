@@ -350,3 +350,47 @@ func (p *Parser) parseWorkflowDeclaration() Statement {
 	return stmt
 }
 
+func (p *Parser) parseVersionBlock() Statement {
+	stmt := &VersionBlockStmt{Token: p.curToken}
+
+	if !p.expectPeek(TOKEN_STRING) {
+		return nil
+	}
+	stmt.Version = p.curToken.Literal
+	if len(stmt.Version) >= 2 && stmt.Version[0] == '"' && stmt.Version[len(stmt.Version)-1] == '"' {
+		stmt.Version = stmt.Version[1 : len(stmt.Version)-1]
+	}
+
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	p.nextToken() // consume '{'
+
+	oldPrefix := p.currentVersionPrefix
+	pfx := oldPrefix
+	if len(pfx) > 0 && pfx[len(pfx)-1] != '/' {
+		pfx += "/"
+	}
+	pfx += stmt.Version
+	p.currentVersionPrefix = pfx
+
+	stmt.Statements = []Statement{}
+	for p.curToken.Type != TOKEN_RBRACE && p.curToken.Type != TOKEN_EOF {
+		s := p.parseStatement()
+		if s != nil {
+			stmt.Statements = append(stmt.Statements, s)
+		}
+		p.nextToken()
+	}
+
+	p.currentVersionPrefix = oldPrefix
+
+	if p.curToken.Type != TOKEN_RBRACE {
+		p.addError("expected closing brace '}' for version block")
+		return nil
+	}
+
+	return stmt
+}
+
+

@@ -213,6 +213,23 @@ func InitDB(connStr string) {
 		}
 		configureDBPool(dbInstance)
 		LogInfo("Connected to SQLite database: ", dbPath)
+	} else if strings.HasPrefix(connStr, "turso://") {
+		// Turso is libSQL/SQLite compatible, using glebarez/go-sqlite driver
+		// turso://host:port?token=jwt or turso://endpoint
+		// We translate turso:// to http:// or https:// (or let sqlite driver handle it,
+		// but since go-sqlite is a pure-go SQLite driver, it doesn't do network sync natively without libsql driver.
+		// However, for edge database local testing or standard SQLite fallback:
+		dsn := strings.TrimPrefix(connStr, "turso://")
+		if !strings.HasPrefix(dsn, "http://") && !strings.HasPrefix(dsn, "https://") {
+			dsn = "https://" + dsn
+		}
+		var err error
+		dbInstance, err = sql.Open("sqlite", dsn)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to open Turso/libSQL database: %s", err.Error()))
+		}
+		configureDBPool(dbInstance)
+		LogInfo("Connected to Turso/libSQL database successfully: ", connStr)
 	} else if strings.HasPrefix(connStr, "postgres://") || strings.HasPrefix(connStr, "postgresql://") {
 		var err error
 		dbInstance, err = sql.Open("postgres", connStr)

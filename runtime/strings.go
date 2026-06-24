@@ -19,11 +19,11 @@ func StringSplit(s interface{}, sep interface{}) interface{} {
 	return result
 }
 
-func StringTrim(s interface{}) interface{} {
+func StringTrim(s interface{}) string {
 	return strings.TrimSpace(fmt.Sprint(s))
 }
 
-func StringReplace(s interface{}, old interface{}, new interface{}) interface{} {
+func StringReplace(s interface{}, old interface{}, new interface{}) string {
 	return strings.ReplaceAll(fmt.Sprint(s), fmt.Sprint(old), fmt.Sprint(new))
 }
 
@@ -39,15 +39,15 @@ func StringIncludes(s interface{}, substr interface{}) bool {
 	return strings.Contains(fmt.Sprint(s), fmt.Sprint(substr))
 }
 
-func StringToUpper(s interface{}) interface{} {
+func StringToUpper(s interface{}) string {
 	return strings.ToUpper(fmt.Sprint(s))
 }
 
-func StringToLower(s interface{}) interface{} {
+func StringToLower(s interface{}) string {
 	return strings.ToLower(fmt.Sprint(s))
 }
 
-func StringSubstring(s interface{}, start interface{}, args ...interface{}) interface{} {
+func StringSubstring(s interface{}, start interface{}, args ...interface{}) string {
 	str := fmt.Sprint(s)
 	startIdx := toInt(start)
 	if startIdx < 0 {
@@ -69,11 +69,11 @@ func StringSubstring(s interface{}, start interface{}, args ...interface{}) inte
 	return str[startIdx:]
 }
 
-func StringIndexOf(s interface{}, substr interface{}) interface{} {
+func StringIndexOf(s interface{}, substr interface{}) int {
 	return strings.Index(fmt.Sprint(s), fmt.Sprint(substr))
 }
 
-func StringRepeat(s interface{}, count interface{}) interface{} {
+func StringRepeat(s interface{}, count interface{}) string {
 	return strings.Repeat(fmt.Sprint(s), toInt(count))
 }
 

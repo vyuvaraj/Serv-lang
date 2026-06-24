@@ -506,12 +506,34 @@ type FnDecl struct {
 	ParamTypes      []string // optional types for each param
 	ReturnType      string   // optional return type
 	Body            *BlockStmt
+	IsResilient       bool
+	Retries           int
+	Timeout           string
+	HasCircuitBreaker bool
 }
 
 func (f *FnDecl) statementNode()       {}
 func (f *FnDecl) TokenLiteral() string { return f.Token.Literal }
 func (f *FnDecl) String() string {
 	return "fn " + f.Name + "(" + strings.Join(f.Params, ", ") + ") " + f.Body.String() + "\n"
+}
+
+type VersionBlockStmt struct {
+	Token      Token
+	Version    string
+	Statements []Statement
+}
+
+func (v *VersionBlockStmt) statementNode()       {}
+func (v *VersionBlockStmt) TokenLiteral() string { return v.Token.Literal }
+func (v *VersionBlockStmt) String() string {
+	var out strings.Builder
+	out.WriteString("version \"" + v.Version + "\" {\n")
+	for _, s := range v.Statements {
+		out.WriteString(s.String())
+	}
+	out.WriteString("}\n")
+	return out.String()
 }
 
 // Expression Statement
@@ -560,6 +582,18 @@ func (m *MemberAssignExpr) expressionNode()      {}
 func (m *MemberAssignExpr) TokenLiteral() string { return m.Token.Literal }
 func (m *MemberAssignExpr) String() string {
 	return m.Object.String() + "." + m.Field + " = " + m.Value.String()
+}
+
+type IndexAssignExpr struct {
+	Token Token
+	Left  *IndexExpr
+	Value Expression
+}
+
+func (ia *IndexAssignExpr) expressionNode()      {}
+func (ia *IndexAssignExpr) TokenLiteral() string { return ia.Token.Literal }
+func (ia *IndexAssignExpr) String() string {
+	return ia.Left.String() + " = " + ia.Value.String()
 }
 
 // Expressions

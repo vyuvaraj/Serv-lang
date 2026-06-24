@@ -275,6 +275,8 @@ func (c *Codegen) getExpressionType(expr Expression) string {
 			return varType
 		}
 		return "interface{}"
+	case *IndexAssignExpr:
+		return "interface{}"
 	case *PrefixExpr:
 		if e.Operator == "!" {
 			return "bool"

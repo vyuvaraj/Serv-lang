@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -710,6 +711,8 @@ func (c *Codegen) genTestStmt(s *TestStmt) (string, error) {
 	c.inConcurrentContext = hasConcurrency(s.Body)
 
 	funcName := "Test_" + sanitizeTestName(s.Name)
+	// Additional cleaning to prevent invalid Go identifier characters (e.g. commas)
+	funcName = regexp.MustCompile(`[^a-zA-Z0-9_]`).ReplaceAllString(funcName, "")
 	bodyStr, err := c.genBlockStatement(s.Body)
 	if err != nil {
 		return "", err
@@ -1219,6 +1222,25 @@ func (c *Codegen) genFnDecl(s *FnDecl) (string, error) {
 		if strings.HasSuffix(bodyStr, "}") {
 			bodyStr = bodyStr[:len(bodyStr)-1] + fmt.Sprintf("\treturn %s\n}", zeroValue(retType))
 		}
+	}
+	if s.IsResilient {
+		var castStr string
+		switch retType {
+		case "interface{}":
+			castStr = "_res"
+		case "int":
+			castStr = "toInt(_res)"
+		case "float64":
+			castStr = "toFloat64(_res)"
+		case "bool":
+			castStr = "toBool(_res)"
+		case "string":
+			castStr = "toString(_res)"
+		default:
+			castStr = fmt.Sprintf("_res.(%s)", retType)
+		}
+		bodyStr = fmt.Sprintf("{\n\t_wrapper := func() interface{} %s\n\t_res := runtime.ResilientCall(%q, _wrapper, %d, %q, %t)\n\treturn %s\n}",
+			bodyStr, s.Name, s.Retries, s.Timeout, s.HasCircuitBreaker, castStr)
 	}
 
 	typeParamStr := ""

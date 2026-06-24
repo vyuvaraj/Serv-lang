@@ -87,6 +87,20 @@ func (p *Parser) parseRouteStatement() Statement {
 		return nil
 	}
 	stmt.Path = p.curToken.Literal
+	if p.currentVersionPrefix != "" {
+		pfx := p.currentVersionPrefix
+		pth := stmt.Path
+		if !strings.HasPrefix(pfx, "/") {
+			pfx = "/" + pfx
+		}
+		if strings.HasSuffix(pfx, "/") {
+			pfx = pfx[:len(pfx)-1]
+		}
+		if !strings.HasPrefix(pth, "/") {
+			pth = "/" + pth
+		}
+		stmt.Path = pfx + pth
+	}
 
 	if !p.expectPeek(TOKEN_LPAREN) {
 		return nil
