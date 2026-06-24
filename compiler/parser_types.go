@@ -47,10 +47,11 @@ func (p *Parser) parseStructDeclaration() Statement {
 	stmt.Fields = []StructField{}
 	for p.peekToken.Type != TOKEN_RBRACE && p.peekToken.Type != TOKEN_EOF {
 		p.nextToken()
-		if p.curToken.Type != TOKEN_IDENT {
+		if p.curToken.Type != TOKEN_IDENT && !isKeywordToken(p.curToken.Type) {
 			p.addError(fmt.Sprintf("expected field name in struct, got %s", p.curToken.Type))
 			return nil
 		}
+		p.curToken.Type = TOKEN_IDENT
 		fieldName := p.curToken.Literal
 
 		if !p.expectPeek(TOKEN_COLON) {

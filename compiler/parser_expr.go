@@ -382,7 +382,11 @@ func (p *Parser) parseAssertExpression() Expression {
 func (p *Parser) parseMemberExpression(left Expression) Expression {
 	expr := &MemberExpr{Token: p.curToken, Object: left}
 
-	if !p.expectPeek(TOKEN_IDENT) {
+	if p.peekToken.Type == TOKEN_IDENT || isKeywordToken(p.peekToken.Type) {
+		p.nextToken()
+		p.curToken.Type = TOKEN_IDENT
+	} else {
+		p.peekError(TOKEN_IDENT)
 		return nil
 	}
 	expr.Field = p.curToken.Literal
@@ -393,7 +397,11 @@ func (p *Parser) parseMemberExpression(left Expression) Expression {
 func (p *Parser) parseOptionalMemberExpression(left Expression) Expression {
 	expr := &OptionalMemberExpr{Token: p.curToken, Object: left}
 
-	if !p.expectPeek(TOKEN_IDENT) {
+	if p.peekToken.Type == TOKEN_IDENT || isKeywordToken(p.peekToken.Type) {
+		p.nextToken()
+		p.curToken.Type = TOKEN_IDENT
+	} else {
+		p.peekError(TOKEN_IDENT)
 		return nil
 	}
 	expr.Field = p.curToken.Literal
