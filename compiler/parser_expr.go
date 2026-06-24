@@ -549,3 +549,27 @@ func (p *Parser) parseAuthIdentifier() Expression {
 	return &Identifier{Token: p.curToken, Value: "auth"}
 }
 
+func (p *Parser) parsePipeExpression(left Expression) Expression {
+	precedence := p.curPrecedence()
+	pipeTok := p.curToken
+	p.nextToken() // consume |>
+
+	right := p.parseExpression(precedence)
+	if right == nil {
+		return nil
+	}
+
+	if call, ok := right.(*CallExpr); ok {
+		call.Arguments = append([]Expression{left}, call.Arguments...)
+		return call
+	}
+
+	// Otherwise, wrap in CallExpr
+	return &CallExpr{
+		Token:     Token{Type: TOKEN_LPAREN, Literal: "(", Line: pipeTok.Line, Col: pipeTok.Col},
+		Function:  right,
+		Arguments: []Expression{left},
+	}
+}
+
+

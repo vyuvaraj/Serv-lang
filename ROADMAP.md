@@ -235,7 +235,7 @@ These items take Serv from a capable service language to a **category-defining**
 | 14.4 | **Client SDK code generation** | Large | `serv generate client --lang typescript` / `--lang python` / `--lang go` emits typed API client libraries from route declarations. No OpenAPI intermediary needed. | [x] |
 | 14.5 | **Incremental compilation** | Large | Cache AST and codegen artifacts per-file. Only recompile changed files and their dependents. Critical for large multi-file projects (>50 files). | [ ] |
 | 14.6 | **Effect system (side-effect tracking)** | Large | Annotate functions as `pure`, `io`, or `async`. Compiler enforces that `pure` functions cannot call `io` functions. Enables safe parallelization and easier testing. | [ ] |
-| 14.7 | **`pipe` operator** | Small | `data |> transform() |> validate() |> save()` — sugar for function chaining. High readability for data transformation pipelines. | [ ] |
+| 14.7 | **`pipe` operator** | Small | ✅ Done — `data |> transform() |> validate() |> save()` — sugar for function chaining. High readability for data transformation pipelines. | [x] |
 | 14.8 | **Pattern matching on types** | Medium | `match value { case s: string => ..., case n: int => ..., case User { name } => ... }` — destructuring match with type narrowing. | [ ] |
 | 14.9 | **Compile-time macros** | Large | `@derive(Serialize, Validate)` annotations that generate boilerplate at compile time — similar to Rust derive or Java annotation processors. | [ ] |
 | 14.10 | **REPL with hot service context** | Medium | `serv repl --attach localhost:8080` connects to a running service and evaluates expressions against live state — inspect DB, cache, and variables interactively. | [ ] |

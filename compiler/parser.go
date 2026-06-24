@@ -9,6 +9,7 @@ const (
 	_ int = iota
 	LOWEST
 	ASSIGN  // =
+	PIPE    // |>
 	COMPARE // ==, !=, <, >, <=, >=
 	SUM     // +
 	PRODUCT // *
@@ -18,6 +19,7 @@ const (
 )
 
 var precedences = map[TokenType]int{
+	TOKEN_PIPE_ARROW:      PIPE,
 	TOKEN_ARROW:           ASSIGN,
 	TOKEN_ASSIGN:          ASSIGN,
 	TOKEN_PLUS_ASSIGN:     ASSIGN,
@@ -103,6 +105,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerInfix(TOKEN_PERCENT, p.parseInfixExpression)
 	p.registerInfix(TOKEN_AMPERSAND, p.parseInfixExpression)
 	p.registerInfix(TOKEN_PIPE, p.parseInfixExpression)
+	p.registerInfix(TOKEN_PIPE_ARROW, p.parsePipeExpression)
 	p.registerInfix(TOKEN_CARET, p.parseInfixExpression)
 	p.registerInfix(TOKEN_SHIFT_LEFT, p.parseInfixExpression)
 	p.registerInfix(TOKEN_SHIFT_RIGHT, p.parseInfixExpression)

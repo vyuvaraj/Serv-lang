@@ -101,6 +101,7 @@ const (
 	// Bitwise operators
 	TOKEN_AMPERSAND  TokenType = "&"
 	TOKEN_PIPE       TokenType = "|"
+	TOKEN_PIPE_ARROW TokenType = "|>"
 	TOKEN_CARET      TokenType = "^"
 	TOKEN_SHIFT_LEFT TokenType = "<<"
 	TOKEN_SHIFT_RIGHT TokenType = ">>"
@@ -256,6 +257,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Type = TOKEN_AMPERSAND
 		tok.Literal = string(l.ch)
 	case '|':
+		if l.peekChar() == '>' {
+			l.readChar()
+			l.readChar()
+			tok.Type = TOKEN_PIPE_ARROW
+			tok.Literal = "|>"
+			return tok
+		}
 		tok.Type = TOKEN_PIPE
 		tok.Literal = string(l.ch)
 	case '^':
