@@ -7,6 +7,10 @@ import (
 
 func (p *Parser) parseExpression(precedence int) Expression {
 	prefix := p.prefixParseFns[p.curToken.Type]
+	if prefix == nil && isKeywordToken(p.curToken.Type) {
+		p.curToken.Type = TOKEN_IDENT
+		prefix = p.prefixParseFns[TOKEN_IDENT]
+	}
 	if prefix == nil {
 		p.addError(fmt.Sprintf("no prefix parse function for %s found", p.curToken.Type))
 		return nil
