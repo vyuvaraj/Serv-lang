@@ -19,7 +19,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: vyuvaraj/ServTunnel
-          path: ../ServTunnel
+          path: ServTunnel-temp
+
+      - name: Move ServTunnel to parent directory
+        shell: pwsh
+        run: Move-Item -Path ServTunnel-temp -Destination ../ServTunnel
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -90,7 +94,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: vyuvaraj/ServTunnel
-          path: ../ServTunnel
+          path: ServTunnel-temp
+
+      - name: Move ServTunnel to parent directory
+        run: mv ServTunnel-temp ../ServTunnel
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -142,7 +149,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: vyuvaraj/ServTunnel
-          path: ../ServTunnel
+          path: ServTunnel-temp
+
+      - name: Move ServTunnel to parent directory
+        run: |
+          if ("${{ matrix.goos }}" -eq "windows") {
+            Move-Item -Path ServTunnel-temp -Destination ../ServTunnel
+          } else {
+            mv ServTunnel-temp ../ServTunnel
+          }
+        shell: pwsh
 
       - name: Set up Go
         uses: actions/setup-go@v5
