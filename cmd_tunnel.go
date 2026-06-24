@@ -18,6 +18,7 @@ func runTunnelCmd() {
 	customDomainFlag := tunnelCmd.String("custom-domain", "", "Requested custom domain mapping")
 	tokenFlag := tunnelCmd.String("token", "", "Authentication token")
 	inspectPortFlag := tunnelCmd.String("inspect-port", "4040", "Local inspection web UI port (use 0 or empty to disable)")
+	shareAuthFlag := tunnelCmd.String("share-auth", "", "Basic authentication credentials (usr:pwd) to protect the public tunnel")
 
 	// Allow short flags as well
 	tunnelCmd.StringVar(relayFlag, "r", "ws://localhost:8443/ws/connect", "Relay server WebSocket URL")
@@ -25,6 +26,7 @@ func runTunnelCmd() {
 	tunnelCmd.StringVar(customDomainFlag, "c", "", "Requested custom domain mapping")
 	tunnelCmd.StringVar(tokenFlag, "t", "", "Authentication token")
 	tunnelCmd.StringVar(inspectPortFlag, "i", "4040", "Local inspection web UI port")
+	tunnelCmd.StringVar(shareAuthFlag, "a", "", "Basic authentication credentials (usr:pwd)")
 
 	// Parse local port (mandatory argument)
 	if len(os.Args) < 3 {
@@ -53,7 +55,7 @@ func runTunnelCmd() {
 	}
 
 	localAddr := "localhost:" + localPort
-	c := client.NewClient(localAddr, *relayFlag, subdomain, customDomain, *tokenFlag, *inspectPortFlag)
+	c := client.NewClient(localAddr, *relayFlag, subdomain, customDomain, *tokenFlag, *inspectPortFlag, *shareAuthFlag)
 
 	if err := c.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Tunnel error: %v\n", err)
