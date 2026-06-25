@@ -1,34 +1,123 @@
 package runtime
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+type parsedStore struct {
+	client     *s3.Client
+	bucket     string
+	endpoint   string
+	accessKey  string
+	secretKey  string
+	isS3       bool
+}
 
 var (
 	storeConnString string
 	storeMu         sync.RWMutex
 	storeMemMap     = make(map[string]interface{})
+	activeStore     parsedStore
 )
+
+func parseStoreConnString(conn string) {
+	activeStore = parsedStore{}
+	if !strings.HasPrefix(conn, "s3://") && !strings.HasPrefix(conn, "servstore://") {
+		return
+	}
+	activeStore.isS3 = true
+
+	// Strip prefix
+	raw := conn
+	if strings.HasPrefix(raw, "s3://") {
+		raw = strings.TrimPrefix(raw, "s3://")
+	} else {
+		raw = strings.TrimPrefix(raw, "servstore://")
+	}
+
+	// Check if it contains '@' (credentials)
+	var creds, endpointAndBucket string
+	if idx := strings.Index(raw, "@"); idx != -1 {
+		creds = raw[:idx]
+		endpointAndBucket = raw[idx+1:]
+	} else {
+		endpointAndBucket = raw
+	}
+
+	// Parse credentials
+	accessKey := "admin"
+	secretKey := "adminsecret"
+	if creds != "" {
+		parts := strings.SplitN(creds, ":", 2)
+		if len(parts) == 2 {
+			accessKey = parts[0]
+			secretKey = parts[1]
+		} else {
+			accessKey = parts[0]
+		}
+	}
+	activeStore.accessKey = accessKey
+	activeStore.secretKey = secretKey
+
+	// Parse endpoint and bucket
+	endpoint := "http://localhost:8081"
+	bucket := ""
+	if idx := strings.Index(endpointAndBucket, "/"); idx != -1 {
+		epHost := endpointAndBucket[:idx]
+		bucket = endpointAndBucket[idx+1:]
+		if epHost != "" {
+			if !strings.HasPrefix(epHost, "http://") && !strings.HasPrefix(epHost, "https://") {
+				endpoint = "http://" + epHost
+			} else {
+				endpoint = epHost
+			}
+		}
+	} else {
+		bucket = endpointAndBucket
+	}
+	activeStore.endpoint = endpoint
+	activeStore.bucket = bucket
+
+	// Initialize S3 SDK client
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+	)
+	if err == nil {
+		cli := s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		})
+		activeStore.client = cli
+	}
+}
 
 func InitStore(connStr string) {
 	storeMu.Lock()
 	defer storeMu.Unlock()
 	storeConnString = connStr
+	parseStoreConnString(connStr)
 	LogInfo("Object store client initialized: ", connStr)
 }
 
 func StorePut(key string, val interface{}) (interface{}, error) {
 	storeMu.Lock()
 	conn := storeConnString
+	isS3 := activeStore.isS3
+	s3Cli := activeStore.client
+	bucket := activeStore.bucket
 	storeMu.Unlock()
 
 	if conn == "" {
@@ -60,21 +149,12 @@ func StorePut(key string, val interface{}) (interface{}, error) {
 		return true, nil
 	}
 
-	if strings.HasPrefix(conn, "s3://") {
-		bucketName := strings.TrimPrefix(conn, "s3://")
-		sStoreURL := "http://localhost:8081"
-		reqURL := fmt.Sprintf("%s/%s/%s", sStoreURL, bucketName, key)
-		req, err := http.NewRequest("PUT", reqURL, bytes.NewReader(data))
-		if err == nil {
-			req.Header.Set("Content-Type", "application/json")
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			if err != nil {
-				LogWarn("S3 PUT request failed: ", err.Error())
-			} else {
-				resp.Body.Close()
-			}
+	if isS3 && s3Cli != nil {
+		res := s3PutHelper(s3Cli, bucket, key, val)
+		if arr, ok := res.([2]interface{}); ok {
+			return nil, fmt.Errorf("%v", arr[1])
 		}
+		return true, nil
 	}
 
 	// Always fallback to memory store for test stability
@@ -89,6 +169,9 @@ func StorePut(key string, val interface{}) (interface{}, error) {
 func StoreGet(key string) (interface{}, error) {
 	storeMu.Lock()
 	conn := storeConnString
+	isS3 := activeStore.isS3
+	s3Cli := activeStore.client
+	bucket := activeStore.bucket
 	storeMu.Unlock()
 
 	if conn == "" {
@@ -108,23 +191,16 @@ func StoreGet(key string) (interface{}, error) {
 		return string(data), nil
 	}
 
-	if strings.HasPrefix(conn, "s3://") {
-		bucketName := strings.TrimPrefix(conn, "s3://")
-		sStoreURL := "http://localhost:8081"
-		reqURL := fmt.Sprintf("%s/%s/%s", sStoreURL, bucketName, key)
-		req, err := http.NewRequest("GET", reqURL, nil)
-		if err == nil {
-			client := &http.Client{}
-			resp, err := client.Do(req)
-			if err == nil && resp.StatusCode == http.StatusOK {
-				defer resp.Body.Close()
-				bodyBytes, _ := io.ReadAll(resp.Body)
-				return string(bodyBytes), nil
+	if isS3 && s3Cli != nil {
+		res := s3GetHelper(s3Cli, bucket, key)
+		if arr, ok := res.([2]interface{}); ok {
+			errMsg := fmt.Sprint(arr[1])
+			if strings.Contains(errMsg, "NoSuchKey") || strings.Contains(errMsg, "NotFound") {
+				return nil, nil
 			}
-			if err == nil {
-				resp.Body.Close()
-			}
+			return nil, fmt.Errorf("%v", arr[1])
 		}
+		return res, nil
 	}
 
 	storeMu.RLock()
@@ -134,4 +210,24 @@ func StoreGet(key string) (interface{}, error) {
 		return nil, nil
 	}
 	return val, nil
+}
+
+func StoreTransform(inputKeyVal, stagesVal, outputKeyVal, saveTraceVal interface{}) (interface{}, error) {
+	storeMu.RLock()
+	isS3 := activeStore.isS3
+	endpoint := activeStore.endpoint
+	accessKey := activeStore.accessKey
+	secretKey := activeStore.secretKey
+	bucket := activeStore.bucket
+	storeMu.RUnlock()
+
+	if !isS3 {
+		return nil, errors.New("store not initialized for S3/ServStore; transform is only supported on S3 backends")
+	}
+
+	res := s3TransformHelper(endpoint, accessKey, secretKey, bucket, asString(inputKeyVal), stagesVal, asString(outputKeyVal), saveTraceVal)
+	if arr, ok := res.([2]interface{}); ok {
+		return nil, fmt.Errorf("%v", arr[1])
+	}
+	return res, nil
 }

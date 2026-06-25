@@ -197,9 +197,11 @@ func (c *Codegen) genExpression(expr Expression) (string, error) {
 		if objStr == "store" {
 			switch e.Field {
 			case "put":
-				return "runtime.StorePut", nil
+				return "func(k string, v interface{}) interface{} { r, err := runtime.StorePut(k, v); if err != nil { return [2]interface{}{nil, err.Error()} }; return r }", nil
 			case "get":
-				return "runtime.StoreGet", nil
+				return "func(k string) interface{} { r, err := runtime.StoreGet(k); if err != nil { return [2]interface{}{nil, err.Error()} }; return r }", nil
+			case "transform":
+				return "func(ik, st, ok, str interface{}) interface{} { r, err := runtime.StoreTransform(ik, st, ok, str); if err != nil { return [2]interface{}{nil, err.Error()} }; return r }", nil
 			}
 		}
 		if objStr == "search" {
