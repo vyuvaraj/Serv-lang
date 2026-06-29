@@ -107,6 +107,7 @@ func main() {
 		testCmd := flag.NewFlagSet("test", flag.ExitOnError)
 		coverFlag := testCmd.Bool("cover", false, "Report test coverage")
 		filterFlag := testCmd.String("filter", "", "Filter tests by name")
+		integrationFlag := testCmd.Bool("integration", false, "Run with live infrastructure services")
 		if err := testCmd.Parse(os.Args[2:]); err != nil {
 			fmt.Printf("Error parsing arguments: %v\n", err)
 			os.Exit(1)
@@ -115,7 +116,11 @@ func main() {
 		if len(args) < 1 {
 			args = []string{"."}
 		}
-		runTests(args[0], *coverFlag, *filterFlag)
+		if *integrationFlag {
+			runIntegrationTests(args[0], *coverFlag, *filterFlag)
+		} else {
+			runTests(args[0], *coverFlag, *filterFlag)
+		}
 
 	case "lint":
 		lintCmd := flag.NewFlagSet("lint", flag.ExitOnError)
@@ -246,7 +251,7 @@ func printUsage() {
 
 	fmt.Println("  serv build <file.srv> [--target <target>] [-o <output>] Compile Serv code to target (native/wasm)")
 	fmt.Println("  serv run <file.srv> [--watch]              Compile and run Serv code immediately (with optional hot reload)")
-	fmt.Println("  serv test [--cover] <file.srv>             Run tests defined in a Serv file")
+	fmt.Println("  serv test [--cover] [--integration] <file.srv> Run tests (--integration starts live infra)")
 	fmt.Println("  serv lint <file.srv>                       Validate syntax and check for errors")
 	fmt.Println("  serv fmt <file.srv>                        Format a Serv file")
 	fmt.Println("  serv repl                                  Interactive shell for quick experiments")
