@@ -34,6 +34,31 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 		return "", err
 	}
 
+	buildDir := buildDirFor(absPath)
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		return "", err
+	}
+
+	// --- Incremental compilation: check if source changed ---
+	cache := loadBuildCache(buildDir)
+	sourceFiles, _ := collectSourceFiles(srvFile)
+
+	// Determine output path early for cache check
+	var targetOutPath string
+	if filepath.IsAbs(outputBinary) {
+		targetOutPath = outputBinary
+	} else {
+		targetOutPath = filepath.Join(filepath.Dir(absPath), outputBinary)
+	}
+
+	// Fast path: if source unchanged AND output binary exists, skip everything
+	if isSourceUnchanged(cache, sourceFiles) {
+		if _, statErr := os.Stat(targetOutPath); statErr == nil {
+			fmt.Println("[cache] Source unchanged, binary up-to-date. Skipping build.")
+			return targetOutPath, nil
+		}
+	}
+
 	// Validate target support for WASM
 	if target == "wasm" {
 		for _, stmt := range program.Statements {
@@ -74,9 +99,14 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 		goCode += "\n" + codegen.GenerateMainFunc()
 	}
 
-	buildDir := buildDirFor(absPath)
-	if err := os.MkdirAll(buildDir, 0755); err != nil {
-		return "", err
+	// --- Incremental: check if generated code changed ---
+	if isGeneratedCodeUnchanged(cache, goCode) {
+		if _, statErr := os.Stat(targetOutPath); statErr == nil {
+			fmt.Println("[cache] Generated code unchanged, binary up-to-date. Skipping go build.")
+			updateCacheEntries(cache, sourceFiles)
+			saveBuildCache(buildDir, cache)
+			return targetOutPath, nil
+		}
 	}
 
 	// Remove stale test files from previous test runs
@@ -105,12 +135,6 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 		return "", fmt.Errorf("cannot find Go compiler: %w", err)
 	}
 
-	var targetOutPath string
-	if filepath.IsAbs(outputBinary) {
-		targetOutPath = outputBinary
-	} else {
-		targetOutPath = filepath.Join(filepath.Dir(absPath), outputBinary)
-	}
 	relOutPath, err := filepath.Rel(buildDir, targetOutPath)
 	if err != nil {
 		relOutPath = targetOutPath
@@ -159,6 +183,11 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 		}
 		return "", fmt.Errorf("%v: %s", err, stderr.String())
 	}
+
+	// --- Save build cache on success ---
+	updateCacheEntries(cache, sourceFiles)
+	cache.GeneratedHash = hashString(goCode)
+	saveBuildCache(buildDir, cache)
 
 	return filepath.Join(filepath.Dir(absPath), outputBinary), nil
 }
