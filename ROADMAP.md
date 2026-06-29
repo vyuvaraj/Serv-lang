@@ -267,4 +267,18 @@ These are features that create a **moat** around Serv — capabilities that comp
 | 15.11 | **Compile-time resource estimation** | Medium | After compilation, emit a resource profile: "This service requires ~50MB RAM at idle, handles ~10K req/s on 2 cores, needs 1 DB connection pool (max 20)". Derived from static analysis of routes, spawn counts, and infra declarations. Useful for k8s resource requests. | The compiler has complete visibility into what the service does. Runtime profiling is the only alternative elsewhere. |
 | 15.12 | **Language-level feature flags** | Small | `@feature("new-checkout") route "POST" "/checkout/v2" (req) { ... }` — the compiler emits both the new and old handler, with a runtime feature-flag check. `serv deploy --enable new-checkout` activates it. No external feature flag service needed. | Feature boundaries visible at compile time. Other systems need runtime-only flag evaluation. |
 
+---
+
+## Phase 16: New Component Integrations (Proposed — 2027)
+
+Native language-level integration with the proposed Servverse components (ServAuth, ServDB, ServMail, ServFlow).
+
+| # | Item | Effort | Description | Status |
+|---|------|--------|-------------|--------|
+| 16.1 | **`auth` keyword (ServAuth backend)** | Medium | `auth "servauth://localhost:8095"` connects to the ServAuth identity provider. `auth.register()`, `auth.login()`, `auth.currentUser()`, `auth.requireRole("admin")` — first-class identity management without external IdP SDK. | [ ] |
+| 16.2 | **`database` via ServDB proxy** | Small | `database "servdb://pool/mydb"` routes through the ServDB connection pooler. Transparent — same `db.query()` API, but benefits from pooling, read/write splitting, and query analytics. | [ ] |
+| 16.3 | **`notify` keyword** | Small | `notify "servmail://localhost:8096"` with `notify.send(channel, template, data)`. Unified notification dispatch to email, Slack, SMS via ServMail hub. | [ ] |
+| 16.4 | **`workflow` blocks (ServFlow backend)** | Large | `workflow "order-process" { step "validate" { ... } -> step "charge" { ... } -> step "fulfill" { ... } }` — compiles to ServFlow API calls with automatic state checkpointing. Differs from existing `workflow` (10.7) by delegating state to the external ServFlow orchestrator for cross-service, long-running processes. | [ ] |
+| 16.5 | **`serv dev` with new components** | Small | `serv dev main.srv` auto-starts ServAuth, ServDB, ServMail, ServFlow alongside existing services when the `.srv` file references them. | [ ] |
+
 > See [UNIFIED_ROADMAP.md](../UNIFIED_ROADMAP.md) for the full ecosystem priority matrix and architectural recommendations.
