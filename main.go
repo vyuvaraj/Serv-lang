@@ -43,7 +43,7 @@ func main() {
 			buildArgs = []string{"."}
 		}
 		if outputBinary == "" {
-			if target == "wasm" {
+			if target == "wasm" || target == "wasm-edge" {
 				outputBinary = "service.wasm"
 			} else {
 				outputBinary = "service.exe"

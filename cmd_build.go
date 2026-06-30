@@ -60,7 +60,7 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 	}
 
 	// Validate target support for WASM
-	if target == "wasm" {
+	if target == "wasm" || target == "wasm-edge" {
 		for _, stmt := range program.Statements {
 			switch stmt.(type) {
 			case *compiler.ServerStmt, *compiler.RouteStmt, *compiler.DatabaseStmt, *compiler.BrokerStmt,
@@ -93,7 +93,7 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 	}
 
 	goCode += "\n" + codegen.GenerateHelpers()
-	if target == "wasm" {
+	if target == "wasm" || target == "wasm-edge" {
 		goCode += "\nfunc main() {}\n"
 	} else {
 		goCode += "\n" + codegen.GenerateMainFunc()
@@ -144,7 +144,7 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 	cmd.Dir = buildDir
 	cmd.Env = filterEnv(os.Environ(), "GOWORK")
 	cmd.Env = append(cmd.Env, "GOWORK=off")
-	if target == "wasm" {
+	if target == "wasm" || target == "wasm-edge" {
 		cmd.Env = append(cmd.Env, "GOOS=wasip1", "GOARCH=wasm")
 	}
 	if goos != "" {
@@ -166,7 +166,7 @@ func buildServNoExit(srvFile, outputBinary, target, goos, goarch string) (string
 				retryCmd.Dir = buildDir
 				retryCmd.Env = filterEnv(os.Environ(), "GOWORK")
 				retryCmd.Env = append(retryCmd.Env, "GOWORK=off")
-				if target == "wasm" {
+				if target == "wasm" || target == "wasm-edge" {
 					retryCmd.Env = append(retryCmd.Env, "GOOS=wasip1", "GOARCH=wasm")
 				}
 				if goos != "" {
