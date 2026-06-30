@@ -267,6 +267,10 @@ func (p *Parser) parseStatement() Statement {
 		return p.parseWorkflowDeclaration()
 	case TOKEN_INTERFACE:
 		return p.parseInterfaceDeclaration()
+	case TOKEN_INJECT:
+		return p.parseInjectStatement()
+	case TOKEN_GRAPHQL:
+		return p.parseGraphQLStatement()
 	case TOKEN_MIDDLEWARE:
 		return p.parseMiddlewareDeclaration()
 	case TOKEN_DECLARE:

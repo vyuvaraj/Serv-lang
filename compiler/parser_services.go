@@ -626,3 +626,32 @@ func (p *Parser) parseRateLimitStatement() Statement {
 	stmt.LimitPeriod = p.curToken.Literal
 	return stmt
 }
+
+func (p *Parser) parseInjectStatement() Statement {
+	stmt := &InjectStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.Name = p.curToken.Literal
+	if !p.expectPeek(TOKEN_COLON) {
+		return nil
+	}
+	if !p.expectPeek(TOKEN_IDENT) {
+		return nil
+	}
+	stmt.InterfaceName = p.curToken.Literal
+	return stmt
+}
+
+func (p *Parser) parseGraphQLStatement() Statement {
+	stmt := &GraphQLStmt{Token: p.curToken}
+	if !p.expectPeek(TOKEN_STRING) {
+		return nil
+	}
+	stmt.Path = p.curToken.Literal
+	if !p.expectPeek(TOKEN_LBRACE) {
+		return nil
+	}
+	stmt.Body = p.parseBlockStatement()
+	return stmt
+}

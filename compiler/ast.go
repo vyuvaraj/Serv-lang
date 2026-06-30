@@ -1164,3 +1164,29 @@ func (w *WorkflowDecl) TokenLiteral() string { return w.Token.Literal }
 func (w *WorkflowDecl) String() string {
 	return "workflow " + w.Name + "(" + w.Param + ") " + w.Body.String() + "\n"
 }
+
+// Inject Statement: inject name: Interface
+type InjectStmt struct {
+	Token         Token
+	Name          string
+	InterfaceName string
+}
+
+func (i *InjectStmt) statementNode()       {}
+func (i *InjectStmt) TokenLiteral() string { return i.Token.Literal }
+func (i *InjectStmt) String() string {
+	return "inject " + i.Name + ": " + i.InterfaceName + "\n"
+}
+
+// GraphQL Statement: graphql "/path" { body }
+type GraphQLStmt struct {
+	Token Token
+	Path  string
+	Body  *BlockStmt
+}
+
+func (g *GraphQLStmt) statementNode()       {}
+func (g *GraphQLStmt) TokenLiteral() string { return g.Token.Literal }
+func (g *GraphQLStmt) String() string {
+	return "graphql " + g.Path + " " + g.Body.String() + "\n"
+}

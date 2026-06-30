@@ -73,6 +73,8 @@ const (
 	TOKEN_RESILIENT  TokenType = "RESILIENT"
 	TOKEN_RETRIES    TokenType = "RETRIES"
 	TOKEN_CIRCUIT_BREAKER TokenType = "CIRCUIT_BREAKER"
+	TOKEN_INJECT      TokenType = "INJECT"
+	TOKEN_GRAPHQL     TokenType = "GRAPHQL"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -596,6 +598,8 @@ var keywords = map[string]TokenType{
 	"mock":       TOKEN_MOCK,
 	"actor":      TOKEN_ACTOR,
 	"workflow":   TOKEN_WORKFLOW,
+	"inject":     TOKEN_INJECT,
+	"graphql":    TOKEN_GRAPHQL,
 	"stream":     TOKEN_STREAM,
 	"yield":      TOKEN_YIELD,
 	"store":      TOKEN_STORE,

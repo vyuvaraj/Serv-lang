@@ -453,6 +453,10 @@ case *MatchStmt:
 return c.genMatchStmt(s)
 case *RouteStmt:
 return c.genRouteStmt(s)
+case *InjectStmt:
+return c.genInjectStmt(s)
+case *GraphQLStmt:
+return c.genGraphQLStmt(s)
 case *MiddlewareDecl:
 return c.genMiddlewareDecl(s)
 case *WsStmt:

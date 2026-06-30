@@ -170,3 +170,56 @@ func TestResiliencyAndCrossCompilationIntegration(t *testing.T) {
 		t.Errorf("expected compiled binary at %s, but got: %v", binPath, err)
 	}
 }
+
+func TestDependencyInjectionAndGraphQL(t *testing.T) {
+	src := `
+	interface UserStore {
+		fn load() -> string
+	}
+	inject myStore: UserStore
+
+	graphql "/api/graphql" {
+		route "POST" "/query" (req) {
+			return "graphql-response"
+		}
+	}
+	`
+	lexer := compiler.NewLexer(src)
+	parser := compiler.NewParser(lexer)
+	prog := parser.ParseProgram()
+	if len(parser.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", parser.Errors())
+	}
+
+	// Verify AST contains InjectStmt and GraphQLStmt
+	var injectFound, graphqlFound bool
+	for _, stmt := range prog.Statements {
+		if _, ok := stmt.(*compiler.InjectStmt); ok {
+			injectFound = true
+		}
+		if _, ok := stmt.(*compiler.GraphQLStmt); ok {
+			graphqlFound = true
+		}
+	}
+
+	if !injectFound {
+		t.Errorf("expected InjectStmt in AST")
+	}
+	if !graphqlFound {
+		t.Errorf("expected GraphQLStmt in AST")
+	}
+
+	// Verify codegen outputs correctly
+	codegen := compiler.NewCodegen(prog)
+	generated, err := codegen.Generate()
+	if err != nil {
+		t.Fatalf("codegen error: %v", err)
+	}
+
+	if !strings.Contains(generated, "dependency injection wired: var myStore UserStore") {
+		t.Errorf("expected dependency injection comment in generated code")
+	}
+	if !strings.Contains(generated, `graphql handler registered at "/api/graphql"`) {
+		t.Errorf("expected graphql handler comment in generated code")
+	}
+}
