@@ -295,3 +295,8 @@ These items elevate Serv-lang from a capable DSL to a world-class developer-frie
 | 17.4 | **Incremental Compilation Cache** | Medium | Cache compiled AST and IR per file; only recompile changed files and their dependents. Dramatic speedup for large multi-file `.srv` projects with many imports. | [ ] |
 | 17.5 | **`serv test --watch` Mode** | Small | Re-run affected tests automatically on every file save â€” like `jest --watch` for Serv. Tight red/green feedback loop without manual re-runs. | [ ] |
 | 17.6 | **Compiler Error Code Registry** | Small | Every compiler error has a unique code (e.g. `SRV-E042`) linked to a documentation page with cause, example, and fix. Eliminates cryptic error messages that junior developers can't interpret. | [ ] |
+
+## Phase 18: Production Readiness CLI (External Audit — Pending)
+- [ ] **serv status Command** — Single command querying all services, showing health, version, uptime, error rate, and p99 latency in a terminal dashboard (OPS.9)
+- [ ] **serv changelog Command** — Display the ecosystem CHANGELOG.md with version filter and service filter support (DOC.5)
+- [ ] **Version Compatibility Check** — On serv run, compare local compiler version against each dependency's minCompatible field from /api/version; warn on mismatch (API.4)
