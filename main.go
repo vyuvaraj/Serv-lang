@@ -220,6 +220,9 @@ func main() {
 	case "doctor":
 		runDoctor()
 
+	case "status":
+		runStatus()
+
 	case "monitor":
 		target := "8080"
 		if len(os.Args) >= 3 {
@@ -272,5 +275,6 @@ func printUsage() {
 	fmt.Println("  serv dev [file.srv] [--services all]       Start full dev environment (infra + hot-reload)")
 	fmt.Println("  serv audit                                 Audit Go/Serv dependencies for vulnerabilities")
 	fmt.Println("  serv doctor                                Run compatibility and health checks on all Servverse services")
+	fmt.Println("  serv status                                Print live health, uptime, and latency stats for all services")
 	fmt.Println("  serv lsp-action --file <file> --line <line> [--type <type>] Resolve LSP code action recommendation")
 }
