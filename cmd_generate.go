@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"serv/compiler"
 )
@@ -50,6 +52,12 @@ func runGenerate() {
 			os.Exit(1)
 		}
 		runGenerateCodePrompt(os.Args[3])
+	case "sandbox":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: serv generate sandbox <file.srv> [-o <output-file>]")
+			os.Exit(1)
+		}
+		runGenerateSandbox(os.Args[3])
 	default:
 		runGenerateCodePrompt(subCommand)
 	}
@@ -230,4 +238,62 @@ workflow %sFlow (data) {
 		os.Exit(1)
 	}
 	fmt.Printf("✓ Scaffolding complete: generated workflow definition at %s\n", outName)
+}
+
+func runGenerateSandbox(fileSrv string) {
+	content, err := os.ReadFile(fileSrv)
+	if err != nil {
+		fmt.Printf("Error reading file %s: %v\n", fileSrv, err)
+		os.Exit(1)
+	}
+
+	dbs := make(map[string]map[string]string)
+	queues := make(map[string]string)
+	storage := make(map[string]string)
+
+	dbRegex := regexp.MustCompile(`(?s)database\s+(\w+)\s*\{[^}]*\}`)
+	dbMatches := dbRegex.FindAllStringSubmatch(string(content), -1)
+	for _, match := range dbMatches {
+		dbName := match[1]
+		dbs[dbName] = map[string]string{
+			"engine":     "sqlite",
+			"connection": "file:sandbox_" + strings.ToLower(dbName) + ".db?mode=memory&cache=shared",
+		}
+	}
+
+	queueRegex := regexp.MustCompile(`broker:\s*\"([^\"]+)\"`)
+	queueMatches := queueRegex.FindAllStringSubmatch(string(content), -1)
+	for i := range queueMatches {
+		queues[fmt.Sprintf("Broker%d", i+1)] = "stomp://127.0.0.1:61613"
+	}
+	if len(queues) == 0 && (strings.Contains(string(content), "queue") || strings.Contains(string(content), "publish")) {
+		queues["DefaultBroker"] = "stomp://127.0.0.1:61613"
+	}
+
+	storeRegex := regexp.MustCompile(`store\s+(\w+)|storage\s+(\w+)`)
+	if storeRegex.Match(content) {
+		storage["SandboxStore"] = "file://./sandbox_store"
+	}
+
+	sandboxMap := map[string]interface{}{
+		"environment": "sandbox_digital_twin",
+		"databases":   dbs,
+		"queues":      queues,
+		"storage":     storage,
+	}
+
+	outName := "sandbox_config.json"
+	for i := 0; i < len(os.Args); i++ {
+		if os.Args[i] == "-o" && i+1 < len(os.Args) {
+			outName = os.Args[i+1]
+			break
+		}
+	}
+
+	outputBytes, _ := json.MarshalIndent(sandboxMap, "", "  ")
+	if err := os.WriteFile(outName, []byte(outputBytes), 0644); err != nil {
+		fmt.Printf("Error writing sandbox file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Sandbox configuration generated successfully at %s\n", outName)
 }

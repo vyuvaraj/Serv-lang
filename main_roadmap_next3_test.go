@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -335,5 +336,66 @@ func TestScaffoldingCLI(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "workflow UserFlow (data)") {
 		t.Errorf("scaffold missing workflow block: %s", string(content))
+	}
+}
+
+func TestSandboxConfigGeneration(t *testing.T) {
+	srvFile := "mock_service.srv"
+	code := `
+database CustomerDb {
+    engine: "postgres"
+    connection: "postgresql://prod-db:5432/customers"
+}
+queue MyQueue {
+    broker: "stomp://prod-broker:61613"
+}
+store MyStore {}
+`
+	if err := os.WriteFile(srvFile, []byte(code), 0644); err != nil {
+		t.Fatalf("failed to write mock service file: %v", err)
+	}
+	defer os.Remove(srvFile)
+
+	sandboxFile := "sandbox_test_config.json"
+	defer os.Remove(sandboxFile)
+
+	origArgs := os.Args
+	defer func() { os.Args = origArgs }()
+	os.Args = []string{"serv", "generate", "sandbox", srvFile, "-o", sandboxFile}
+
+	runGenerateSandbox(srvFile)
+
+	content, err := os.ReadFile(sandboxFile)
+	if err != nil {
+		t.Fatalf("failed to read sandbox config file: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		t.Fatalf("failed to parse sandbox config: %v", err)
+	}
+
+	if parsed["environment"] != "sandbox_digital_twin" {
+		t.Errorf("expected sandbox_digital_twin environment, got %v", parsed["environment"])
+	}
+
+	dbs := parsed["databases"].(map[string]interface{})
+	if dbs["CustomerDb"] == nil {
+		t.Errorf("missing CustomerDb sandbox mapping")
+	} else {
+		custDb := dbs["CustomerDb"].(map[string]interface{})
+		if custDb["engine"] != "sqlite" {
+			t.Errorf("expected engine to be sqlite, got %v", custDb["engine"])
+		}
+	}
+
+	queues := parsed["queues"].(map[string]interface{})
+	if len(queues) == 0 {
+		t.Errorf("expected queues mapping to be present")
+	}
+
+	storage := parsed["storage"].(map[string]interface{})
+	if storage["SandboxStore"] == nil {
+		t.Errorf("expected SandboxStore storage mapping")
 	}
 }
