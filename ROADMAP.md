@@ -289,14 +289,16 @@ These items elevate Serv-lang from a capable DSL to a world-class developer-frie
 
 | # | Item | Effort | Description | Status |
 |---|------|--------|-------------|--------|
-| 17.1 | **`serv doctor`** | Small | One command that checks the full local environment: compiler version, all service ports, ServStore connectivity, WASM runtime — prints ✅/❌ with fix hints. Zero guesswork for new team members. | [ ] |
-| 17.2 | **`serv fmt` formatter** | Small | Opinionated, zero-config code formatter for `.srv` files — like `gofmt` but for Serv. Run in CI to enforce consistent style across the team without code review debates. | [ ] |
+| 17.1 | **`serv doctor` enhancements** | Small | Extend existing `serv doctor` to check all ServAuth/DB/Mail/Flow connectivity, WASM runtime, and compiler plugin versions. | [ ] |
+| 17.2 | **`serv fmt` IDE integration** | Small | Ensure format-on-save works reliably in VS Code extension; add `--check` for CI with diff output. | [ ] |
 | 17.3 | **`serv lint` static analysis** | Medium | Catch bugs before runtime: unused variables, unreachable code, missing error handling, type-unsafe casts, and schema-registry mismatches — all at build time. | [ ] |
 | 17.4 | **Incremental Compilation Cache** | Medium | Cache compiled AST and IR per file; only recompile changed files and their dependents. Dramatic speedup for large multi-file `.srv` projects with many imports. | [ ] |
 | 17.5 | **`serv test --watch` Mode** | Small | Re-run affected tests automatically on every file save — like `jest --watch` for Serv. Tight red/green feedback loop without manual re-runs. | [ ] |
 | 17.6 | **Compiler Error Code Registry** | Small | Every compiler error has a unique code (e.g. `SRV-E042`) linked to a documentation page with cause, example, and fix. Eliminates cryptic error messages that junior developers can't interpret. | [ ] |
+| 17.7 | **Language server code actions** | Medium | Quick-fix suggestions in the LSP: "Extract to function", "Add error handling", "Generate test stub", "Wrap in try/catch". Active refactoring assistance. | [ ] |
+| 17.8 | **Pattern matching on types** | Medium | `match value { case s: string => ..., case n: int => ... }` — destructuring match with type narrowing. | [ ] |
 
 ## Phase 18: Production Readiness CLI (External Audit - Completed)
-- [x] **serv status Command** � Single command querying all services, showing health, version, uptime, error rate, and p99 latency in a terminal dashboard (OPS.9)
-- [x] **serv changelog Command** � Display the ecosystem CHANGELOG.md with version filter and service filter support (DOC.5)
-- [x] **Version Compatibility Check** � On serv run, compare local compiler version against each dependency's minCompatible field from /api/version; warn on mismatch (API.4)
+- [x] **serv status Command** � Single command querying all services, showing health, version, uptime, error rate, and p99 latency in a terminal dashboard (OPS.9)
+- [x] **serv changelog Command** � Display the ecosystem CHANGELOG.md with version filter and service filter support (DOC.5)
+- [x] **Version Compatibility Check** � On serv run, compare local compiler version against each dependency's minCompatible field from /api/version; warn on mismatch (API.4)
