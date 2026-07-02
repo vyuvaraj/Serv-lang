@@ -222,6 +222,11 @@ func (p *Parser) parseStatement() Statement {
 			return p.parseExpressionStatement()
 		}
 		return p.parseMailStatement()
+	case TOKEN_NOTIFY:
+		if p.peekToken.Type == TOKEN_DOT {
+			return p.parseExpressionStatement()
+		}
+		return p.parseNotifyStatement()
 	case TOKEN_STORE:
 		if p.peekToken.Type == TOKEN_DOT {
 			return p.parseExpressionStatement()

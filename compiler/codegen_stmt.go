@@ -371,6 +371,15 @@ func (c *Codegen) genMailStmt(s *MailStmt) (string, error) {
 	return fmt.Sprintf("func init() {\n\truntime.InitMail(fmt.Sprint(%s))\n}\n\n", val), nil
 }
 
+func (c *Codegen) genNotifyStmt(s *NotifyStmt) (string, error) {
+	val, err := c.genExpression(s.Value)
+	if err != nil {
+		return "", err
+	}
+	c.imports[`"fmt"`] = true
+	return fmt.Sprintf("func init() {\n\truntime.InitNotify(fmt.Sprint(%s))\n}\n\n", val), nil
+}
+
 func (c *Codegen) genStoreStmt(s *StoreStmt) (string, error) {
 	val, err := c.genExpression(s.Value)
 	if err != nil {

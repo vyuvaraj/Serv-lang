@@ -76,6 +76,7 @@ const (
 	TOKEN_INJECT      TokenType = "INJECT"
 	TOKEN_GRAPHQL     TokenType = "GRAPHQL"
 	TOKEN_MACRO       TokenType = "MACRO"
+	TOKEN_NOTIFY      TokenType = "NOTIFY"
 
 	// Operators & Delimiters
 	TOKEN_ASSIGN     TokenType = "="
@@ -611,6 +612,7 @@ var keywords = map[string]TokenType{
 	"resilient":  TOKEN_RESILIENT,
 	"retries":    TOKEN_RETRIES,
 	"circuit_breaker": TOKEN_CIRCUIT_BREAKER,
+	"notify":          TOKEN_NOTIFY,
 }
 
 func lookupIdent(ident string) TokenType {

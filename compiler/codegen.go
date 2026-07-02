@@ -433,6 +433,8 @@ case *AiStmt:
 return c.genAiStmt(s)
 	case *MailStmt:
 		return c.genMailStmt(s)
+	case *NotifyStmt:
+		return c.genNotifyStmt(s)
 	case *StoreStmt:
 		return c.genStoreStmt(s)
 	case *SearchStmt:

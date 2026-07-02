@@ -3,11 +3,14 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -40,6 +43,9 @@ var (
 	stmtCacheKeys []string // ordered keys for LRU eviction
 	stmtCacheMax  = 256    // max cached prepared statements
 	stmtCacheMu  sync.RWMutex
+
+	isServDB  bool
+	servdbURL string
 
 	// MongoDB Instances
 	mongoClient *mongo.Client
@@ -214,12 +220,21 @@ func InitDB(connStr string) {
 		configureDBPool(dbInstance)
 		LogInfo("Connected to SQLite database: ", dbPath)
 	} else if strings.HasPrefix(connStr, "servdb://") {
-		// Route connection to ServDB connection pooling proxy
+		isServDB = true
+		rawURL := strings.Replace(connStr, "servdb://", "http://", 1)
+		u, err := url.Parse(rawURL)
+		if err == nil {
+			servdbURL = "http://" + u.Host
+		} else {
+			if parts := strings.Split(strings.TrimPrefix(connStr, "servdb://"), "/"); len(parts) > 0 {
+				servdbURL = "http://" + parts[0]
+			}
+		}
 		LogInfo("Connected to ServDB connection proxy pooler successfully: ", connStr)
-		var err error
-		dbInstance, err = sql.Open("sqlite", ":memory:")
-		if err != nil {
-			panic(fmt.Sprintf("Failed to initialize ServDB proxy connection: %s", err.Error()))
+		var errOpen error
+		dbInstance, errOpen = sql.Open("sqlite", ":memory:")
+		if errOpen != nil {
+			panic(fmt.Sprintf("Failed to initialize ServDB proxy connection: %s", errOpen.Error()))
 		}
 		configureDBPool(dbInstance)
 	} else if strings.HasPrefix(connStr, "turso://") {
@@ -366,6 +381,55 @@ func DBQuery(query string, args ...interface{}) interface{} {
 		hook(query, args)
 	}
 	beforeQueryHooksMu.RUnlock()
+
+	if isServDB {
+		payloadMap := map[string]interface{}{
+			"query": query,
+		}
+		payloadBytes, err := json.Marshal(payloadMap)
+		if err != nil {
+			return [2]interface{}{nil, err.Error()}
+		}
+
+		resp, err := http.Post(servdbURL+"/api/db/query", "application/json", bytes.NewReader(payloadBytes))
+		if err != nil {
+			return [2]interface{}{nil, err.Error()}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			return [2]interface{}{nil, string(bodyBytes)}
+		}
+
+		var qr struct {
+			Status   string                   `json:"status"`
+			Rows     []map[string]interface{} `json:"rows"`
+			Duration int64                    `json:"duration_ms"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&qr); err != nil {
+			return [2]interface{}{nil, err.Error()}
+		}
+
+		queryLower := strings.ToLower(strings.TrimSpace(query))
+		if strings.HasPrefix(queryLower, "insert") || strings.HasPrefix(queryLower, "update") ||
+			strings.HasPrefix(queryLower, "delete") || strings.HasPrefix(queryLower, "create") ||
+			strings.HasPrefix(queryLower, "replace") {
+			return map[string]interface{}{
+				"last_insert_id": int64(1),
+				"rows_affected":  int64(1),
+				"status":         qr.Status,
+			}
+		}
+
+		var results []interface{}
+		for _, r := range qr.Rows {
+			sm := NewSafeMapFromMap(r)
+			results = append(results, sm)
+		}
+		return results
+	}
+
 	isMongoAction := false
 	if mongoDB != nil {
 		q := strings.ToLower(strings.TrimSpace(query))
