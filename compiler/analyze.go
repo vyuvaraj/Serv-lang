@@ -2,7 +2,9 @@ package compiler
 
 import (
 	"fmt"
+	"net"
 	"strings"
+	"time"
 )
 
 // Diagnostic represents a compiler warning or error from static analysis.
@@ -61,6 +63,10 @@ func Analyze(program *Program) []Diagnostic {
 	// Topic schema validation
 	diags = append(diags, analyzeTopicSchemas(program)...)
 
+	// CD.47/77 & CD.46/78: Infrastructure reachability & cross-service dead code detection
+	diags = append(diags, analyzeInfrastructureReachability(program)...)
+	diags = append(diags, analyzeDeadRoutes(program)...)
+
 	for _, stmt := range program.Statements {
 		diags = append(diags, analyzeStatement(stmt, program)...)
 	}
@@ -106,7 +112,12 @@ func analyzeStatement(stmt Statement, program *Program) []Diagnostic {
 	case *TestStmt:
 		return analyzeBlock(s.Body, nil)
 	case *AppStmt:
-		return analyzeBlock(s.Body, nil)
+		var diags []Diagnostic
+		diags = append(diags, analyzeBlock(s.Body, nil)...)
+		for _, subStmt := range s.Body.Statements {
+			diags = append(diags, analyzeStatement(subStmt, program)...)
+		}
+		return diags
 	case *AgentDecl:
 		return nil
 	case *MeshStmt:
@@ -529,4 +540,162 @@ func findReferencedIdents(expr Expression) []string {
 		idents = append(idents, findReferencedIdents(e.Object)...)
 	}
 	return idents
+}
+
+// Global flag to bypass network ping in tests/environments
+var SkipInfraReachability = false
+
+func analyzeInfrastructureReachability(program *Program) []Diagnostic {
+	var diags []Diagnostic
+	if SkipInfraReachability {
+		return diags
+	}
+
+	// Helper to extract string values
+	getStr := func(expr Expression) string {
+		if s, ok := expr.(*StringLiteral); ok {
+			return s.Value
+		}
+		return ""
+	}
+
+	for _, stmt := range program.Statements {
+		var name, value string
+		var token Token
+		switch s := stmt.(type) {
+		case *DatabaseStmt:
+			name = "database"
+			value = getStr(s.Value)
+			token = s.Token
+		case *BrokerStmt:
+			name = "broker"
+			value = getStr(s.Value)
+			token = s.Token
+		case *CacheStmt:
+			name = "cache"
+			value = getStr(s.Value)
+			token = s.Token
+		}
+
+		if value != "" && value != "in-memory" {
+			// Extract host/port from connection URI schemas
+			addr := value
+			if strings.Contains(addr, "://") {
+				parts := strings.SplitN(addr, "://", 2)
+				addr = parts[1]
+			}
+			if strings.Contains(addr, "/") {
+				addr = strings.Split(addr, "/")[0]
+			}
+			if !strings.Contains(addr, ":") {
+				// Apply default standard service port placeholders if missing
+				switch name {
+				case "database":
+					addr += ":5432" // postgres
+				case "broker":
+					addr += ":61613" // stomp
+				case "cache":
+					addr += ":6379" // redis
+				}
+			}
+
+			// Perform network dial reachability check
+			conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+			if err != nil {
+				diags = append(diags, Diagnostic{
+					Line:     token.Line,
+					Col:      token.Col,
+					Severity: "warning",
+					Message:  fmt.Sprintf("Infrastructure reachability warning: %s target '%s' is currently unreachable", name, value),
+				})
+			} else {
+				conn.Close()
+			}
+		}
+	}
+	return diags
+}
+
+func analyzeDeadRoutes(program *Program) []Diagnostic {
+	var diags []Diagnostic
+
+	// 1. Gather all defined service routes
+	type routeKey struct {
+		service string
+		path    string
+		token   Token
+	}
+	declared := make(map[string]routeKey)
+	for _, mainStmt := range program.Statements {
+		if app, isApp := mainStmt.(*AppStmt); isApp {
+			for _, appStmt := range app.Body.Statements {
+				if r, isR := appStmt.(*RouteStmt); isR {
+					key := app.Name + r.Path
+					declared[key] = routeKey{service: app.Name, path: r.Path, token: r.Token}
+				}
+			}
+		}
+	}
+
+	// 2. Identify all outbound serv:// endpoint calls in workspace
+	called := make(map[string]bool)
+	var walk func(stmt Statement)
+	walk = func(stmt Statement) {
+		if stmt == nil {
+			return
+		}
+		switch s := stmt.(type) {
+		case *BlockStmt:
+			for _, inner := range s.Statements {
+				walk(inner)
+			}
+		case *IfStmt:
+			walk(s.Body)
+			walk(s.ElseBody)
+		case *ForStmt:
+			walk(s.Body)
+		case *AppStmt:
+			walk(s.Body)
+		case *RouteStmt:
+			walk(s.Body)
+		case *FnDecl:
+			walk(s.Body)
+		case *ExportStmt:
+			walk(s.Inner)
+		case *LetStmt:
+			if call, isCall := s.Value.(*CallExpr); isCall {
+				if ident, isIdent := call.Function.(*MemberExpr); isIdent {
+					if obj, isObj := ident.Object.(*Identifier); isObj && obj.Value == "http" && (ident.Field == "get" || ident.Field == "post") {
+						if len(call.Arguments) > 0 {
+							if strLit, isStr := call.Arguments[0].(*StringLiteral); isStr && strings.HasPrefix(strLit.Value, "serv://") {
+								uriVal := strings.TrimPrefix(strLit.Value, "serv://")
+								parts := strings.SplitN(uriVal, "/", 2)
+								if len(parts) == 2 {
+									called[parts[0]+"/"+parts[1]] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for _, mainStmt := range program.Statements {
+		walk(mainStmt)
+	}
+
+	// 3. Flag unused routes
+	for _, r := range declared {
+		if !called[r.service+r.path] {
+			diags = append(diags, Diagnostic{
+				Line:     r.token.Line,
+				Col:      r.token.Col,
+				Severity: "warning",
+				Message:  fmt.Sprintf("Dead route warning: Route '%s' declared in service '%s' is never called by other services", r.path, r.service),
+			})
+		}
+	}
+
+	return diags
 }

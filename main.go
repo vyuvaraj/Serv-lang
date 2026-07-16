@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"serv/compiler"
 )
 
 func main() {
@@ -21,6 +22,7 @@ func main() {
 		goos := ""
 		goarch := ""
 		tags := ""
+		offline := false
 		var buildArgs []string
 		rawArgs := os.Args[2:]
 		for i := 0; i < len(rawArgs); i++ {
@@ -39,9 +41,15 @@ func main() {
 			} else if (rawArgs[i] == "--tags" || rawArgs[i] == "-tags") && i+1 < len(rawArgs) {
 				tags = rawArgs[i+1]
 				i++
+			} else if rawArgs[i] == "--offline" {
+				offline = true
 			} else {
 				buildArgs = append(buildArgs, rawArgs[i])
 			}
+		}
+
+		if offline {
+			compiler.SkipInfraReachability = true
 		}
 		if len(buildArgs) < 1 {
 			buildArgs = []string{"."}
@@ -61,9 +69,13 @@ func main() {
 		hotFlag := runCmd.Bool("hot", false, "Watch files and hot-reload without restart (zero downtime)")
 		profileFlag := runCmd.Bool("profile", false, "Enable CPU and memory profiling")
 		envFlag := runCmd.String("env", "", "Environment profile (e.g., staging, production)")
+		offlineFlag := runCmd.Bool("offline", false, "Skip compile-time infrastructure reachability checks")
 		if err := runCmd.Parse(os.Args[2:]); err != nil {
 			fmt.Printf("Error parsing arguments: %v\n", err)
 			os.Exit(1)
+		}
+		if *offlineFlag {
+			compiler.SkipInfraReachability = true
 		}
 		args := runCmd.Args()
 		if len(args) < 1 {

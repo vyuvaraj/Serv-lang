@@ -424,9 +424,30 @@ func analyzeInterfaceSatisfaction(program *Program) []Diagnostic {
 		}
 	}
 
-	// Check assignments: let x: Interface = StructLiteral
-	for _, stmt := range program.Statements {
-		switch s := stmt.(type) {
+	// Walk all statements (recursively through functions, route blocks)
+	var walkStatements func(st Statement)
+	walkStatements = func(st Statement) {
+		if st == nil {
+			return
+		}
+		switch s := st.(type) {
+		case *BlockStmt:
+			for _, inner := range s.Statements {
+				walkStatements(inner)
+			}
+		case *IfStmt:
+			walkStatements(s.Body)
+			walkStatements(s.ElseBody)
+		case *ForStmt:
+			walkStatements(s.Body)
+		case *AppStmt:
+			walkStatements(s.Body)
+		case *RouteStmt:
+			walkStatements(s.Body)
+		case *FnDecl:
+			walkStatements(s.Body)
+		case *ExportStmt:
+			walkStatements(s.Inner)
 		case *LetStmt:
 			if s.Type != "" {
 				if iface, isIface := interfaces[s.Type]; isIface {
@@ -456,7 +477,64 @@ func analyzeInterfaceSatisfaction(program *Program) []Diagnostic {
 					}
 				}
 			}
+
+			// CD.76 Inter-service contracts validation: check let response = http.get("serv://ServiceName/route")
+			if s.Type != "" {
+				if call, isCall := s.Value.(*CallExpr); isCall {
+					if ident, isIdent := call.Function.(*MemberExpr); isIdent {
+						if obj, isObj := ident.Object.(*Identifier); isObj && obj.Value == "http" && (ident.Field == "get" || ident.Field == "post") {
+							if len(call.Arguments) > 0 {
+								if strLit, isStr := call.Arguments[0].(*StringLiteral); isStr && strings.HasPrefix(strLit.Value, "serv://") {
+									uriVal := strings.TrimPrefix(strLit.Value, "serv://")
+									parts := strings.SplitN(uriVal, "/", 2)
+									if len(parts) == 2 {
+										serviceName := parts[0]
+										routePath := "/" + parts[1]
+
+										// Gather routes from other declared services/apps in the compiler tree
+										foundService := false
+										var matchedRoute *RouteStmt
+										for _, mainStmt := range program.Statements {
+											if app, isApp := mainStmt.(*AppStmt); isApp && app.Name == serviceName {
+												foundService = true
+												for _, appStmt := range app.Body.Statements {
+													if r, isR := appStmt.(*RouteStmt); isR && r.Path == routePath {
+														matchedRoute = r
+														break
+													}
+												}
+											}
+										}
+
+										if foundService {
+											if matchedRoute == nil {
+												diags = append(diags, Diagnostic{
+													Line:     s.Token.Line,
+													Col:      s.Token.Col,
+													Severity: "error",
+													Message:  fmt.Sprintf("service '%s' does not declare route '%s'", serviceName, routePath),
+												})
+											} else if matchedRoute.ReturnType != "" && matchedRoute.ReturnType != s.Type {
+												diags = append(diags, Diagnostic{
+													Line:     s.Token.Line,
+													Col:      s.Token.Col,
+									Severity: "error",
+									Message:  fmt.Sprintf("inter-service contract mismatch: route '%s' on '%s' returns '%s', but assigning to '%s'", routePath, serviceName, matchedRoute.ReturnType, s.Type),
+												})
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
+	}
+
+	for _, stmt := range program.Statements {
+		walkStatements(stmt)
 	}
 
 	return diags

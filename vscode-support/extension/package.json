@@ -246,6 +246,10 @@
       {
         "command": "serv.clearCoverage",
         "title": "Serv: Clear Coverage Highlights"
+      },
+      {
+        "command": "serv.openPlayground",
+        "title": "Serv: Open Web Playground"
       }
     ],
     "keybindings": [

@@ -81,7 +81,8 @@ function activate(context) {
         vscode.commands.registerCommand('serv.initProject',    () => initProject()),
         vscode.commands.registerCommand('serv.deploy',         () => deployToCloud(context)),
         vscode.commands.registerCommand('serv.runCoverage',    () => coverageManager.runCoverage()),
-        vscode.commands.registerCommand('serv.clearCoverage',  () => coverageManager.clearCoverage())
+        vscode.commands.registerCommand('serv.clearCoverage',  () => coverageManager.clearCoverage()),
+        vscode.commands.registerCommand('serv.openPlayground', () => openPlayground(context))
     );
 
     // Status bar integration
@@ -759,7 +760,6 @@ function launchREPL(context) {
     } else {
         terminal.sendText(`"${servPath}" repl`);
     }
-}
 }
 
 function openMeshTopology(context) {
@@ -2296,5 +2296,43 @@ class ServCoverageManager {
         }
         return { covered, uncovered, total: covered.length + uncovered.length };
     }
+}
+
+function openPlayground(context) {
+    const panel = vscode.window.createWebviewPanel(
+        'servPlayground',
+        'Servverse Playground',
+        vscode.ViewColumn.One,
+        { enableScripts: true, retainContextWhenHidden: true }
+    );
+
+    panel.webview.html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Servverse Playground</title>
+            <style>
+                html, body {
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    overflow: hidden;
+                    background-color: #1e1e2e;
+                }
+                iframe {
+                    border: none;
+                    width: 100%;
+                    height: 100%;
+                }
+            </style>
+        </head>
+        <body>
+            <iframe src="https://play.servverse.org"></iframe>
+        </body>
+        </html>
+    `;
 }
 
