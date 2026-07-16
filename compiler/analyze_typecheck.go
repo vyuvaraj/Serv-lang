@@ -432,8 +432,12 @@ func analyzeInterfaceSatisfaction(program *Program) []Diagnostic {
 		}
 		switch s := st.(type) {
 		case *BlockStmt:
-			for _, inner := range s.Statements {
-				walkStatements(inner)
+			if s != nil {
+				for _, inner := range s.Statements {
+					if inner != nil {
+						walkStatements(inner)
+					}
+				}
 			}
 		case *IfStmt:
 			walkStatements(s.Body)
@@ -448,6 +452,10 @@ func analyzeInterfaceSatisfaction(program *Program) []Diagnostic {
 			walkStatements(s.Body)
 		case *ExportStmt:
 			walkStatements(s.Inner)
+		case *EveryStmt:
+			walkStatements(s.Body)
+		case *CronStmt:
+			walkStatements(s.Body)
 		case *LetStmt:
 			if s.Type != "" {
 				if iface, isIface := interfaces[s.Type]; isIface {

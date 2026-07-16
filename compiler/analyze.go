@@ -646,8 +646,12 @@ func analyzeDeadRoutes(program *Program) []Diagnostic {
 		}
 		switch s := stmt.(type) {
 		case *BlockStmt:
-			for _, inner := range s.Statements {
-				walk(inner)
+			if s != nil {
+				for _, inner := range s.Statements {
+					if inner != nil {
+						walk(inner)
+					}
+				}
 			}
 		case *IfStmt:
 			walk(s.Body)
@@ -662,6 +666,10 @@ func analyzeDeadRoutes(program *Program) []Diagnostic {
 			walk(s.Body)
 		case *ExportStmt:
 			walk(s.Inner)
+		case *EveryStmt:
+			walk(s.Body)
+		case *CronStmt:
+			walk(s.Body)
 		case *LetStmt:
 			if call, isCall := s.Value.(*CallExpr); isCall {
 				if ident, isIdent := call.Function.(*MemberExpr); isIdent {

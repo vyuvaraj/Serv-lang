@@ -600,6 +600,8 @@ var keywords = map[string]TokenType{
 	"true":      TOKEN_TRUE,
 	"false":     TOKEN_FALSE,
 	"nil":       TOKEN_NIL,
+	"and":       TOKEN_AND,
+	"or":        TOKEN_OR,
 	"struct":    TOKEN_STRUCT,
 	"self":      TOKEN_SELF,
 	"export":    TOKEN_EXPORT,
