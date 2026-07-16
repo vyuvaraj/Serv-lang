@@ -211,10 +211,10 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.ch)
 	case '-':
 		if l.peekChar() == '>' {
-			l.readChar() // skip '-'
-			l.readChar() // skip '>'
 			tok.Type = TOKEN_RET_ARROW
 			tok.Literal = "->"
+			l.readChar() // skip '-'
+			l.readChar() // skip '>'
 			return tok
 		}
 		if l.peekChar() == '=' {
@@ -228,16 +228,16 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.ch)
 	case '=':
 		if l.peekChar() == '>' {
-			l.readChar() // skip '='
-			l.readChar() // skip '>'
 			tok.Type = TOKEN_ARROW
 			tok.Literal = "=>"
+			l.readChar() // skip '='
+			l.readChar() // skip '>'
 			return tok
 		} else if l.peekChar() == '=' {
-			l.readChar() // skip first '='
-			l.readChar() // skip second '='
 			tok.Type = TOKEN_EQ
 			tok.Literal = "=="
+			l.readChar() // skip first '='
+			l.readChar() // skip second '='
 			return tok
 		}
 		tok.Type = TOKEN_ASSIGN
@@ -278,10 +278,10 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.ch)
 	case '&':
 		if l.peekChar() == '&' {
-			l.readChar()
-			l.readChar()
 			tok.Type = TOKEN_AND
 			tok.Literal = "&&"
+			l.readChar()
+			l.readChar()
 			return tok
 		}
 		tok.Type = TOKEN_AMPERSAND
@@ -358,13 +358,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = string(l.ch)
 	case 'f':
 		if l.peekChar() == '"' {
-			l.readChar() // skip 'f'
 			tok.Type = TOKEN_FSTRING
+			l.readChar() // skip 'f'
 			tok.Literal = l.readString()
 			return tok
 		} else if l.peekChar() == '`' {
-			l.readChar() // skip 'f'
 			tok.Type = TOKEN_FSTRING
+			l.readChar() // skip 'f'
 			tok.Literal = l.readRawString()
 			return tok
 		}
